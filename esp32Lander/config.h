@@ -30,6 +30,7 @@ const int ROTATION_MAX_DEG = 90;
 const float LAND_PERFECT_VY = 0.075f;
 const float LAND_HARD_VY = 0.15f;
 const float LAND_HARD_VX = 0.15f;
+const float LAND_MAX_ROTATION = 5.0f;
 
 const float CRASH_RESET_DELAY = 4.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;

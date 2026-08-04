@@ -43,7 +43,11 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - Rotación `[-90°, +90°]`, lerp `ROTATION_LERP=0.3`, la nave **arranca en 0°** (boquilla abajo).
 - Empuje: `velX += THRUST_ACCEL*thrustBuild*sin(rad)`, `velY -= THRUST_ACCEL*thrustBuild*cos(rad)`.
 - `setThrust()`: lerp `thrustBuild += (power - thrustBuild) * 0.4`.
-- Aterrizaje: perfecto `vy<0.075`, hard `<0.15`, crash si rota o más rápido.
+- Aterrizaje (config.h): perfecto `vy<0.075`, hard `<0.15`, tolerancia de rotación
+  `LAND_MAX_ROTATION=5.0` (antes exacta `rotation==0`). `VX` no se valida.
+- `checkLanding()` usa la **zona completa** (segmentos `landable` contiguos) en vez de un solo
+  segmento: las plataformas quedan ~19–31 de ancho vs caja de la nave 6.4 (antes el segmento
+  plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
 - Minimapa 96×54 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 
@@ -56,12 +60,14 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - **Gatillo → thrust (0.0–1.0)**: suavizado shift 1. Mapeo por ventanas de voltaje:
   - `<0.7V` → 0 (off). `0.7–2.2V` → 0.1–0.3 lineal.
   - `2.2–2.9V` → 0.2–1.0 lineal (`q=(v-2.2)/0.7`). La ventana física real del gatillo es 2.5–2.9V.
-- Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. Además **autostart a los 4 s** en menú.
+- Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
+  partida espera el botón start (antes había autostart a los 4 s; se eliminó por pedido).
 
 ### Terreno
 
 - 154 puntos hardcodeados del original moonlander, escalados `x*S`, `y*S+OY`, con wrap-around.
 - Zonas de aterrizaje: índices `{34, 63, 106, 133}` con multiplicadores `{4, 5, 5, 2}`, 4 segmentos c/u.
+  `checkLanding()` trata cada grupo de segmentos `landable` contiguos como una plataforma entera.
 - `labelX` se setea solo en el primer segmento de cada zona → el label "Nx" se dibuja una sola vez.
 
 ## Sketch ESP32 (`esp32LanderComposite/`)
@@ -70,17 +76,20 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 
 | Archivo | Contenido |
 |---------|-----------|
-| `esp32LanderComposite.ino` | `setup()`/`loop()`: video (aquaticus), `esp_pm_lock` CPU máx, ADC+botón, autostart, loop fijo con `millis()` y `GAME_DT=0.01` |
+| `esp32LanderComposite.ino` | `setup()`/`loop()`: video (aquaticus), `esp_pm_lock` CPU máx, ADC+botón, audio, loop fijo con `millis()` y `GAME_DT=0.01` |
 | `src/video.h/c` | **Librería aquaticus `esp32_composite_video_lib`** (GPL): `video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)`, DAC en **GPIO25**, `video_wait_frame()` |
 | `src/renderer_esp32.h/cpp` | `RendererESP32 : RendererCanvas`: `pixel→fb[py*w+px]=255`, `clear→memset`, `flush` no-op |
 | `src/ship/terrain/game/renderer_canvas/renderer/config` | Mismas fuentes que `esp32Lander/` (copias; mantener en sync con `diff`) |
+| `src/audio.h/cpp` + `src/audio_data.h` | Sonido por LEDC + timer ISR (ver sección Sonido); solo en el sketch ESP32 |
 
 - **Pines:** GPIO34 = pot (ángulo), GPIO35 = gatillo (potencia), GPIO13 = botón start.
-- HUD: `SCORE`/`FUEL` en `(22,22)`/`(22,32)`; `ALT`/`VX`/`VY` en `(250,22)`/`(250,32)`/`(250,42)`
-  (desplazado a la derecha por overscan del CRT).
+  Audio: GPIO26 (LEDC PWM; ver sección Sonido).
+- HUD: `SCORE`/`FUEL`/`ANG` en `(22,22)`/`(22,32)`/`(22,42)`; `ALT`/`VX`/`VY` en
+  `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
+  `VY` mostrado = `velY*200`; `ANG` = rotación en grados.
 - Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
   El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
-- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~316 KB flash (24%), RAM 7%.
+- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~391 KB flash (29%), RAM 7%.
 - Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
 
 ## Controles físicos decididos
@@ -89,7 +98,7 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 |---------|-----------------|-------|
 | Potenciómetro A | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | ADC con suavizado, dead zone 2–98% |
 | Gatillo (reóstato de pista de autos) | Potencia de motores (thrust 0.0–1.0) | Medido y validado (ver circuito) |
-| Botón (adicional) | Inicio / reinicio de partida | Equivale a tecla "P"; además autostart 4 s |
+| Botón (adicional) | Inicio / reinicio de partida | Equivale a tecla "P"; **sin autostart** (espera el botón) |
 
 El gatillo combina potencia + encendido gracias al resorte de retorno (suelto = motor apagado).
 No se necesita botón separado para el motor.
@@ -159,11 +168,32 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 - Alternativa bitluni (documentada antes) NO se usa: se migró a aquaticus porque integra
   `video_wait_frame()` y doble buffer por hardware.
 
-## Sonido (PENDIENTE)
+## Sonido (COMPLETADA 4/8/2026)
 
-- DAC2 en **GPIO26** (libre). Convertir `sounds/explosion.wav` y `sounds/rocket_thrust.wav`
-  a WAV mono 8-bit / 16 kHz. Salir por I2S → GPIO26 al RCA blanco del TV, con
-  **condensador de acople en serie (1–10 µF)** para quitar el DC.
+- **Vía: PWM por LEDC + timer ISR en GPIO26** (NO I2S). Motivo: la librería de video
+  (aquaticus) usa I2S0 + DAC1 (GPIO25) y `dac_i2s_enable()` fuerza DAC2 (GPIO26) a modo DMA,
+  así que GPIO26 no estaba realmente libre para I2S. Solución: `dac_output_disable(DAC_CHANNEL_2)`
+  libera la almohadilla y se usa **LEDC (canal 0, HS mode) como PWM portador a 312.5 kHz
+  (resolución 8-bit = máx)**.
+- `src/audio.h/cpp`: timer gptimer a **16 kHz** con ISR (`IRAM_ATTR`) que mezcla
+  `THRUST_SOUND` (loop) + `EXPLOSION_SOUND` (one-shot) en RAM (copiados desde PROGMEM al
+  arrancar) y escribe el duty directo al registro `LEDC.channel_group[0].channel[0].duty.duty`
+  (`val<<4`) + handshake `duty_start`. API: `Audio::begin()`, `Audio::setThrust(0..1)`,
+  `Audio::playExplosion()`.
+- Datos: `src/audio_data.h` generado (PROGMEM) desde `sounds/rocket_thrust.wav` (32 k muestras,
+  2 s, loopable) y `sounds/explosion.wav` (27.4 k muestras, 1.71 s) — mono 8-bit / 16 kHz.
+- Origen de los sonidos: **reales**, extraídos de `tblazevic/moonlander` (clon arcade JS)
+  `audio/rocket.mp3` (loop de motor) + `audio/crash.mp3`. Pipeline en `sounds/real_sounds.py`
+  (extrae el segmento 2 s más estable del mp3, hace **loop sin clic** cruzando la continuación
+  natural hacia la cabeza, sube ganancia con `tanh`, convierte a 8-bit). Los mp3 se convierten
+  primero a PCM16 16 kHz con ffmpeg (`/tmp/opencode/rocket16.wav`).
+- RAM: los dos sonidos se copian a RAM al arrancar (~59 KB) para lectura segura desde el ISR.
+- Disparo en el `.ino`: transición a `STATE_CRASHED` → explosión; `thrustBuild` durante
+  `STATE_PLAYING` → motor.
+- Debug (serial): `debugBeep()` emite un pitido 440 Hz (0.5 s) al arrancar para confirmar el
+  audio; `debugIsrCount()` imprime `[audio] isr=%u` 1×/s (~16156 ISR/s → 16 kHz reales).
+- Cableado: **GPIO26 → condensador de acople en serie (1–10 µF) → RCA blanco del TV**
+  (quita el DC; lógica de 3.3 V). Verificado con parlante + amplificador.
 
 ## Escalado de pantalla
 
@@ -199,6 +229,11 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
    — `esp32Lander/`, `make && ./test_pc` OK (21 checks).
 3. ~~Integrar video compuesto (aquaticus) → CRT~~ **COMPLETADA (4/8/2026)** — imagen verificada en CRT.
 4. ~~Integrar controles: pot (ángulo), gatillo (potencia), botón start~~ **COMPLETADA (4/8/2026)**
-   — mapeo por ventana de voltaje del gatillo; autostart 4 s.
-5. Integrar sonido por GPIO26 (**PENDIENTE**).
-6. Pulir/ajustes de jugabilidad en CRT (**EN CURSO**).
+   — mapeo por ventana de voltaje del gatillo; **autostart eliminado** (espera el botón start).
+5. ~~Integrar sonido por GPIO26~~ **COMPLETADA (4/8/2026)**
+   — LEDC PWM + timer ISR 16 kHz (explosión + motor), ver sección de sonido.
+6. ~~Pulir jugabilidad: tolerancia de aterrizaje + plataformas por zona completa~~ **COMPLETADA (4/8/2026)**
+   — `LAND_MAX_ROTATION=5.0` y `checkLanding()` sobre la zona landable completa (plataformas
+   ~19–31 de ancho); HUD con `ANG`. Verificado el fix del crash con parámetros válidos.
+7. **Cambiar el hardware del thrust (PENDIENTE)** — el gatillo (reóstato 500→30 Ω) se siente
+   "todo o nada"; evaluar reóstato potenciómetro o carga de menor resistencia (47–56 Ω).

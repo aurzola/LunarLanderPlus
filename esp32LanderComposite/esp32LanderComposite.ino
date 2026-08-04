@@ -11,6 +11,7 @@ extern "C" {
 #include "src/config.h"
 #include "src/game.h"
 #include "src/renderer_esp32.h"
+#include "src/audio.h"
 
 const int XRES = (int)SCREEN_W;
 const int YRES = (int)SCREEN_H;
@@ -24,7 +25,6 @@ const float TRIGGER_MIN_VOLT = 2.5f;
 const float TRIGGER_MAX_VOLT = 2.9f;
 
 #define CONTROLS_WIRED 1
-#define AUTOSTART_DELAY_MS 4000
 
 static Game game;
 static RendererESP32 *renderer = NULL;
@@ -32,7 +32,8 @@ static RendererESP32 *renderer = NULL;
 static int smoothPot = 0;
 static int smoothTrigger = 0;
 static int lastButton = HIGH;
-static unsigned long menuTimer = 0;
+static int lastGameState = -1;
+static unsigned long lastIsrPrint = 0;
 
 static int lowPass(int prev, int raw, int shift)
 {
@@ -75,19 +76,6 @@ static void readInputs()
     lastButton = b;
 }
 
-static void autostart()
-{
-    if (game.state == STATE_WAITING) {
-        if (menuTimer == 0) menuTimer = millis();
-        else if (millis() - menuTimer > AUTOSTART_DELAY_MS) {
-            game.input.startPressed = true;
-            menuTimer = 0;
-        }
-    } else {
-        menuTimer = 0;
-    }
-}
-
 void setup()
 {
     Serial.begin(115200);
@@ -107,6 +95,8 @@ void setup()
 
     video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP);
     renderer = new RendererESP32(video_get_frame_buffer_address(), XRES, YRES);
+
+    Audio::begin();
 }
 
 void loop()
@@ -115,7 +105,6 @@ void loop()
     static unsigned long acc = 0;
     static unsigned long last = 0;
     readInputs();
-    autostart();
 
     unsigned long now = millis();
     if (last == 0) last = now;
@@ -126,6 +115,17 @@ void loop()
     while (acc >= stepMillis) {
         game.update();
         acc -= stepMillis;
+    }
+
+    if (game.state != lastGameState) {
+        if (game.state == STATE_CRASHED) Audio::playExplosion();
+        lastGameState = game.state;
+    }
+    Audio::setThrust(game.state == STATE_PLAYING ? game.ship.thrustBuild : 0.0f);
+
+    if (millis() - lastIsrPrint > 1000) {
+        lastIsrPrint = millis();
+        Serial.printf("[audio] isr=%u\n", (unsigned)Audio::debugIsrCount());
     }
 
     video_wait_frame();

@@ -5,6 +5,10 @@
 #include "renderer.h"
 #include "config.h"
 
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
+
 Terrain::Terrain() : tileWidth(0) {}
 
 void Terrain::addLine(float x1, float y1, float x2, float y2)
@@ -138,27 +142,42 @@ int Terrain::checkLanding(float left, float right, float bottom, float rotation,
 
         if (l.landable) {
             if (bottom >= l.y1) {
-                if (left > l.x1 && right < l.x2) {
-                    if (rotation == 0 && vy < LAND_HARD_VY) {
-                        return 2;
-                    } else {
-                        return 1;
-                    }
-                } else {
-                    return 1;
-                }
+                int rs = i, re = i;
+                while (rs > 0 && lines[rs - 1].landable) rs--;
+                while (re < (int)lines.size() - 1 && lines[re + 1].landable) re++;
+                float zx1 = lines[rs].x1, zx2 = lines[re].x2;
+                bool inside = (left > zx1 && right < zx2);
+                bool good = (fabsf(rotation) <= LAND_MAX_ROTATION && vy < LAND_HARD_VY);
+                int res = (inside && good) ? 2 : 1;
+#if defined(ARDUINO)
+                Serial.printf("[land] zone i=%d..%d x1=%.1f x2=%.1f L=%.1f R=%.1f B=%.1f rot=%.1f vy=%.3f inside=%d good=%d -> %d\n",
+                              rs, re, zx1, zx2, left, right, bottom, rotation, vy, inside, good, res);
+#endif
+                return res;
             }
         } else {
             if (bottom > l.y1 || bottom > l.y2) {
                 float dist = (left - l.x1) / (l.x2 - l.x1);
                 if (dist > 0 && dist < 1) {
                     float yhit = l.y1 + (l.y2 - l.y1) * dist;
-                    if (yhit <= bottom) return 1;
+                    if (yhit <= bottom) {
+#if defined(ARDUINO)
+                        Serial.printf("[land] i=%d ROCK x1=%.1f x2=%.1f y1=%.1f y2=%.1f L=%.1f R=%.1f B=%.1f rot=%.1f vy=%.3f yhit=%.1f -> 1\n",
+                                      i, l.x1, l.x2, l.y1, l.y2, left, right, bottom, rotation, vy, yhit);
+#endif
+                        return 1;
+                    }
                 }
                 dist = (right - l.x1) / (l.x2 - l.x1);
                 if (dist > 0 && dist < 1) {
                     float yhit = l.y1 + (l.y2 - l.y1) * dist;
-                    if (yhit <= bottom) return 1;
+                    if (yhit <= bottom) {
+#if defined(ARDUINO)
+                        Serial.printf("[land] i=%d ROCK x1=%.1f x2=%.1f y1=%.1f y2=%.1f L=%.1f R=%.1f B=%.1f rot=%.1f vy=%.3f yhit=%.1f -> 1\n",
+                                      i, l.x1, l.x2, l.y1, l.y2, left, right, bottom, rotation, vy, yhit);
+#endif
+                        return 1;
+                    }
                 }
             }
         }

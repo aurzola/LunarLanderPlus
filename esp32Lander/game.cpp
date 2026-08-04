@@ -205,6 +205,8 @@ void Game::draw(Renderer &r)
         r.text(22, 22, buf);
         snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
         r.text(22, 32, buf);
+        snprintf(buf, sizeof buf, "ANG %d", (int)ship.rotation);
+        r.text(22, 42, buf);
 
         int alt = (ship.altitude < 0) ? 0 : (int)ship.altitude;
         snprintf(buf, sizeof buf, "ALT %d", alt);
