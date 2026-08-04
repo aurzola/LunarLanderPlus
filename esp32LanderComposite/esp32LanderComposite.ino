@@ -47,28 +47,27 @@ static void readInputs()
     smoothPot = lowPass(smoothPot, analogRead(PIN_POT), 2);
     smoothTrigger = lowPass(smoothTrigger, analogRead(PIN_TRIGGER), 1);
 
-    float t = 1.0f - (float)smoothPot / 4095.0f;
+    float t = (float)smoothPot / 4095.0f;
     if (t < 0.02f) t = 0.02f;
     else if (t > 0.98f) t = 0.98f;
     float a = (t - 0.02f) / 0.96f;
-    game.input.angle = -PI * a;
+    game.input.angle = -PI / 2.0f + PI * a;
 
     float v = smoothTrigger * (3.3f / 4095.0f);
-    int throttle;
-    if (v < TRIGGER_OFF_VOLT) {
-        throttle = 0;
-    } else if (v < TRIGGER_MIN_VOLT) {
-        throttle = 1;
+    float thrust;
+    if (v < 0.7f) {
+        thrust = 0.0f;
+    } else if (v < 2.2f) {
+        thrust = 0.1f + 0.2f * (v - 0.7f) / 1.5f;
     } else {
-        float q = (v - TRIGGER_MIN_VOLT) / (TRIGGER_MAX_VOLT - TRIGGER_MIN_VOLT);
-        if (q < 0.0f) q = 0.0f;
-        else if (q > 1.0f) q = 1.0f;
-        throttle = 1 + (int)(sqrtf(q) * 7.99f);
+        float q = (v - 2.2f) / 0.7f;
+        if (q > 1.0f) q = 1.0f;
+        thrust = 0.2f + q * 0.8f;
     }
-    game.input.throttle = throttle;
+    game.input.thrust = thrust;
 #else
     game.input.angle = 0.0f;
-    game.input.throttle = 0;
+    game.input.thrust = 0;
 #endif
 
     int b = digitalRead(PIN_START);
@@ -78,7 +77,7 @@ static void readInputs()
 
 static void autostart()
 {
-    if (game.state == STATE_MENU) {
+    if (game.state == STATE_WAITING) {
         if (menuTimer == 0) menuTimer = millis();
         else if (millis() - menuTimer > AUTOSTART_DELAY_MS) {
             game.input.startPressed = true;
@@ -115,16 +114,8 @@ void loop()
     const unsigned long stepMillis = (unsigned long)(GAME_DT * 1000.0f);
     static unsigned long acc = 0;
     static unsigned long last = 0;
-    static unsigned long dbgLast = 0;
-
     readInputs();
     autostart();
-
-    if (millis() - dbgLast >= 500) {
-        dbgLast = millis();
-        Serial.printf("st=%d pot=%d ang=%.3f thr=%d\n",
-                      game.state, smoothPot, game.input.angle, game.input.throttle);
-    }
 
     unsigned long now = millis();
     if (last == 0) last = now;

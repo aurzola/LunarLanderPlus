@@ -2,66 +2,94 @@
 
 ## Objetivo
 
-Portar el juego Lunar Lander a un **ESP32** con salida **video compuesto (AV)** hacia un
-**CRT blanco y negro con entrada compuesta (video + sonido)**. Controles físicos:
+Portar el juego **moonlander.seb.ly** (JavaScript) a un **ESP32** con salida **video compuesto (AV)**
+hacia un **CRT blanco y negro con entrada compuesta (video + sonido)**. Controles físicos:
 **potenciómetro (ángulo) + gatillo de reóstato de pista de autos (potencia de motores)**.
 
 Estética objetivo: arcade / retro auténtico.
 
-## Estado actual del código (fuente del port)
+## Estado actual del código
 
-- `pyLander/` — original en Python/Pygame Zero (`lunarLander.py`, `ship.py`, `terrain.py`)
-  + `venv/`, `sounds/`, `fonts/`. Movido a subdirectorio para organizar. NO se usa para el ESP32.
-- `cppLander/` — versión C++ del mismo juego (`final.cpp`, `ship.cpp`, `terrain.cpp`).
-  Es la **base directa para portar al ESP32**: física y colisiones O(N·M) corren bien a 240 MHz.
-- `esp32Lander/` — port C++ std validado en PC (ver "Port a ESP32").
-- `esp32Composite/` — sketch Arduino del ESP32 (ver "Sketch ESP32").
+- `pyLander/` — original en Python/Pygame Zero. **NO se usa para el ESP32.**
+- `cppLander/` — versión C++ previa del juego (base antigua). Reemplazada por el port de moonlander.
+- `esp32Lander/` — port C++ std del juego moonlander, **validado en PC** (ver "Port a ESP32").
+- `esp32LanderComposite/` — sketch Arduino del ESP32 (ver "Sketch ESP32").
 
-## Port a ESP32 (ESTADO 2/8/2026)
+## Port a ESP32 (ESTADO 4/8/2026)
 
+El juego portado es **moonlander.seb.ly** (JS): física, terreno fijo y nave hexagonal.
 Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 | Archivo | Contenido |
 |---------|-----------|
-| `ship.h/cpp` | Nave portada de `cppLander/` (física, hitbox, colisión). Añadido `draw(Renderer&)` |
-| `terrain.h/cpp` | Terreno portado de `cppLander/` (punto medio, multiplicadores). Añadido `draw(Renderer&)` |
-| `game.h/cpp` | Lógica del juego: estados, física, scoring, `update()` + `draw(Renderer&)` |
-| `renderer.h` | Interfaz abstracta (pixel/line/circle/text/flush). Se implementa para PC y para el ESP32 |
-| `renderer_canvas.h/cpp` | Primitivas de dibujo compartidas (Bresenham, círculo, fuente 5x7) vía `pixel()` |
+| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar |
+| `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento |
+| `game.h/cpp` | Estados, zoom + minimapa, scoring, `update()` + `draw(Renderer&)` |
+| `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush) |
+| `renderer_canvas.h/cpp` | Primitivas compartidas (Bresenham con caso explícito dx=0/dy=0, círculo, rect, fuente 5x7) vía `pixel()` |
 | `renderer_pc.h/cpp` | Renderer de validación en PC: framebuffer + PPM (extiende `RendererCanvas`) |
 | `main_pc.cpp` | Demo en PC (genera snapshots PPM en `frames/`) |
 | `test_pc.cpp` | Tests de validación (asserts) |
 
-- **Entrada:** struct `Input { bool startPressed; float angle; int throttle; }`. El pot mapea
-  `angle` a `[-PI, 0]`; el gatillo mapea `throttle` a `[0, 8]` (accMode). En menú `startPressed`
-  equivale a la tecla "P".
-- **Mundo 1400×800, pantalla 320×240**: la física y colisiones quedan en coordenadas de mundo;
-  el dibujado escala (terreno con `kx=320/1400`, `ky=240/800`). La nave se dibuja a tamaño natural
-  (~24 px) para verse en el CRT.
-- **Constantes del port** (coinciden con `cppLander/`, NO con Python):
-  empuje `xv += .025*accMode*cos`, `yv += .035*accMode*sin`, gas `-.015*accMode`;
-  gravedad `yVel += 10*dt`, posición `y += yVel*dt + .5*30*dt*dt`; `dt = 0.01`.
-- **Cambio vs cppLander (ambiente ESP32):** `terrain.cpp` siembra el RNG **una sola vez**
-  (`static bool seeded`). En el ESP32 el sketch setea `settimeofday()` con `esp_random()`
-  para que `time(NULL)` (usado como semilla) difiera en cada boot → terreno distinto cada partida.
-- Validado en PC: `make && ./test_pc` → **todos los checks pasan**. Demo visual: `./main_pc`.
-- Pendiente: integrar el sketch en hardware y verificar imagen/controles en el CRT.
+### Mundo y pantalla
 
-## Mecánicas a respetar (port fiel)
+- Mundo 800×600, pantalla 320×240. Física y colisiones en coordenadas de mundo; el dibujado escala.
+- Vista normal `viewScale = SCREEN_H/700`. Nave `scale = 1.0` (vista normal) / `0.32` (zoom).
 
-- Estados: menú (1), jugando (2), game over por combustible (3). Tecla "P" en menú inicia.
-- Nave: gas 750, ángulo en `[-PI, 0]`, accMode (empuje) en `[0, 8]`, vel. máxima x = ±100.
-- Gravedad, combustible se consume con empuje. Aterrizaje: good (<12 vy y |vx|<25),
-  hard (<25 vy y |vx|<25), crash (más rápido). Multiplicadores en el terreno (2x–5x).
-- Colisión: cuerpo/patas = crash, ambos pies = posible aterrizaje.
+### Constantes del port (config.h)
+
+- `GRAVITY=0.0005`, `THRUST_ACCEL=0.0018`, `DRAG=0.9997`, `TOP_SPEED=0.35`.
+- `FUEL_MAX=1000`, `FUEL_PER_THRUST=0.2`, `GAME_DT=0.01`.
+- Rotación `[-90°, +90°]`, lerp `ROTATION_LERP=0.3`, la nave **arranca en 0°** (boquilla abajo).
+- Empuje: `velX += THRUST_ACCEL*thrustBuild*sin(rad)`, `velY -= THRUST_ACCEL*thrustBuild*cos(rad)`.
+- `setThrust()`: lerp `thrustBuild += (power - thrustBuild) * 0.4`.
+- Aterrizaje: perfecto `vy<0.075`, hard `<0.15`, crash si rota o más rápido.
+- Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
+- Minimapa 96×54 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
+
+### Entrada
+
+`struct Input { bool startPressed; float angle; float thrust; }`.
+
+- **Pot → ángulo**: `t = ADC/4095`, dead zone 2–98%, `angle = -PI/2 + PI*a` → rotación `[-90°, +90°]`.
+  Suavizado media móvil shift 2. (Invertir pot: se quitó el `1.0 -` en el `.ino`.)
+- **Gatillo → thrust (0.0–1.0)**: suavizado shift 1. Mapeo por ventanas de voltaje:
+  - `<0.7V` → 0 (off). `0.7–2.2V` → 0.1–0.3 lineal.
+  - `2.2–2.9V` → 0.2–1.0 lineal (`q=(v-2.2)/0.7`). La ventana física real del gatillo es 2.5–2.9V.
+- Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. Además **autostart a los 4 s** en menú.
+
+### Terreno
+
+- 154 puntos hardcodeados del original moonlander, escalados `x*S`, `y*S+OY`, con wrap-around.
+- Zonas de aterrizaje: índices `{34, 63, 106, 133}` con multiplicadores `{4, 5, 5, 2}`, 4 segmentos c/u.
+- `labelX` se setea solo en el primer segmento de cada zona → el label "Nx" se dibuja una sola vez.
+
+## Sketch ESP32 (`esp32LanderComposite/`)
+
+Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module" (core esp32 ≥ 3.x).
+
+| Archivo | Contenido |
+|---------|-----------|
+| `esp32LanderComposite.ino` | `setup()`/`loop()`: video (aquaticus), `esp_pm_lock` CPU máx, ADC+botón, autostart, loop fijo con `millis()` y `GAME_DT=0.01` |
+| `src/video.h/c` | **Librería aquaticus `esp32_composite_video_lib`** (GPL): `video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)`, DAC en **GPIO25**, `video_wait_frame()` |
+| `src/renderer_esp32.h/cpp` | `RendererESP32 : RendererCanvas`: `pixel→fb[py*w+px]=255`, `clear→memset`, `flush` no-op |
+| `src/ship/terrain/game/renderer_canvas/renderer/config` | Mismas fuentes que `esp32Lander/` (copias; mantener en sync con `diff`) |
+
+- **Pines:** GPIO34 = pot (ángulo), GPIO35 = gatillo (potencia), GPIO13 = botón start.
+- HUD: `SCORE`/`FUEL` en `(22,22)`/`(22,32)`; `ALT`/`VX`/`VY` en `(250,22)`/`(250,32)`/`(250,42)`
+  (desplazado a la derecha por overscan del CRT).
+- Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
+  El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
+- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~316 KB flash (24%), RAM 7%.
+- Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
 
 ## Controles físicos decididos
 
 | Control | Mapeo del juego | Notas |
 |---------|-----------------|-------|
-| Potenciómetro A | Ángulo de la nave (`-PI` a `0`) | ADC con suavizado, dead zone en extremos |
-| Gatillo (reóstato de pista de autos) | Potencia de motores | Medido y validado (ver circuito) |
-| Botón (adicional) | Inicio / reinicio de partida | Equivale a tecla "P" |
+| Potenciómetro A | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | ADC con suavizado, dead zone 2–98% |
+| Gatillo (reóstato de pista de autos) | Potencia de motores (thrust 0.0–1.0) | Medido y validado (ver circuito) |
+| Botón (adicional) | Inicio / reinicio de partida | Equivale a tecla "P"; además autostart 4 s |
 
 El gatillo combina potencia + encendido gracias al resorte de retorno (suelto = motor apagado).
 No se necesita botón separado para el motor.
@@ -74,37 +102,31 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 
 ### RESULTADO DE LA MEDICIÓN (2/8/2026)
 
-- **Gatillo suelto (reposo):** circuito abierto (sin lectura) → motor apagado (accMode 0).
-- **Primer contacto al apretar:** ~**500 Ω**.
-- **Gatillo apretado al máximo:** **30 Ω** → potencia máxima.
+- **Gatillo suelto (reposo):** circuito abierto (sin lectura) → motor apagado (thrust 0).
+- **Primer contacto al apretar:** ~**500 Ω** → ~2.5 V en el ADC.
+- **Gatillo apretado al máximo:** **30 Ω** → ~2.9 V (potencia máxima).
 - **Barrido 500 → 30 Ω es continuo/suave** (sin escalones discretos). Las lecturas
-  "brincan" por **ruido de contacto** del cursor sobre el bobinado: se comporta así por
-  el uso con corrientes de motor; se mitiga en software (suavizado) y con un condensador.
+  "brincan" por **ruido de contacto** del cursor sobre el bobinado: se mitiga en software
+  (suavizado) y con un condensador.
 - Conclusión: es interruptor + reóstato con rango útil 500–30 Ω. El arranque (abierto→500)
   es un salto de "apagado a encendido" con dead zone natural.
+- **La ventana útil es muy angosta (2.5→2.9 V = 0.4 V).** En software se mapea esa ventana
+  completa al rango de thrust (ver "Entrada"). Si el gatillo se siente "todo o nada", opciones:
+  bajar la resistencia de carga a ~47–56 Ω para estirar la ventana a ~0.6 V, o cambiar de mecanismo.
 
 #### Circuito del divisor (gatillo → ADC)
 
 ```
 3.3 V ──[reóstato 1.8M→30Ω]──┬──[120 Ω]── GND
                             └──┬──[0.1 µF]── GND
-                               └── ADC (GPIO34/35)
+                               └── ADC (GPIO35)
 ```
 
-- Reposo (abierto) → V ≈ 0.0 V (apagado, accMode 0). Verificado con el multímetro.
+- Reposo (abierto) → V ≈ 0.0 V (apagado, thrust 0). Verificado con el multímetro.
 - Medición final con 120 Ω (punto medio → GND): primer contacto **2.5 V**, a fondo **2.9 V**.
-  Rango útil ≈ 500 cuentas ADC (de sobra para 9 niveles). Suelto = 0 V (off).
-- En circuito el reóstato va de ~38 Ω (primer contacto) a ~17 Ω (a fondo): es un control
-  tipo "on + acelerador" con salto natural de apagado a encendido. Se mapea en software.
-- **Con 1 kΩ la ventana quedaba aplastada (~0.35 V, 2.9→3.25 V)**: el 1 kΩ "ahoga" el
-  cambio de un rango de resistencia tan corto. Con 100–220 Ω la ventana es usable.
 - El condensador de 0.1 µF forma un paso bajo RC (~10 µs) que filtra el ruido de contacto.
-- Los "brincos" de lectura son ruido de contacto del cursor sobre el bobinado: se mitigan
-  en software (suavizado, dead bands) y con el condensador. Abierto = 0 (off).
-- En el código: mapear ADC → accMode 0–8 con curva de compensación (sqrt o lookup table)
-  y suavizado (media móvil). Dead zone: por debajo de ~1 V → accMode 0 (off).
-- Si en pruebas el gatillo se siente demasiado "todo o nada", se puede bajar la resistencia
-  a ~47–56 Ω para estirar la ventana a ~0.6 V (más corriente ~50 mA) o reasignar controles.
+- En circuito el reóstato va de ~38 Ω (primer contacto) a ~17 Ω (a fondo): control tipo
+  "on + acelerador" con salto natural de apagado a encendido. Se mapea en software.
 
 #### Conexión del potenciómetro (ángulo → ADC)
 
@@ -113,7 +135,7 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
         │
    [pot 10 kΩ]
         │
-      [cursor] ──► ADC (GPIO34 o 35)
+      [cursor] ──► ADC (GPIO34)
         │
    [extremo 2]
         │
@@ -123,54 +145,21 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 - Pin 1 (extremo) → 3.3 V; pin 2 (extremo) → GND; pin 3 (cursor/medio) → ADC.
 - Reversible: si el ángulo sale invertido, se invierte en software o se cambian los extremos.
 - **GPIO34 y 35 son solo-entrada** (sin pull-up/pull-down): ideales para ADC.
-  Asignación: GPIO34 = ángulo (pot), GPIO35 = potencia (gatillo), o al revés.
+  Asignación: GPIO34 = ángulo (pot), GPIO35 = potencia (gatillo).
 - Condensador opcional de 0.1 µF del cursor a GND para limpiar ruido.
-- Mapeo en software: recorrido útil del pot (con dead zones en los extremos) → `[-PI, 0]`.
-  Suavizado (media móvil) igual que el gatillo.
 
 ## Salida de video (compuesta a CRT B/N)
 
-- **Librería principal: bitluni/ESP32CompositeVideo** (Arduino IDE, I2S + DAC interno,
-  **GPIO25**, cero componentes, 320×240, grises de 8 bits). La TV B/N ignora el colorburst.
-- Se usa la API moderna del repo: `CompositeGraphics` (backbuffer 320×240) + `CompositeOutput`
-  (NTSC/PAL, doble resolución) con tarea `compositeCore` fija al core 0 que transmite
-  `graphics.sendFrameHalfResolution(&graphics.frame)`; el loop dibuja en el core 1 y hace
-  swap con `graphics.end()`. NO es la API antigua `CompositeVideo::begin(RES)`.
-- Los headers necesarios (`CompositeGraphics.h`, `CompositeOutput.h`, `Font.h`,
-  `TriangleTree.h`) son **header-only** y están **embebidos en el sketch** (`esp32Composite/src/`),
-  por lo que NO hay que instalar ninguna librería. `CompositeOutput.h` incluye además
-  `soc/i2s_reg.h` (los registros I2S ya no vienen con `driver/i2s.h` en core 3.x / IDF 5).
-- El sketch **compila validado** con `arduino-cli compile --fqbn esp32:esp32:esp32`
-  (core 3.3.10): ~314 KB flash (23%), RAM global 7% — los framebuffers 320×240 (2×76 KB)
-  se alojan en el heap en `graphics.init()`.
-- Alternativa si se usa ESP-IDF: `aquaticus/esp32_composite_video_lib` (PAL/NTSC, mono, LVGL).
-- Alternativa color: `ESP_8_BIT_composite` (escalera de resistencias) — **innecesaria** para B/N.
+- **Librería: `aquaticus/esp32_composite_video_lib`** (GPL, C), embebida como `src/video.h/c`.
+  DAC interno **GPIO25** → RCA del TV. NTSC `NTSC_320x240`, `FB_FORMAT_GREY_8BPP`.
+  B/N usa luma alta (255) en el framebuffer.
+- `video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)` en `setup()`; el renderer escribe en
+  `video_get_frame_buffer_address()` y `video_wait_frame()` sincroniza el draw.
+- El framebuffer (320×240 × 1 byte ≈ 76 KB) se aloja en el heap de la librería.
+- Alternativa bitluni (documentada antes) NO se usa: se migró a aquaticus porque integra
+  `video_wait_frame()` y doble buffer por hardware.
 
-## Sketch ESP32 (`esp32Composite/`)
-
-Sketch Arduino autónomo (funciona con Arduino IDE o `arduino-cli`). Se puede abrir
-`esp32Composite/esp32Composite.ino` y subir con placa "ESP32 Dev Module" (core esp32 ≥ 3.x).
-
-| Archivo | Contenido |
-|---------|-----------|
-| `esp32Composite.ino` | `setup()`/`loop()`: `CompositeGraphics`+`CompositeOutput` (NTSC 320×240, GPIO25), tarea `compositeCore` en core 0, `esp_pm_lock` (CPU máx), `settimeofday(esp_random())` para terreno distinto por boot, ADC+botón, loop fijo con `millis()` y `dt` 0.01 |
-| `src/renderer_esp32.h/cpp` | `RendererESP32 : RendererCanvas`: `pixel→g.dot`, `clear→g.begin(0)`, `flush→g.end()`. Blanco = valor 100 (luma) |
-| `src/CompositeGraphics.h`, `CompositeOutput.h`, `Font.h`, `TriangleTree.h` | Librería bitluni (header-only, copiada) |
-| `src/ship/terrain/game/renderer_canvas/renderer/config` | Mismas fuentes que `esp32Lander/` (copias; mantener en sync con `diff`) |
-
-- **Pines (constantes al inicio del `.ino`):** GPIO34 = pot (ángulo), GPIO35 = gatillo
-  (potencia), GPIO13 = botón start (INPUT_PULLUP, flanco → `startPressed`).
-- **Gatillo → throttle:** suavizado media móvil; por debajo de `TRIGGER_OFF_VOLT` (1.0 V) → 0
-  (off); `TRIGGER_MIN_VOLT` (2.5 V) → 1; `TRIGGER_MAX_VOLT` (2.9 V) → 8 con curva `sqrt`.
-  Constantes ajustables en el `.ino` según la medición final en circuito.
-- **Pot → ángulo:** dead zone 5–95% del ADC, mapeo lineal → `[-PI, 0]`. Si sale invertido,
-  invertir `a` en el `.ino` o cambiar los extremos del pot.
-- **NTSC vs PAL:** `composite(CompositeOutput::NTSC, ...)` en el `.ino`; cambiar `NTSC` por
-  `PAL` (50 Hz) si el TV es PAL. B/N ignora el colorburst en ambos.
-- Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por
-  iteración (hace `clear` + swap). El draw a mayor ritmo no rompe nada por el doble buffer.
-
-## Sonido
+## Sonido (PENDIENTE)
 
 - DAC2 en **GPIO26** (libre). Convertir `sounds/explosion.wav` y `sounds/rocket_thrust.wav`
   a WAV mono 8-bit / 16 kHz. Salir por I2S → GPIO26 al RCA blanco del TV, con
@@ -178,32 +167,38 @@ Sketch Arduino autónomo (funciona con Arduino IDE o `arduino-cli`). Se puede ab
 
 ## Escalado de pantalla
 
-- Original 1400×800 → objetivo 320×240 (factor ~4.4). La física NO cambia, solo el dibujado.
+- Mundo 800×600 → pantalla 320×240. La física NO cambia, solo el dibujado.
+- Zoom: multiplica `viewScale` ×5 y la nave pasa a `scale=0.32` (se ve más grande).
+- Minimapa cuando hay zoom: 96×54 px arriba-centro, escala el terreno completo y marca la nave.
 
 ## Decisiones de arquitectura / convenciones
 
 - Framework: **Arduino (arduino-esp32)** salvo que el usuario decida ESP-IDF.
-- Estructura: portar `ship` y `terrain` de `cppLander/` casi tal cual; loop fijo con `millis()`,
-  `dt` fijo (0.01 s). El ritmo de video lo maneja la tarea `compositeCore` (doble buffer:
-  `begin`/`end`), sin VSYNC explícito.
-- Dibujado: reemplazar `gfx_*`/Pygame por la API de la librería de video (línea, círculo, texto).
-- Idioma del código: inglés (coherente con `cppLander/`). Respuestas al usuario: español.
+- Port de **moonlander.seb.ly**: física y terreno del original JS, con nave hexagonal.
+- Loop fijo con `millis()`, `GAME_DT=0.01`; el ritmo de video lo maneja la librería
+  (`video_wait_frame()`), sin VSYNC explícito en el juego.
+- Dibujado: interfaz `Renderer` (pixel/line/rect/circle/text/flush). `RendererCanvas` comparte
+  las primitivas; PC y ESP32 implementan `pixel()`.
+- `esp32LanderComposite/src/` es **copia** de `esp32Lander/` (mismas fuentes); mantener en sync
+  con `diff` al cambiar física/dibujado.
+- Idioma del código: inglés (coherente con el port). Respuestas al usuario: español.
 - No usar librerías no verificadas antes de consultar. No añadir comentarios al código salvo que se pidan.
 
 ## Comandos útiles
 
-- Probar juego Python original: `python pyLander/lunarLander.py` (desde `pyLander/`, con su `venv/`).
-- Compilar versión C++: `make` en `cppLander/` (usa librería `gfxnew`, no portable a ESP32).
-- Validar port en PC: `make && ./test_pc` en `esp32Lander/`. Demo visual: `./main_pc` (PPM en `frames/`).
-- Subir al ESP32: Arduino IDE, abrir `esp32Composite/esp32Composite.ino`, placa "ESP32 Dev Module".
+- Validar port en PC: `make && ./test_pc` en `esp32Lander/` (todos los checks pasan).
+  Demo visual: `./main_pc` (PPM en `frames/`).
+- Compilar sketch: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
+- Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
+- Sync PC↔ESP32: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.
 
 ## Proceso de trabajo
 
 1. ~~Medir el reóstato y documentar resultado~~ **COMPLETADA (2/8/2026)** — ver sección de medición.
-2. ~~Portar física + lógica del juego (sin hardware): validar en PC~~ **COMPLETADA (2/8/2026)**
-   — ver "Port a ESP32" (`esp32Lander/`, `make && ./test_pc` OK).
-3. ~~Integrar video compuesto (bitluni) → CRT (sketch `esp32Composite/` listo para compilar)~~
-   **EN PROGRESO** — falta verificar imagen en el CRT real.
-4. Integrar controles: potenciómetro (ángulo) y gatillo (potencia) tras confirmar el circuito.
-5. Integrar sonido por GPIO26.
-6. Puli r/ajustes de jugabilidad en CRT.
+2. ~~Portar moonlander.seb.ly y validar en PC~~ **COMPLETADA (4/8/2026)**
+   — `esp32Lander/`, `make && ./test_pc` OK (21 checks).
+3. ~~Integrar video compuesto (aquaticus) → CRT~~ **COMPLETADA (4/8/2026)** — imagen verificada en CRT.
+4. ~~Integrar controles: pot (ángulo), gatillo (potencia), botón start~~ **COMPLETADA (4/8/2026)**
+   — mapeo por ventana de voltaje del gatillo; autostart 4 s.
+5. Integrar sonido por GPIO26 (**PENDIENTE**).
+6. Pulir/ajustes de jugabilidad en CRT (**EN CURSO**).

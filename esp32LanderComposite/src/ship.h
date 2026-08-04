@@ -5,55 +5,44 @@
 
 class Renderer;
 
+struct ShipShape {
+    float dx[8], dy[8];
+    int count;
+    bool closed;
+    float velX, velY;
+};
+
 class Ship {
 public:
     Ship();
-    Ship(double x, double y, double xv, double yv);
 
-    double getXpos();
-    double getYpos();
-    void setPos(double x, double y);
+    void reset(float x, float y);
+    void update();
+    void setTargetRotation(float deg);
+    void setThrust(float power);
+    void draw(Renderer &r, float viewX, float viewY, float viewScale);
+    void crash();
+    void land();
 
-    double getXvel();
-    double getYvel();
-    void setVel(double xv, double yv);
+    float posX, posY;
+    float velX, velY;
+    float rotation;
+    float targetRotation;
+    float thrustBuild;
+    float fuel;
+    float scale;
+    float altitude;
+    bool active;
+    bool exploding;
+    int counter;
 
-    double getGas();
-    void setGas(double g);
-
-    void rotate(double newAng);
-    void setAng(double angle);
-    double getAng();
-
-    void setAccMode(int mode);
-    int getAccMode();
-
-    void accelerate(double &xv, double &yv);
-    void accelerateChange(int modifier);
-
-    void draw(Renderer &r);
-    int collision(const std::vector<int> &xt, const std::vector<int> &yt);
-    void hitbox();
+    float left, right, bottom, top;
 
 private:
-    double xpos;
-    double ypos;
-    double xVel;
-    double yVel;
-    double ang;
-    int accMode;
-    double gas;
-
-    std::vector<int> foot1XPoints;
-    std::vector<int> foot1YPoints;
-    std::vector<int> foot2XPoints;
-    std::vector<int> foot2YPoints;
-    std::vector<int> leg1XPoints;
-    std::vector<int> leg1YPoints;
-    std::vector<int> leg2XPoints;
-    std::vector<int> leg2YPoints;
-    std::vector<int> bodyXPoints;
-    std::vector<int> bodyYPoints;
+    ShipShape shapes[6];
+    float shapePosX[6], shapePosY[6];
+    void defineShapes();
+    void updateExplosion();
 };
 
 #endif

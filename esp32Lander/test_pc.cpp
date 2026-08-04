@@ -17,96 +17,66 @@ static int checks = 0;
 static int testShip()
 {
     Ship s;
-    CHECK(s.getGas() == 750);
-    s.setPos(100, 100);
-    s.setVel(50, 0);
-    CHECK(s.getXpos() == 100 && s.getYpos() == 100);
-    CHECK(s.getXvel() == 50 && s.getYvel() == 0);
+    s.reset(100, 100);
+    CHECK(s.posX == 100 && s.posY == 100);
+    CHECK(s.fuel == FUEL_MAX);
 
-    s.setGas(10);
-    s.setGas(-5);
-    CHECK(s.getGas() == 0);
-    s.setGas(100);
-    CHECK(s.getGas() == 100);
+    s.setTargetRotation(-45);
+    CHECK(s.targetRotation == -45);
 
-    s.setAng(0.5);
-    s.rotate(0.5);
-    CHECK(s.getAng() == 0);
-    s.rotate(-4.0);
-    CHECK(fabs(s.getAng() + PI) < 1e-9);
-    s.rotate(-2.0);
-    CHECK(fabs(s.getAng() + 2.0) < 1e-9);
+    s.setTargetRotation(-100);
+    CHECK(s.targetRotation == ROTATION_MIN_DEG);
 
-    s.setAng(-1.0);
-    s.setAccMode(8);
-    double xv = 0, yv = 0;
-    double before = s.getGas();
-    s.accelerate(xv, yv);
-    CHECK(s.getGas() < before);
-    CHECK(s.getGas() >= 0);
-    CHECK(yv < 0);
+    s.setTargetRotation(100);
+    CHECK(s.targetRotation == ROTATION_MAX_DEG);
 
-    s.setAccMode(8);
-    s.accelerateChange(1);
-    CHECK(s.getAccMode() == 8);
-    s.accelerateChange(-1);
-    CHECK(s.getAccMode() == 7);
+    s.setThrust(0.5f);
+    CHECK(s.thrustBuild > 0);
 
-    s.setGas(0);
-    s.setAccMode(3);
-    s.accelerateChange(1);
-    CHECK(s.getAccMode() == 0);
-    return 0;
-}
+    s.setThrust(0);
+    for (int i = 0; i < 20; i++) s.update();
+    CHECK(s.fuel > FUEL_MAX - 1.0f);
 
-static int testShipCollision()
-{
-    const double kx = SCREEN_W / WORLD_W;
-    const double ky = SCREEN_H / WORLD_H;
+    s.setThrust(1.0f);
+    float before = s.fuel;
+    s.update();
+    CHECK(s.fuel < before);
 
-    std::vector<int> xt, yt;
-    for (int x = 0; x <= 300; x++) {
-        xt.push_back(x);
-        yt.push_back(100);
-    }
+    s.fuel = 0;
+    s.setThrust(1.0f);
+    s.update();
+    CHECK(s.thrustBuild == 0);
 
-    double sx = 150.0 * kx;
-    double syTerrain = 100.0 * ky;
+    s.crash();
+    CHECK(!s.active);
+    CHECK(s.exploding);
 
-    Ship crash;
-    crash.setPos(sx / kx, syTerrain / ky);
-    crash.setAng(-PI / 2.0);
-    crash.hitbox();
-    CHECK(crash.collision(xt, yt) == 1);
+    Ship s2;
+    s2.reset(50, 50);
+    s2.land();
+    CHECK(!s2.active);
+    CHECK(!s2.exploding);
 
-    Ship land;
-    land.setPos(sx / kx, (syTerrain - 10.39f) / ky);
-    land.setAng(-PI / 2.0);
-    land.hitbox();
-    CHECK(land.collision(xt, yt) == 2);
-
-    Ship safe;
-    safe.setPos(sx / kx, (syTerrain - 30.0) / ky);
-    safe.setAng(-PI / 2.0);
-    safe.hitbox();
-    CHECK(safe.collision(xt, yt) == 0);
     return 0;
 }
 
 static int testTerrain()
 {
     Terrain t;
-    t.generate(1400, 800, 450, 1);
-    std::vector<int> xs = t.getXPoints();
-    std::vector<int> ys = t.getYPoints();
-    CHECK(xs.size() == ys.size());
-    CHECK(xs.size() > 1300 && xs.size() <= 1450);
-    for (size_t i = 1; i < xs.size(); i++) CHECK(xs[i] >= xs[i - 1]);
-    for (size_t i = 0; i < xs.size(); i++) {
-        CHECK(ys[i] >= 0 && ys[i] <= 800);
+    t.init();
+    const std::vector<TerrainLine> &lines = t.getLines();
+    CHECK(lines.size() > 50);
+    CHECK(t.getWidth() > 0);
+
+    int landableCount = 0;
+    for (int i = 0; i < (int)lines.size(); i++) {
+        if (lines[i].landable) landableCount++;
     }
-    int m = t.multiplierCheck(-10);
-    CHECK(m >= 1 && m <= 5);
+    CHECK(landableCount >= 4);
+
+    int result = t.checkLanding(100, 110, 500, 0, 0.05f, 0.01f);
+    CHECK(result == 0);
+
     return 0;
 }
 
@@ -114,41 +84,21 @@ static int testGame()
 {
     Game g;
     g.update();
-    CHECK(g.state == STATE_MENU);
+    CHECK(g.state == STATE_WAITING);
 
     g.input.startPressed = true;
     g.update();
     g.input.startPressed = false;
     CHECK(g.state == STATE_PLAYING);
-    CHECK(g.ship.getGas() == 750);
-    CHECK(g.ship.getXpos() == 100 && g.ship.getYpos() == 100);
+    CHECK(g.ship.fuel == FUEL_MAX);
 
-    int i;
-    for (i = 0; i < 3000 && g.playing; i++) {
-        g.input.angle = -0.3f;
-        g.input.throttle = 0;
-        g.update();
-    }
-    CHECK(!g.playing);
-    CHECK(g.collided == 1 || g.collided == 2);
-    CHECK(g.score == 5);
-    CHECK(g.ship.getGas() == 650);
+    g.input.angle = -PI / 4.0f;
+    g.input.thrust = 0;
+    for (int i = 0; i < 500; i++) g.update();
 
-    for (i = 0; i < 410; i++) g.update();
-    CHECK(g.playing);
-    CHECK(g.state == STATE_PLAYING);
+    CHECK(g.state == STATE_PLAYING || g.state == STATE_LANDED ||
+          g.state == STATE_CRASHED || g.state == STATE_GAMEOVER);
 
-    g.ship.setGas(30);
-    for (i = 0; i < 3000 && g.state == STATE_PLAYING; i++) {
-        g.input.angle = 0.0f;
-        g.input.throttle = 0;
-        g.update();
-    }
-    CHECK(g.state == STATE_GAMEOVER);
-    CHECK(g.ship.getGas() == 0);
-
-    for (i = 0; i < 510; i++) g.update();
-    CHECK(g.state == STATE_MENU);
     return 0;
 }
 
@@ -156,8 +106,6 @@ int main()
 {
     int r;
     r = testShip();
-    if (r) return r;
-    r = testShipCollision();
     if (r) return r;
     r = testTerrain();
     if (r) return r;

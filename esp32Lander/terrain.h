@@ -5,31 +5,32 @@
 
 class Renderer;
 
+struct TerrainLine {
+    float x1, y1, x2, y2;
+    bool landable;
+    int multiplier;
+    float labelX;
+};
+
+struct Star {
+    float x, y;
+};
+
 class Terrain {
 public:
     Terrain();
 
-    float midpoint(float p1, float p2);
-    void generate(int width, int height, float displacement, int iteration);
-    void draw(Renderer &r);
-    void points();
-    std::vector<int> getXPoints();
-    std::vector<int> getYPoints();
-    void multiplierPlace();
-    int multiplierCheck(int xpos);
+    void init();
+    void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter);
+    const std::vector<TerrainLine>& getLines() const { return lines; }
+    float getWidth() const { return tileWidth; }
+    int checkLanding(float left, float right, float bottom, float rotation, float vy, float vx);
 
 private:
-    std::vector<float> x;
-    std::vector<float> y;
-    std::vector<float> xm;
-    std::vector<float> ym;
-    std::vector<float> xp;
-    std::vector<float> yp;
-    std::vector<int> multipliersValues;
-    std::vector<int> multipliersLengths;
-    std::vector<int> multipliersIndexes;
-    std::vector<int> xPoints;
-    std::vector<int> yPoints;
+    std::vector<TerrainLine> lines;
+    std::vector<Star> stars;
+    float tileWidth;
+    void addLine(float x1, float y1, float x2, float y2);
 };
 
 #endif

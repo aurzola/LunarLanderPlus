@@ -71,6 +71,20 @@ void RendererCanvas::line(float x0, float y0, float x1, float y1)
 {
     int x = (int)roundf(x0), y = (int)roundf(y0);
     int xe = (int)roundf(x1), ye = (int)roundf(y1);
+
+    if (x == xe) {
+        int step = y < ye ? 1 : -1;
+        for (int cy = y; cy != ye + step; cy += step)
+            pixel((float)x, (float)cy);
+        return;
+    }
+    if (y == ye) {
+        int step = x < xe ? 1 : -1;
+        for (int cx = x; cx != xe + step; cx += step)
+            pixel((float)cx, (float)y);
+        return;
+    }
+
     int dx = abs(xe - x), sx = x < xe ? 1 : -1;
     int dy = -abs(ye - y), sy = y < ye ? 1 : -1;
     int err = dx + dy;
@@ -81,6 +95,17 @@ void RendererCanvas::line(float x0, float y0, float x1, float y1)
         int e2 = 2 * err;
         if (e2 >= dy) { err += dy; x += sx; }
         if (e2 <= dx) { err += dx; y += sy; }
+    }
+}
+
+void RendererCanvas::rect(float x, float y, float w, float h)
+{
+    int ix = (int)roundf(x), iy = (int)roundf(y);
+    int iw = (int)roundf(w), ih = (int)roundf(h);
+    for (int row = iy; row < iy + ih; row++) {
+        for (int col = ix; col < ix + iw; col++) {
+            pixel((float)col, (float)row);
+        }
     }
 }
 

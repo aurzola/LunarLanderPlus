@@ -14,14 +14,14 @@ int main()
     g.input.startPressed = false;
 
     for (int i = 0; i < 2000; i++) {
-        g.input.angle = -0.25f;
-        g.input.throttle = 0;
+        g.input.angle = -PI / 6.0f;
+        g.input.thrust = (i > 200 && i < 800) ? 0.5f : 0.0f;
         g.update();
         if (i % 25 == 0) g.draw(r);
     }
     g.draw(r);
 
-    printf("state=%d score=%d gas=%.1f collided=%d playing=%d\n",
-           g.state, g.score, g.ship.getGas(), g.collided, (int)g.playing);
+    printf("state=%d score=%d fuel=%.1f\n",
+           g.state, g.score, g.ship.fuel);
     return 0;
 }
