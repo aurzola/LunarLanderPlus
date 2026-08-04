@@ -1,0 +1,31 @@
+# Python
+pyLander/
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Build artifacts
+*.o
+*.exe
+test_pc
+main_pc
+
+# Generated output
+frames/
+
+# macOS
+.DS_Store
+._*
+
+# Arduino/IDE
+.build/
+*.elf
+*.bin
+*.map
+
+# Editor
+*.swp
+*~
+.vscode/
+.idea/
