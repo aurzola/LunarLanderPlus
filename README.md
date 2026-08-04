@@ -23,8 +23,8 @@ Ver `AGENTS.md` para la documentación técnica completa (física, terreno, audi
 
 | Pin ESP32 | Señal | Uso |
 |-----------|-------|-----|
-| **GPIO21** | I2C SDA | Datos del nunchuck (Wii), 100 kHz, con pull-up interno explícito. |
-| **GPIO22** | I2C SCL | Clock del nunchuck (Wii), 100 kHz, con pull-up interno explícito. |
+| **GPIO21** | I2C SDA | Datos del nunchuck (Wii), 50 kHz, con pull-up interno explícito. |
+| **GPIO22** | I2C SCL | Clock del nunchuck (Wii), 50 kHz, con pull-up interno explícito. |
 | **GPIO34** | ADC pot (thrust level) | Potenciómetro 10 kΩ → **nivel de potencia** de motores `0.0–1.0`. Solo entrada (ADC1). |
 | **GPIO13** | Botón START | Botón a GND con `INPUT_PULLUP` (flanco) → inicia / reinicia la partida. **Sin autostart.** |
 | **GPIO25** | Video compuesto | Salida NTSC `320x240` B/N (DAC interno, librería aquaticus) → RCA **amarillo** del TV. |

@@ -101,6 +101,83 @@ void Terrain::init()
     }
 }
 
+void Terrain::generate(int level)
+{
+    lines.clear();
+    stars.clear();
+
+    const float S = 1.35f;
+    const float OY = 130.0f;
+
+    const int NP = 150;
+    std::vector<float> px(NP), py(NP);
+
+    px[0] = 0.0f;
+    py[0] = 390.0f + (float)(rand() % 60);
+
+    int amp = (level < 8) ? (4 + level) : 12;
+    float drift = 0.0f;
+    float phase = (float)(rand() % 628) / 100.0f;
+    float freq = (0.008f + (float)(rand() % 8) * 0.001f) * 4.0f;
+
+    for (int i = 1; i < NP; i++) {
+        px[i] = px[i - 1] + 3.0f + (float)(rand() % 4);
+        drift += (float)(rand() % (2 * amp + 1)) - amp;
+        if (drift > 40) drift = 40;
+        if (drift < -40) drift = -40;
+        py[i] = 420.0f + drift + 18.0f * sinf(px[i] * freq + phase);
+        if (py[i] < 340) py[i] = 340;
+        if (py[i] > 500) py[i] = 500;
+    }
+
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 1; i < NP - 1; i++) {
+            py[i] = (py[i - 1] + py[i] + py[i + 1]) / 3.0f;
+        }
+    }
+
+    static const int landingMul[] = {4, 5, 5, 2};
+    int zoneStart[4];
+    for (int j = 0; j < 4; j++) {
+        zoneStart[j] = (NP - 12) * j / 4 + (rand() % 8);
+        float zy = 0;
+        for (int k = zoneStart[j]; k <= zoneStart[j] + 4; k++) zy += py[k];
+        zy /= 5.0f;
+        for (int k = zoneStart[j]; k <= zoneStart[j] + 4; k++) py[k] = zy;
+    }
+
+    tileWidth = px[NP - 1] * S;
+
+    for (int i = 0; i < NP - 1; i++) {
+        addLine(px[i] * S, py[i] * S + OY, px[i + 1] * S, py[i + 1] * S + OY);
+    }
+    addLine(px[NP - 1] * S, py[NP - 1] * S + OY,
+            px[0] * S + tileWidth, py[0] * S + OY);
+
+    int li = 0;
+    for (int j = 0; j < 4; j++) {
+        while (li < zoneStart[j]) li++;
+        int idx = li;
+        float zoneCenterX = (lines[idx].x1 + lines[idx + 3].x2) / 2.0f;
+        for (int k = idx; k < idx + 4; k++) {
+            lines[k].multiplier = landingMul[j];
+        }
+        lines[idx].labelX = zoneCenterX;
+    }
+
+    float terrainTop = 9999;
+    for (int i = 0; i < (int)lines.size(); i++) {
+        if (lines[i].y1 < terrainTop) terrainTop = lines[i].y1;
+    }
+
+    for (int i = 0; i < MAX_STARS; i++) {
+        Star s;
+        s.x = (float)(rand() % (int)tileWidth);
+        s.y = (float)(rand() % (int)(terrainTop - 30.0f)) + 15.0f;
+        stars.push_back(s);
+    }
+}
+
 void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/)
 {
     for (int i = 0; i < (int)lines.size(); i++) {

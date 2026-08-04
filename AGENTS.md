@@ -53,12 +53,22 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 ### Entrada
 
-`struct Input { bool startPressed; float angle; float thrust; }`.
+`struct Input { bool startPressed; float angle; float thrust; float powerLevel; }`.
 
-- **Nunchuck (joystick X) → ángulo**: centro `128`, dead zone ±10, rampa lineal a
-  `[-PI/2, PI/2]`. Stick izquierdo = giro a la izquierda. I2C: **SDA=GPIO21, SCL=GPIO22**,
-  100 kHz, pull-ups internos explícitos (el core no los activa), dirección `0x52`, dato
-  cifrado con clave `0x17` (`(b^0x17)+0x17`).
+- **Nunchuck (joystick X) → ángulo**: **calibración adaptativa** (no hardcodeada). `calibrateStick()`
+  en `setup()` promedia 40 lecturas → `stickCenterX`. `readStickAngle()` usa dead zone ±10 y
+  desviaciones por lado (`stickLeftDev`/`stickRightDev`, mín 40, observadas con EMA; el máximo
+  observado en boot se conserva) → rampa lineal a `[-PI/2, PI/2]`. Stick izquierdo = giro a la
+  izquierda. I2C: **SDA=GPIO21, SCL=GPIO22**, **50 kHz**, `Wire.setTimeOut(100)`, pull-ups
+  internos explícitos (`gpio_set_pull_mode`; el core no los activa), dirección `0x52`.
+- **Cifrado nunchuck auto-detectado**: `Nunchuck::begin()` lee 20 muestras y compara la suma cruda
+  vs la descifrada con `0x17`; usa la que más se aleja de 128. **Este nunchuck NO cifra**
+  (`ENCRYPTED:0`), así que se lee en crudo. Rango medido: `x(35–229)`, `y(36–215)`,
+  centro `(134,128)`, `ERR 0`. `read()` re-init + `flush()` (3 lecturas) si falla, y cuenta
+  `readErrors()`.
+- **Sketch de calibración `esp32NunchuckCal/`**: video CRT + nunchuck; muestra X/Y, botones C/Z,
+  ERR, ENCRYPTED, min/max del stick y centro; C+Z resetea min/max. Usado para medir los valores
+  reales del nunchuck.
 - **Pot (GPIO34) → nivel de potencia (thrust level)**: dead zone 2–98%, lineal a `0.0–1.0`.
   **Solo fija la potencia**; el motor se enciende/apaga con el botón del nunchuck
   (`Z` por defecto, configurable con `NUNCHUCK_TRIGGER_Z`): `thrust = motorOn ? potLevel : 0`.
@@ -73,6 +83,11 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - Zonas de aterrizaje: índices `{34, 63, 106, 133}` con multiplicadores `{4, 5, 5, 2}`, 4 segmentos c/u.
   `checkLanding()` trata cada grupo de segmentos `landable` contiguos como una plataforma entera.
 - `labelX` se setea solo en el primer segmento de cada zona → el label "Nx" se dibuja una sola vez.
+- **Niveles procedurales (5/8/2026)**: `Terrain::generate(level)` para nivel ≥ 2. Nivel 1 = terreno
+  clásico (`init()`). Generación: random walk con deriva acotada (±40) + colinas sinusoidales
+  (`freq`/`phase` por nivel) + 2 pasadas de suavizado; 150 puntos, ancho ~900. 4 zonas planas de 4
+  segmentos (multiplicadores `{4,5,5,2}`), anchos 19–31 (caja de la nave 6.4). Dificultad: amplitud
+  del random walk `4+level` (tope 12). Semilla `srand(esp_random())` en `setup()` del `.ino`.
 
 ## Sketch ESP32 (`esp32LanderComposite/`)
 
@@ -90,9 +105,11 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 - **Pines:** GPIO21/22 = I2C nunchuck (SDA/SCL), GPIO34 = pot (nivel de thrust),
   GPIO35 = gatillo (legacy, desconectado), GPIO13 = botón start.
   Audio: GPIO26 (LEDC PWM; ver sección Sonido).
-- HUD: `SCORE`/`FUEL`/`ANG` en `(22,22)`/`(22,32)`/`(22,42)`; `ALT`/`VX`/`VY` en
+- HUD: `SCORE`/`FUEL`/`ANG`/`PWR`/`LVL` en `(22,22)`/`(22,32)`/`(22,42)`/`(22,52)`/`(22,62)`;
+  `ALT`/`VX`/`VY` en
   `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
-  `VY` mostrado = `velY*200`; `ANG` = rotación en grados.
+  `VY` mostrado = `velY*200`; `ANG` = rotación en grados; `PWR` = nivel de potencia del pot (%);
+  `LVL` = nivel actual. Al aterrizar muestra `NEXT: LEVEL N` antes de pasar de nivel.
 - Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
   El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
 - Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~415 KB flash (31%), RAM 7%.
@@ -248,3 +265,7 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
    desconectado (código legacy en el `.ino`). **Pendiente de prueba en CRT**.
 8. **Probar el nunchuck en CRT (EN CURSO)** — validar mapeo de dirección y botón Z; ajustar
    dead zone del stick y curva de potencia del pot si hace falta.
+9. ~~Niveles con terreno procedural~~ **COMPLETADA (5/8/2026)**
+   — `Terrain::generate(level)` (random walk + colinas + 4 pads), `Game::level`/`nextLevel()`
+   (al aterrizar avanza de nivel, recarga combustible, mantiene score), HUD `LVL`, semilla
+   `srand(esp_random())`; validado con tests PC (24 checks) + render PPM. **Pendiente de prueba en CRT.**

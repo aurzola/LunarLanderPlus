@@ -21,6 +21,7 @@ public:
     Terrain();
 
     void init();
+    void generate(int level);
     void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter);
     const std::vector<TerrainLine>& getLines() const { return lines; }
     float getWidth() const { return tileWidth; }

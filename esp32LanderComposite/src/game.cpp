@@ -3,18 +3,20 @@
 #include "game.h"
 
 Game::Game()
-    : state(STATE_WAITING), score(0), fuel(FUEL_MAX),
+    : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX),
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1)
 {
     input.startPressed = false;
     input.angle = 0;
     input.thrust = 0;
+    input.powerLevel = 0;
     terrain.init();
 }
 
 void Game::newGame()
 {
+    level = 1;
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
@@ -23,6 +25,7 @@ void Game::newGame()
     setZoom(false);
     resetTimer = 0;
     ship.velX = 0.415f;
+    terrain.init();
 }
 
 void Game::restartLevel()
@@ -37,6 +40,19 @@ void Game::restartLevel()
     } else {
         state = STATE_PLAYING;
     }
+}
+
+void Game::nextLevel()
+{
+    level++;
+    terrain.generate(level);
+    fuel = FUEL_MAX;
+    ship.fuel = FUEL_MAX;
+    state = STATE_PLAYING;
+    ship.reset(110, 150);
+    setZoom(false);
+    resetTimer = 0;
+    ship.velX = 0.415f;
 }
 
 void Game::setZoom(bool zoom)
@@ -171,7 +187,8 @@ void Game::update()
         ship.update();
         resetTimer -= dt;
         if (resetTimer <= 0) {
-            restartLevel();
+            if (state == STATE_LANDED) nextLevel();
+            else restartLevel();
         }
         return;
     }
@@ -207,6 +224,10 @@ void Game::draw(Renderer &r)
         r.text(22, 32, buf);
         snprintf(buf, sizeof buf, "ANG %d", (int)ship.rotation);
         r.text(22, 42, buf);
+        snprintf(buf, sizeof buf, "PWR %d", (int)(input.powerLevel * 100));
+        r.text(22, 52, buf);
+        snprintf(buf, sizeof buf, "LVL %d", level);
+        r.text(22, 62, buf);
 
         int alt = (ship.altitude < 0) ? 0 : (int)ship.altitude;
         snprintf(buf, sizeof buf, "ALT %d", alt);
@@ -224,6 +245,8 @@ void Game::draw(Renderer &r)
                 r.text(72, 90, "HARD LANDING");
                 r.text(60, 102, "HOPELESSLY MAROONED");
             }
+            snprintf(buf, sizeof buf, "NEXT: LEVEL %d", level + 1);
+            r.text(78, 114, buf);
         } else if (state == STATE_CRASHED) {
             r.text(72, 90, "YOU CRASHED");
             r.text(48, 102, "FUEL TANKS DESTROYED");

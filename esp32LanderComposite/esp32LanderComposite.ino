@@ -37,6 +37,7 @@ static bool motorOn = false;
 static int lastButton = HIGH;
 static int lastGameState = -1;
 static unsigned long lastIsrPrint = 0;
+static unsigned long lastNunchuckPrint = 0;
 
 static int lowPass(int prev, int raw, int shift)
 {
@@ -52,14 +53,47 @@ static float readPotLevel()
     return (t - POT_DEAD_MIN) / (POT_DEAD_MAX - POT_DEAD_MIN);
 }
 
+static int stickCenterX = 128;
+static int stickLeftDev = 80;
+static int stickRightDev = 80;
+static int stickObsL = 80;
+static int stickObsR = 80;
+
+static void calibrateStick()
+{
+    long sum = 0;
+    const int n = 40;
+    for (int i = 0; i < n; i++) {
+        nunchuck.read();
+        sum += nunchuck.joystickX();
+        delay(3);
+    }
+    stickCenterX = (int)(sum / n);
+}
+
 static float readStickAngle()
 {
     int jx = nunchuck.joystickX();
-    float dx = (jx - 128) / 127.0f;
-    if (dx > -0.10f && dx < 0.10f) return 0.0f;
-    if (dx < 0.0f) dx = (dx + 0.10f) / 0.90f;
-    else dx = (dx - 0.10f) / 0.90f;
-    return dx * (PI / 2.0f);
+    int dl = stickCenterX - jx;
+    int dr = jx - stickCenterX;
+    if (dl > stickObsL) stickObsL = dl;
+    if (dr > stickObsR) stickObsR = dr;
+
+    if (dl > 0) {
+        if (dl > stickLeftDev) stickLeftDev = dl;
+        else stickLeftDev = (stickLeftDev * 63 + stickObsL) / 64;
+        if (stickLeftDev < 40) stickLeftDev = 40;
+        if (dl < 10) return 0.0f;
+        return -(dl / (float)stickLeftDev) * (PI / 2.0f);
+    }
+    if (dr > 0) {
+        if (dr > stickRightDev) stickRightDev = dr;
+        else stickRightDev = (stickRightDev * 63 + stickObsR) / 64;
+        if (stickRightDev < 40) stickRightDev = 40;
+        if (dr < 10) return 0.0f;
+        return (dr / (float)stickRightDev) * (PI / 2.0f);
+    }
+    return 0.0f;
 }
 
 #if 0
@@ -97,9 +131,11 @@ static void readInputs()
     motorOn = nunchuck.buttonC();
 #endif
     game.input.thrust = motorOn ? potLevel : 0.0f;
+    game.input.powerLevel = potLevel;
 #else
     game.input.angle = 0.0f;
     game.input.thrust = 0.0f;
+    game.input.powerLevel = 0.0f;
 #endif
 
     int b = digitalRead(PIN_START);
@@ -110,6 +146,7 @@ static void readInputs()
 void setup()
 {
     Serial.begin(115200);
+    srand(esp_random());
 
     esp_pm_lock_handle_t pmLock;
     esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "gamePerfLock", &pmLock);
@@ -124,6 +161,8 @@ void setup()
     pinMode(PIN_START, INPUT_PULLUP);
 
     Serial.printf("[nunchuck] %s\n", nunchuck.begin() ? "ok" : "fail");
+    calibrateStick();
+    Serial.printf("[nunchuck] center=%d\n", stickCenterX);
 
     video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP);
     renderer = new RendererESP32(video_get_frame_buffer_address(), XRES, YRES);
@@ -158,6 +197,14 @@ void loop()
     if (millis() - lastIsrPrint > 1000) {
         lastIsrPrint = millis();
         Serial.printf("[audio] isr=%u\n", (unsigned)Audio::debugIsrCount());
+    }
+
+    if (millis() - lastNunchuckPrint > 500) {
+        lastNunchuckPrint = millis();
+        Serial.printf("[nunchuck] x=%d y=%d c=%d z=%d err=%u pot=%d\n",
+                      nunchuck.joystickX(), nunchuck.joystickY(),
+                      nunchuck.buttonC(), nunchuck.buttonZ(),
+                      nunchuck.readErrors(), (int)(potLevel * 100));
     }
 
     video_wait_frame();

@@ -19,6 +19,7 @@ struct Input {
     bool startPressed;
     float angle;
     float thrust;
+    float powerLevel;
 };
 
 class Game {
@@ -27,12 +28,14 @@ public:
 
     void newGame();
     void restartLevel();
+    void nextLevel();
     void update();
     void draw(Renderer &r);
 
     Input input;
     int state;
     int score;
+    int level;
     float fuel;
 
     Ship ship;

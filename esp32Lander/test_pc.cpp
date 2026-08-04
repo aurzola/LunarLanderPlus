@@ -77,6 +77,17 @@ static int testTerrain()
     int result = t.checkLanding(100, 110, 500, 0, 0.05f, 0.01f);
     CHECK(result == 0);
 
+    t.generate(3);
+    const std::vector<TerrainLine> &gl = t.getLines();
+    CHECK(gl.size() > 50);
+    CHECK(t.getWidth() > 0);
+
+    int gLandable = 0;
+    for (int i = 0; i < (int)gl.size(); i++) {
+        if (gl[i].landable) gLandable++;
+    }
+    CHECK(gLandable >= 4);
+
     return 0;
 }
 
