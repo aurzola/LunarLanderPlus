@@ -178,7 +178,7 @@ void Terrain::generate(int level)
     }
 }
 
-void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/)
+void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/, bool drawStars)
 {
     for (int i = 0; i < (int)lines.size(); i++) {
         const TerrainLine &l = lines[i];
@@ -203,11 +203,13 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
         }
     }
 
-    for (int i = 0; i < (int)stars.size(); i++) {
-        float sx = stars[i].x * viewScale + viewX;
-        float sy = stars[i].y * viewScale + viewY;
-        if (sx < -5 || sx > SCREEN_W + 5 || sy < -5 || sy > SCREEN_H + 5) continue;
-        r.rect(sx, sy, 1, 1);
+    if (drawStars) {
+        for (int i = 0; i < (int)stars.size(); i++) {
+            float sx = stars[i].x * viewScale + viewX;
+            float sy = stars[i].y * viewScale + viewY;
+            if (sx < -5 || sx > SCREEN_W + 5 || sy < -5 || sy > SCREEN_H + 5) continue;
+            r.rect(sx, sy, 1, 1);
+        }
     }
 }
 

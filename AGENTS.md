@@ -58,6 +58,10 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
     (`(k + ship.counter/20)&1`) bajo cada plataforma, centrada en el `labelX`, ~3 unidades de mundo
     bajo la superficie (pitch 5 u, 3–12 luces según el ancho) — efecto de luces de aproximación que
     **no tapa el plano de aterrizaje**.
+  - **Etiqueta "Nx"** (`terrain.cpp`): se dibuja centrada en `labelX` a una distancia **fija de
+    pantalla de ~7 px** bajo la superficie (`l.y1*viewScale + viewY + 7`), en vez del offset de
+    mundo +20 que se alejaba 100 px bajo el plano con el zoom ×5. Así queda pegada al pad en
+    ambas vistas.
 
 ### Entrada
 
@@ -132,6 +136,16 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   escala 3, 3 pasadas de dibujo para espesar), con **fade de luminancia**: entrada `INTRO_FADE_IN
   =0.35 s`, salida `INTRO_FADE_OUT=0.9 s` (escribe valores < 255 vía `pixelShade`). HUD oculto
   durante la intro. `Renderer` gana `pixelShade(x,y,brightness)` y `textScaled(...)`.
+- **Pantalla de título (7/8/2026)** (`STATE_WAITING`): título **`LUNAR LANDER++`** en **negrita**
+  (`textScaled` escala 2, 3 pasadas) sin marco (el marco y el disco lunar previos se quitaron por
+  parpadeo/molestia). Bajo el título, aviso parpadeante `PRESS BUTTON TO PLAY`. A la izquierda de
+  los controles, **dibujo en líneas del módulo lunar Apollo "Eagle"** (antena con plato, etapa de
+  ascenso con ventanas, etapa de descenso octogonal, 4 patas con plataformas y tobera del motor,
+  24 `r.line` en x18–132, y48–122). Controles en letras pequeñas a la derecha en x=170
+  (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). Una sola línea
+  de crédito abajo a la derecha: `COPYRIGHT ALEX URZOLA 2026/OPENCODE`. El fondo es el de juego
+  (estrellas + nave). **PENDIENTE**: la pantalla dará paso a un **demo** tras unos segundos
+  (NO implementado aún; sigue esperando el botón start).
 - **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido
   (`ship.fuel` se conserva en `nextLevel()`/`restartLevel()`, que antes lo reiniciaban vía
   `Ship::reset()`). El juego **NO termina al quedarse sin combustible en pleno vuelo**: se puede

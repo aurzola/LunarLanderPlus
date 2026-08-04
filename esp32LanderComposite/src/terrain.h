@@ -22,7 +22,7 @@ public:
 
     void init();
     void generate(int level);
-    void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter);
+    void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter, bool drawStars = true);
     const std::vector<TerrainLine>& getLines() const { return lines; }
     float getWidth() const { return tileWidth; }
     int checkLanding(float left, float right, float bottom, float rotation, float vy, float vx);

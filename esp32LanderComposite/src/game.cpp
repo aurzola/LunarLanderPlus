@@ -3,6 +3,16 @@
 #include <cstring>
 #include "game.h"
 
+static const int TITLE_STAR_COUNT = 32;
+static const int titleStars[][2] = {
+    { 293,199 }, { 283,19 }, { 188,90 }, { 169,29 }, { 62,94 }, { 10,20 },
+    { 226,90 }, { 163,155 }, { 115,14 }, { 249,125 }, { 209,131 }, { 308,77 },
+    { 204,40 }, { 259,43 }, { 14,59 }, { 106,79 }, { 83,24 }, { 174,193 },
+    { 55,205 }, { 20,89 }, { 9,170 }, { 218,205 }, { 256,199 }, { 110,188 },
+    { 220,175 }, { 36,133 }, { 107,118 }, { 150,96 }, { 228,3 }, { 66,144 },
+    { 274,106 }, { 82,60 },
+};
+
 Game::Game()
     : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX), introTimer(0),
       viewX(0), viewY(0), viewScale(1.0f),
@@ -227,12 +237,53 @@ void Game::draw(Renderer &r)
     r.clear();
 
     if (state == STATE_WAITING) {
-        terrain.draw(r, viewX, viewY, viewScale, ship.counter);
+        for (int i = 0; i < TITLE_STAR_COUNT; i++) {
+            r.rect((float)titleStars[i][0], (float)titleStars[i][1], 1.0f, 1.0f);
+        }
+        terrain.draw(r, viewX, viewY, viewScale, ship.counter, false);
         ship.draw(r, viewX, viewY, viewScale);
-        r.text(90, 50, "LUNAR LANDER");
-        r.text(72, 80, "PRESS BUTTON TO PLAY");
-        r.text(90, 110, "STICK: ROTATION");
-        r.text(72, 130, "POT+BTN: THRUST");
+
+        r.textScaled(70, 20, "LUNAR LANDER++", 2.0f, 255);
+
+        if ((ship.counter % 50) < 30) r.text(103, 183, "PRESS BUTTON TO PLAY");
+
+        r.circle(85, 76, 4);
+        r.line(85, 78, 85, 89);
+        r.circle(54, 83, 5);
+        r.line(54, 89, 71, 96);
+        r.circle(85, 105, 17);
+        r.line(73, 100, 81, 100);
+        r.line(89, 100, 97, 100);
+        r.line(73, 122, 97, 122);
+        r.line(73, 122, 73, 151);
+        r.line(97, 122, 97, 151);
+        r.line(73, 151, 97, 151);
+        r.line(73, 129, 54, 133);
+        r.line(54, 133, 54, 151);
+        r.line(54, 151, 73, 151);
+        r.line(97, 129, 114, 133);
+        r.line(114, 133, 114, 151);
+        r.line(114, 151, 97, 151);
+        r.line(73, 143, 28, 168);
+        r.line(54, 151, 28, 168);
+        r.circle(28, 169, 5);
+        r.line(97, 143, 142, 168);
+        r.line(114, 151, 142, 168);
+        r.circle(142, 169, 5);
+        r.line(81, 129, 81, 157);
+        r.line(89, 129, 89, 157);
+        r.line(81, 137, 89, 137);
+        r.line(81, 143, 89, 143);
+        r.line(81, 150, 89, 150);
+        r.line(77, 163, 93, 163);
+        r.circle(85, 169, 4);
+
+        r.text(170, 132, "STICK: ROTATION");
+        r.text(170, 144, "Z: ENGINE ON/OFF");
+        r.text(170, 156, "C: POWER STEPS");
+        r.text(170, 168, "POT: POWER LEVEL");
+
+        r.text(40, 232, "COPYRIGHT ALEX URZOLA 2026/OPENCODE");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         ship.draw(r, viewX, viewY, viewScale);
