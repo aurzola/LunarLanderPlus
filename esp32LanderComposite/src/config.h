@@ -35,6 +35,10 @@ const float LAND_MAX_ROTATION = 5.0f;
 const float CRASH_RESET_DELAY = 4.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
+const float LEVEL_INTRO_TIME = 2.4f;
+const float INTRO_FADE_IN = 0.35f;
+const float INTRO_FADE_OUT = 0.9f;
+
 const int MAX_STARS = 60;
 
 #endif

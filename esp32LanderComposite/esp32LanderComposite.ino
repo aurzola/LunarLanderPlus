@@ -39,6 +39,12 @@ static int lastGameState = -1;
 static unsigned long lastIsrPrint = 0;
 static unsigned long lastNunchuckPrint = 0;
 
+static const float POWER_STEPS[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+static int powerStep = -1;
+static int potAtCycle = 0;
+static bool lastC = false;
+static float powerLevel = 0.0f;
+
 static int lowPass(int prev, int raw, int shift)
 {
     return (prev * ((1 << shift) - 1) + raw) >> shift;
@@ -125,13 +131,29 @@ static void readInputs()
     game.input.angle = readStickAngle();
     potLevel = readPotLevel();
 
+    bool cNow = nunchuck.buttonC();
+    if (cNow && !lastC) {
+        powerStep = (powerStep + 1) % 5;
+        potAtCycle = smoothPot;
+    }
+    lastC = cNow;
+
+    if (powerStep >= 0) {
+        if (abs(smoothPot - potAtCycle) > 120) {
+            powerStep = -1;
+        } else {
+            powerLevel = POWER_STEPS[powerStep];
+        }
+    }
+    if (powerStep < 0) powerLevel = potLevel;
+
 #if NUNCHUCK_TRIGGER_Z
     motorOn = nunchuck.buttonZ();
 #else
     motorOn = nunchuck.buttonC();
 #endif
-    game.input.thrust = motorOn ? potLevel : 0.0f;
-    game.input.powerLevel = potLevel;
+    game.input.thrust = motorOn ? powerLevel : 0.0f;
+    game.input.powerLevel = powerLevel;
 #else
     game.input.angle = 0.0f;
     game.input.thrust = 0.0f;
@@ -201,10 +223,10 @@ void loop()
 
     if (millis() - lastNunchuckPrint > 500) {
         lastNunchuckPrint = millis();
-        Serial.printf("[nunchuck] x=%d y=%d c=%d z=%d err=%u pot=%d\n",
+        Serial.printf("[nunchuck] x=%d y=%d c=%d z=%d err=%u pwr=%d step=%d\n",
                       nunchuck.joystickX(), nunchuck.joystickY(),
                       nunchuck.buttonC(), nunchuck.buttonZ(),
-                      nunchuck.readErrors(), (int)(potLevel * 100));
+                      nunchuck.readErrors(), (int)(powerLevel * 100), powerStep);
     }
 
     video_wait_frame();

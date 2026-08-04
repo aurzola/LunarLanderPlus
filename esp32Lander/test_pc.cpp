@@ -113,6 +113,38 @@ static int testGame()
     return 0;
 }
 
+static int testLevels()
+{
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(g.level == 1);
+    CHECK(g.introTimer > 0);
+
+    for (int i = 0; i < (int)(LEVEL_INTRO_TIME / GAME_DT) + 1; i++) g.update();
+    CHECK(g.introTimer == 0);
+
+    g.ship.fuel = 50.0f;
+    g.state = STATE_LANDED;
+    g.update();
+    CHECK(g.level == 2);
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(g.introTimer > 0);
+    CHECK(fabsf(g.ship.fuel - 50.0f) < 1.0f);
+
+    g.state = STATE_LANDED;
+    g.ship.fuel = 0.0f;
+    g.update();
+    CHECK(g.state == STATE_GAMEOVER);
+
+    for (int i = 0; i < (int)(GAMEOVER_RESET_DELAY / GAME_DT) + 1; i++) g.update();
+    CHECK(g.state == STATE_WAITING);
+
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -121,6 +153,8 @@ int main()
     r = testTerrain();
     if (r) return r;
     r = testGame();
+    if (r) return r;
+    r = testLevels();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

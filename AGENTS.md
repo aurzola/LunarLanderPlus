@@ -50,6 +50,14 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
 - Minimapa 96×54 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
+- **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
+  - **Minimapa**: una **flechita sólida** de 5×3 px (triángulo relleno 1-3-5) bajo cada zona,
+    centrada en su `labelX` y ~5 px bajo la superficie del pad (recortada al borde del minimapa),
+    que **parpadea on/off** con `(ship.counter/25)&1`.
+  - **Vista principal** (vista normal y zoom): hilera de **cuadritos 2×2 que parpadean alternando**
+    (`(k + ship.counter/20)&1`) bajo cada plataforma, centrada en el `labelX`, ~3 unidades de mundo
+    bajo la superficie (pitch 5 u, 3–12 luces según el ancho) — efecto de luces de aproximación que
+    **no tapa el plano de aterrizaje**.
 
 ### Entrada
 
@@ -71,7 +79,11 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   reales del nunchuck.
 - **Pot (GPIO34) → nivel de potencia (thrust level)**: dead zone 2–98%, lineal a `0.0–1.0`.
   **Solo fija la potencia**; el motor se enciende/apaga con el botón del nunchuck
-  (`Z` por defecto, configurable con `NUNCHUCK_TRIGGER_Z`): `thrust = motorOn ? potLevel : 0`.
+  (`Z` por defecto, configurable con `NUNCHUCK_TRIGGER_Z`): `thrust = motorOn ? powerLevel : 0`.
+- **Botón C del nunchuck → pasos de potencia (5/8/2026)**: cicla `powerLevel` por
+  `{0, 25, 50, 75, 100}%` (flanco, `powerStep` 0..4, guarda `potAtCycle`). El **pot sigue
+  funcionando**: si se mueve >120 cuentas ADC desde el valor al pulsar C, retoma el control
+  (`powerStep=-1` → `powerLevel=potLevel`). "Last-used wins".
 - **Gatillo (GPIO35) → LEGACY**: el reóstato quedó **desconectado**; el código del mapeo
   por voltaje se conserva en el `.ino` bajo `#if 0` (decisión: cambiar a pot + botón).
 - Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
@@ -105,11 +117,27 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 - **Pines:** GPIO21/22 = I2C nunchuck (SDA/SCL), GPIO34 = pot (nivel de thrust),
   GPIO35 = gatillo (legacy, desconectado), GPIO13 = botón start.
   Audio: GPIO26 (LEDC PWM; ver sección Sonido).
-- HUD: `SCORE`/`FUEL`/`ANG`/`PWR`/`LVL` en `(22,22)`/`(22,32)`/`(22,42)`/`(22,52)`/`(22,62)`;
+- HUD: `SCORE`/`FUEL`/`ANG`/`PWR` en `(22,22)`/`(22,32)`/`(22,42)`/`(22,52)`;
   `ALT`/`VX`/`VY` en
   `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
-  `VY` mostrado = `velY*200`; `ANG` = rotación en grados; `PWR` = nivel de potencia del pot (%);
-  `LVL` = nivel actual. Al aterrizar muestra `NEXT: LEVEL N` antes de pasar de nivel.
+  `VY` mostrado = `velY*200`; `ANG` = rotación en grados; `PWR` = nivel de potencia actual (%)
+  (pot o paso de C). Aviso parpadeante `LOW FUEL` (o `OUT OF FUEL`) en `(250,52)`, debajo de `VY`,
+  alineado con los indicadores de la derecha.
+  **Aviso `TOO FAST` (7/8/2026)**: parpadeante en `(250,62)` (debajo de `LOW FUEL`) cuando la
+  velocidad de descenso `velY > LAND_HARD_VY` o la velocidad horizontal `|velX| > LAND_HARD_VX`
+  (no se podría aterrizar con seguridad).
+  **No hay etiqueta `LVL`** (el nivel se anuncia con la intro).
+- **Intro de nivel (5/8/2026)**: al iniciar partida o nivel (`introTimer = LEVEL_INTRO_TIME=2.4 s`)
+  se congela la física y se dibuja `LEVEL N` centrado, **grande y en negrita** (`textScaled`,
+  escala 3, 3 pasadas de dibujo para espesar), con **fade de luminancia**: entrada `INTRO_FADE_IN
+  =0.35 s`, salida `INTRO_FADE_OUT=0.9 s` (escribe valores < 255 vía `pixelShade`). HUD oculto
+  durante la intro. `Renderer` gana `pixelShade(x,y,brightness)` y `textScaled(...)`.
+- **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido
+  (`ship.fuel` se conserva en `nextLevel()`/`restartLevel()`, que antes lo reiniciaban vía
+  `Ship::reset()`). El juego **NO termina al quedarse sin combustible en pleno vuelo**: se puede
+  acabar el nivel (aterrizar sin motor). Al aterrizar: si `ship.fuel<=0` (tras el bonus de
+  aterrizaje perfecto) → `endGame()` (`OUT OF FUEL`/`GAME OVER` y vuelta a la intro); si hay
+  combustible → `nextLevel()`. Aterrizaje perfecto sigue dando +50 (con tope `FUEL_MAX`).
 - Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
   El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
 - Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~415 KB flash (31%), RAM 7%.
@@ -121,11 +149,13 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 |---------|-----------------|-------|
 | Nunchuck (joystick X) | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | I2C GPIO21/GPIO22; dead zone ±10 |
 | Potenciómetro A | Nivel de potencia de motores (thrust level 0.0–1.0) | ADC con suavizado, dead zone 2–98% |
-| Nunchuck (botón Z) | Encendido/apagado del motor (thrust = botón ? potLevel : 0) | `NUNCHUCK_TRIGGER_Z`; alternativo C |
+| Nunchuck (botón Z) | Encendido/apagado del motor (thrust = botón ? powerLevel : 0) | `NUNCHUCK_TRIGGER_Z`; alternativo C |
+| Nunchuck (botón C) | Cicla `powerLevel` por `{0,25,50,75,100}%` (flanco) | `powerStep` 0..4; pot retoma si se mueve >120 ADC |
 | Botón (GPIO13) | Inicio / reinicio de partida | Equivale a tecla "P"; **sin autostart** (espera el botón) |
 
-El motor se enciende/apaga con el botón del nunchuck (como el resorte del gatillo: soltado =
-motor apagado). El pot solo fija cuánta potencia se aplica al mantener el botón.
+El motor se enciende/apaga con el botón Z del nunchuck (como el resorte del gatillo: soltado =
+motor apagado). La potencia se fija con el pot (continuo) o el botón C (pasos de 25 %); "last-used
+wins": al mover el pot >120 cuentas ADC, vuelve a mandar el pot.
 
 ## Medición del reóstato (COMPLETADA 2/8/2026)
 
@@ -267,5 +297,11 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
    dead zone del stick y curva de potencia del pot si hace falta.
 9. ~~Niveles con terreno procedural~~ **COMPLETADA (5/8/2026)**
    — `Terrain::generate(level)` (random walk + colinas + 4 pads), `Game::level`/`nextLevel()`
-   (al aterrizar avanza de nivel, recarga combustible, mantiene score), HUD `LVL`, semilla
-   `srand(esp_random())`; validado con tests PC (24 checks) + render PPM. **Pendiente de prueba en CRT.**
+   (al aterrizar avanza de nivel, mantiene score), semilla `srand(esp_random())`; validado con
+   tests PC (24 checks) + render PPM. **Pendiente de prueba en CRT.**
+10. ~~Intro de nivel con fade + combustible persistente~~ **COMPLETADA (5/8/2026)**
+    — quita la etiqueta `LVL`; al iniciar partida/nivel se congela la física y se muestra `LEVEL N`
+    en negrita (escala 3) con fade de luminancia (`textScaled`+`pixelShade`); el combustible **no
+    se recarga** entre niveles y el juego termina al agotarse (`endGame()` → `OUT OF FUEL` →
+    intro) permitiendo acabar el nivel en vuelo sin motor. Tests PC 34 checks. **Pendiente de
+    prueba en CRT.**

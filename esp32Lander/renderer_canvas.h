@@ -9,6 +9,7 @@ public:
     void rect(float x, float y, float w, float h) override;
     void circle(float cx, float cy, float r) override;
     void text(float x, float y, const char *s) override;
+    void textScaled(float x, float y, const char *s, float scale, int brightness) override;
 };
 
 #endif

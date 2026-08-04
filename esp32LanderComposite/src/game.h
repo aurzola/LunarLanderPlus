@@ -37,6 +37,7 @@ public:
     int score;
     int level;
     float fuel;
+    float introTimer;
 
     Ship ship;
     Terrain terrain;
@@ -49,6 +50,7 @@ private:
     void updateView();
     void setZoom(bool zoom);
     void checkCollisions();
+    void endGame();
 };
 
 #endif

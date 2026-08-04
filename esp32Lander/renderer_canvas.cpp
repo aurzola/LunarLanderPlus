@@ -143,3 +143,31 @@ void RendererCanvas::text(float x, float y, const char *s)
         cx += 6;
     }
 }
+
+void RendererCanvas::textScaled(float x, float y, const char *s, float scale, int brightness)
+{
+    int s_ = (int)roundf(scale);
+    if (s_ < 1) s_ = 1;
+    int cx = (int)roundf(x);
+    int cy = (int)roundf(y);
+    for (int pass = 0; pass < 3; pass++) {
+        int ox = (pass == 1) ? 1 : 0;
+        int oy = (pass == 2) ? 1 : 0;
+        int gx = cx + ox, gy = cy + oy;
+        for (const char *p = s; *p; p++) {
+            const unsigned char *g = findGlyph(*p);
+            for (int row = 0; row < 7; row++) {
+                unsigned char b = g[row];
+                for (int col = 0; col < 5; col++) {
+                    if (b & (1 << (4 - col))) {
+                        for (int yy = 0; yy < s_; yy++)
+                            for (int xx = 0; xx < s_; xx++)
+                                pixelShade((float)(gx + col * s_ + xx),
+                                           (float)(gy + row * s_ + yy), brightness);
+                    }
+                }
+            }
+            gx += 6 * s_;
+        }
+    }
+}

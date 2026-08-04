@@ -12,6 +12,7 @@ public:
 
     void clear() override;
     void pixel(float x, float y) override;
+    void pixelShade(float x, float y, int brightness) override;
     void flush() override;
     int width() const override { return w_; }
     int height() const override { return h_; }

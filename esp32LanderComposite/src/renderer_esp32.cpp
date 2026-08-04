@@ -25,6 +25,16 @@ void RendererESP32::pixel(float x, float y)
     fb_[py * w_ + px] = WHITE;
 }
 
+void RendererESP32::pixelShade(float x, float y, int brightness)
+{
+    int px = (int)roundf(x);
+    int py = (int)roundf(y);
+    if (px < 0 || px >= w_ || py < 0 || py >= h_) return;
+    if (brightness < 0) brightness = 0;
+    if (brightness > 255) brightness = 255;
+    fb_[py * w_ + px] = (uint8_t)brightness;
+}
+
 void RendererESP32::flush()
 {
 }
