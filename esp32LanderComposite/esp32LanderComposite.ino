@@ -12,6 +12,7 @@ extern "C" {
 #include "src/game.h"
 #include "src/renderer_esp32.h"
 #include "src/audio.h"
+#include "src/nunchuck.h"
 
 const int XRES = (int)SCREEN_W;
 const int YRES = (int)SCREEN_H;
@@ -20,17 +21,19 @@ const int PIN_POT = 34;
 const int PIN_TRIGGER = 35;
 const int PIN_START = 13;
 
-const float TRIGGER_OFF_VOLT = 1.0f;
-const float TRIGGER_MIN_VOLT = 2.5f;
-const float TRIGGER_MAX_VOLT = 2.9f;
+const float POT_DEAD_MIN = 0.02f;
+const float POT_DEAD_MAX = 0.98f;
 
 #define CONTROLS_WIRED 1
+#define NUNCHUCK_TRIGGER_Z 1
 
 static Game game;
 static RendererESP32 *renderer = NULL;
 
+static Nunchuck nunchuck;
 static int smoothPot = 0;
-static int smoothTrigger = 0;
+static float potLevel = 0.0f;
+static bool motorOn = false;
 static int lastButton = HIGH;
 static int lastGameState = -1;
 static unsigned long lastIsrPrint = 0;
@@ -40,35 +43,63 @@ static int lowPass(int prev, int raw, int shift)
     return (prev * ((1 << shift) - 1) + raw) >> shift;
 }
 
+static float readPotLevel()
+{
+    smoothPot = lowPass(smoothPot, analogRead(PIN_POT), 2);
+    float t = (float)smoothPot / 4095.0f;
+    if (t < POT_DEAD_MIN) t = POT_DEAD_MIN;
+    else if (t > POT_DEAD_MAX) t = POT_DEAD_MAX;
+    return (t - POT_DEAD_MIN) / (POT_DEAD_MAX - POT_DEAD_MIN);
+}
+
+static float readStickAngle()
+{
+    int jx = nunchuck.joystickX();
+    float dx = (jx - 128) / 127.0f;
+    if (dx > -0.10f && dx < 0.10f) return 0.0f;
+    if (dx < 0.0f) dx = (dx + 0.10f) / 0.90f;
+    else dx = (dx - 0.10f) / 0.90f;
+    return dx * (PI / 2.0f);
+}
+
+#if 0
+// Legacy: gatillo reóstato GPIO35 (divisor 120 Ω, 2.5–2.9 V). Sustituido
+// por pot (nivel de potencia) + botón del nunchuck (encendido/apagado motor).
+const float TRIGGER_OFF_VOLT = 1.0f;
+const float TRIGGER_MIN_VOLT = 2.5f;
+const float TRIGGER_MAX_VOLT = 2.9f;
+static int smoothTrigger = 0;
+static float readTriggerThrust()
+{
+    smoothTrigger = lowPass(smoothTrigger, analogRead(PIN_TRIGGER), 1);
+    float v = smoothTrigger * (3.3f / 4095.0f);
+    if (v < 0.7f) return 0.0f;
+    if (v < 2.2f) return 0.1f + 0.2f * (v - 0.7f) / 1.5f;
+    float q = (v - 2.2f) / 0.7f;
+    if (q > 1.0f) q = 1.0f;
+    return 0.2f + q * 0.8f;
+}
+#endif
+
 static void readInputs()
 {
     game.input.startPressed = false;
 
 #if CONTROLS_WIRED
-    smoothPot = lowPass(smoothPot, analogRead(PIN_POT), 2);
-    smoothTrigger = lowPass(smoothTrigger, analogRead(PIN_TRIGGER), 1);
+    nunchuck.read();
 
-    float t = (float)smoothPot / 4095.0f;
-    if (t < 0.02f) t = 0.02f;
-    else if (t > 0.98f) t = 0.98f;
-    float a = (t - 0.02f) / 0.96f;
-    game.input.angle = -PI / 2.0f + PI * a;
+    game.input.angle = readStickAngle();
+    potLevel = readPotLevel();
 
-    float v = smoothTrigger * (3.3f / 4095.0f);
-    float thrust;
-    if (v < 0.7f) {
-        thrust = 0.0f;
-    } else if (v < 2.2f) {
-        thrust = 0.1f + 0.2f * (v - 0.7f) / 1.5f;
-    } else {
-        float q = (v - 2.2f) / 0.7f;
-        if (q > 1.0f) q = 1.0f;
-        thrust = 0.2f + q * 0.8f;
-    }
-    game.input.thrust = thrust;
+#if NUNCHUCK_TRIGGER_Z
+    motorOn = nunchuck.buttonZ();
+#else
+    motorOn = nunchuck.buttonC();
+#endif
+    game.input.thrust = motorOn ? potLevel : 0.0f;
 #else
     game.input.angle = 0.0f;
-    game.input.thrust = 0;
+    game.input.thrust = 0.0f;
 #endif
 
     int b = digitalRead(PIN_START);
@@ -90,8 +121,9 @@ void setup()
     settimeofday(&tv, NULL);
 
     pinMode(PIN_POT, INPUT);
-    pinMode(PIN_TRIGGER, INPUT);
     pinMode(PIN_START, INPUT_PULLUP);
+
+    Serial.printf("[nunchuck] %s\n", nunchuck.begin() ? "ok" : "fail");
 
     video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP);
     renderer = new RendererESP32(video_get_frame_buffer_address(), XRES, YRES);

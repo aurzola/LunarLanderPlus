@@ -194,8 +194,8 @@ void Game::draw(Renderer &r)
         ship.draw(r, viewX, viewY, viewScale);
         r.text(90, 50, "LUNAR LANDER");
         r.text(72, 80, "PRESS BUTTON TO PLAY");
-        r.text(90, 110, "POT: ROTATION");
-        r.text(72, 130, "TRIGGER: THRUST");
+        r.text(90, 110, "STICK: ROTATION");
+        r.text(72, 130, "POT+BTN: THRUST");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         ship.draw(r, viewX, viewY, viewScale);

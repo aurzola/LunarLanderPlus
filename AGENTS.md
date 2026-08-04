@@ -55,11 +55,15 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 `struct Input { bool startPressed; float angle; float thrust; }`.
 
-- **Pot → ángulo**: `t = ADC/4095`, dead zone 2–98%, `angle = -PI/2 + PI*a` → rotación `[-90°, +90°]`.
-  Suavizado media móvil shift 2. (Invertir pot: se quitó el `1.0 -` en el `.ino`.)
-- **Gatillo → thrust (0.0–1.0)**: suavizado shift 1. Mapeo por ventanas de voltaje:
-  - `<0.7V` → 0 (off). `0.7–2.2V` → 0.1–0.3 lineal.
-  - `2.2–2.9V` → 0.2–1.0 lineal (`q=(v-2.2)/0.7`). La ventana física real del gatillo es 2.5–2.9V.
+- **Nunchuck (joystick X) → ángulo**: centro `128`, dead zone ±10, rampa lineal a
+  `[-PI/2, PI/2]`. Stick izquierdo = giro a la izquierda. I2C: **SDA=GPIO21, SCL=GPIO22**,
+  100 kHz, pull-ups internos explícitos (el core no los activa), dirección `0x52`, dato
+  cifrado con clave `0x17` (`(b^0x17)+0x17`).
+- **Pot (GPIO34) → nivel de potencia (thrust level)**: dead zone 2–98%, lineal a `0.0–1.0`.
+  **Solo fija la potencia**; el motor se enciende/apaga con el botón del nunchuck
+  (`Z` por defecto, configurable con `NUNCHUCK_TRIGGER_Z`): `thrust = motorOn ? potLevel : 0`.
+- **Gatillo (GPIO35) → LEGACY**: el reóstato quedó **desconectado**; el código del mapeo
+  por voltaje se conserva en el `.ino` bajo `#if 0` (decisión: cambiar a pot + botón).
 - Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
   partida espera el botón start (antes había autostart a los 4 s; se eliminó por pedido).
 
@@ -76,32 +80,35 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 
 | Archivo | Contenido |
 |---------|-----------|
-| `esp32LanderComposite.ino` | `setup()`/`loop()`: video (aquaticus), `esp_pm_lock` CPU máx, ADC+botón, audio, loop fijo con `millis()` y `GAME_DT=0.01` |
+| `esp32LanderComposite.ino` | `setup()`/`loop()`: video (aquaticus), `esp_pm_lock` CPU máx, ADC+nunchuck+botón, audio, loop fijo con `millis()` y `GAME_DT=0.01` |
 | `src/video.h/c` | **Librería aquaticus `esp32_composite_video_lib`** (GPL): `video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)`, DAC en **GPIO25**, `video_wait_frame()` |
 | `src/renderer_esp32.h/cpp` | `RendererESP32 : RendererCanvas`: `pixel→fb[py*w+px]=255`, `clear→memset`, `flush` no-op |
 | `src/ship/terrain/game/renderer_canvas/renderer/config` | Mismas fuentes que `esp32Lander/` (copias; mantener en sync con `diff`) |
 | `src/audio.h/cpp` + `src/audio_data.h` | Sonido por LEDC + timer ISR (ver sección Sonido); solo en el sketch ESP32 |
+| `src/nunchuck.h/cpp` | Lectura Wii Nunchuck por I2C (init `0xF0:0x55`/`0xFB:0x00`, descifrado `0x17`); solo en el sketch ESP32 |
 
-- **Pines:** GPIO34 = pot (ángulo), GPIO35 = gatillo (potencia), GPIO13 = botón start.
+- **Pines:** GPIO21/22 = I2C nunchuck (SDA/SCL), GPIO34 = pot (nivel de thrust),
+  GPIO35 = gatillo (legacy, desconectado), GPIO13 = botón start.
   Audio: GPIO26 (LEDC PWM; ver sección Sonido).
 - HUD: `SCORE`/`FUEL`/`ANG` en `(22,22)`/`(22,32)`/`(22,42)`; `ALT`/`VX`/`VY` en
   `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
   `VY` mostrado = `velY*200`; `ANG` = rotación en grados.
 - Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
   El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
-- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~391 KB flash (29%), RAM 7%.
+- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~415 KB flash (31%), RAM 7%.
 - Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
 
 ## Controles físicos decididos
 
 | Control | Mapeo del juego | Notas |
 |---------|-----------------|-------|
-| Potenciómetro A | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | ADC con suavizado, dead zone 2–98% |
-| Gatillo (reóstato de pista de autos) | Potencia de motores (thrust 0.0–1.0) | Medido y validado (ver circuito) |
-| Botón (adicional) | Inicio / reinicio de partida | Equivale a tecla "P"; **sin autostart** (espera el botón) |
+| Nunchuck (joystick X) | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | I2C GPIO21/GPIO22; dead zone ±10 |
+| Potenciómetro A | Nivel de potencia de motores (thrust level 0.0–1.0) | ADC con suavizado, dead zone 2–98% |
+| Nunchuck (botón Z) | Encendido/apagado del motor (thrust = botón ? potLevel : 0) | `NUNCHUCK_TRIGGER_Z`; alternativo C |
+| Botón (GPIO13) | Inicio / reinicio de partida | Equivale a tecla "P"; **sin autostart** (espera el botón) |
 
-El gatillo combina potencia + encendido gracias al resorte de retorno (suelto = motor apagado).
-No se necesita botón separado para el motor.
+El motor se enciende/apaga con el botón del nunchuck (como el resorte del gatillo: soltado =
+motor apagado). El pot solo fija cuánta potencia se aplica al mantener el botón.
 
 ## Medición del reóstato (COMPLETADA 2/8/2026)
 
@@ -235,5 +242,9 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 6. ~~Pulir jugabilidad: tolerancia de aterrizaje + plataformas por zona completa~~ **COMPLETADA (4/8/2026)**
    — `LAND_MAX_ROTATION=5.0` y `checkLanding()` sobre la zona landable completa (plataformas
    ~19–31 de ancho); HUD con `ANG`. Verificado el fix del crash con parámetros válidos.
-7. **Cambiar el hardware del thrust (PENDIENTE)** — el gatillo (reóstato 500→30 Ω) se siente
-   "todo o nada"; evaluar reóstato potenciómetro o carga de menor resistencia (47–56 Ω).
+7. ~~Cambiar el hardware del thrust~~ **COMPLETADA (4/8/2026)**
+   — el gatillo (reóstato 500→30 Ω) se sentía "todo o nada"; reemplazado por **nunchuck**
+   (dirección + botón disparador) manteniendo el pot como nivel de potencia. Gatillo GPIO35
+   desconectado (código legacy en el `.ino`). **Pendiente de prueba en CRT**.
+8. **Probar el nunchuck en CRT (EN CURSO)** — validar mapeo de dirección y botón Z; ajustar
+   dead zone del stick y curva de potencia del pot si hace falta.
