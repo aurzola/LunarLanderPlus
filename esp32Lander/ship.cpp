@@ -185,8 +185,7 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
     }
 
     if (thrustBuild > 0 && active) {
-        float flicker = ((counter >> 1) % 3) * 0.2f + 1.0f;
-        float flameLen = thrustBuild * 20.0f * flicker;
+        float flameLen = thrustBuild * 20.0f;
         float fx1 = sx + (-1.5f * cs - 5.0f * sn) * sc;
         float fy1 = sy + (-1.5f * sn + 5.0f * cs) * sc;
         float fx3 = sx + (1.5f * cs - 5.0f * sn) * sc;

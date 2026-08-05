@@ -34,6 +34,7 @@ Game::Game()
     input.thrust = 0;
     input.powerLevel = 0;
     terrain.init();
+    storm.reset(level);
     setZoom(false);
     setupTitleShip();
 }
@@ -51,6 +52,7 @@ void Game::newGame()
     introTimer = LEVEL_INTRO_TIME;
     ship.velX = 0.415f;
     terrain.init();
+    storm.reset(level);
 }
 
 void Game::restartLevel()
@@ -76,6 +78,7 @@ void Game::nextLevel()
     float f = ship.fuel;
     terrain.generate(level);
     spawnWind();
+    storm.reset(level);
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -104,6 +107,7 @@ void Game::startDemo()
     if (level <= 1) terrain.init();
     else terrain.generate(level);
     spawnWind();
+    storm.reset(level);
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -477,6 +481,7 @@ void Game::update()
     updateWind(dt);
     ship.windStrength = (level >= WIND_START_LEVEL) ? windStrength : 0.0f;
     ship.windDir = windDir;
+    if (state != STATE_WAITING) storm.update(dt, terrain);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -582,6 +587,8 @@ void Game::update()
 void Game::draw(Renderer &r)
 {
     r.clear();
+
+    if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
 
     int warnY = 52, fastY = 62;
 
@@ -732,6 +739,7 @@ void Game::draw(Renderer &r)
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         drawWind(r);
         ship.draw(r, viewX, viewY, viewScale);
+        storm.drawBolts(r, viewX, viewY, viewScale);
 
         {
             const std::vector<TerrainLine> &tl = terrain.getLines();

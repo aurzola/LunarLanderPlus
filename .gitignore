@@ -12,6 +12,7 @@ test_pc
 main_pc
 demo_sim
 demo_render
+storm_demo
 
 # Generated output
 frames/

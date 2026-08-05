@@ -5,6 +5,7 @@
 #include "ship.h"
 #include "terrain.h"
 #include "renderer.h"
+#include "storm.h"
 #include "config.h"
 
 enum GameState {
@@ -52,6 +53,7 @@ public:
 
     Ship ship;
     Terrain terrain;
+    Storm storm;
     float windStrength;
     int windDir;
     float landingProximity() const;

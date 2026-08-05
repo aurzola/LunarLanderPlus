@@ -30,6 +30,8 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `renderer_pc.h/cpp` | Renderer de validación en PC: framebuffer + PPM (extiende `RendererCanvas`) |
 | `main_pc.cpp` | Demo en PC (genera snapshots PPM en `frames/`) |
 | `test_pc.cpp` | Tests de validación (asserts) |
+| `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
+| `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
 
 ### Mundo y pantalla
 
@@ -50,7 +52,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
 - **Viento (visual desde 5/8/2026; física desde 9/8/2026)**: se activa a partir de `WIND_START_LEVEL`
-  (ahora **1**, temporal para probar jugabilidad; antes 4).
+  (ahora **4**, siempre presente desde ese nivel; ráfagas y dirección aleatorias).
   Ráfagas: `windStrength = WIND_MIN(0.35) + (1-WIND_MIN)*gust` con `gust = 0.5+0.5*sin(windPhase*0.6)`;
   `windDir` (+1/-1) cambia cada 8–20 s. **Física (9/8/2026)**: el viento ahora **empuja la nave**
   (`Ship::update()`: `velX += windDir·windStrength·WIND_ACCEL` por tick, sin `GAME_DT`, como el resto
@@ -104,9 +106,8 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   HUD: `WIND nn>` (o `<`) en `(250,52)`, en la columna derecha debajo de `VY` (los avisos
   `LOW FUEL`/`TOO FAST` se desplazan según haya WIND; ver sección Sketch ESP32); glifos `<` y `>`
   añadidos a la fuente 5x7.
-  Config temporal para pruebas: `WIND_START_LEVEL=1` (viento desde el primer nivel, para evaluar
-  jugabilidad; antes 4) y `DEMO_LEVEL_FORCE=4` fuerza al demo a jugar el nivel 4 (con viento);
-  con `0` elige `1..DEMO_MAX_LEVEL` (ahora 4).
+  Config: `WIND_START_LEVEL=4` (viento siempre presente desde el nivel 4; ráfagas y dirección
+  aleatorias) y `DEMO_LEVEL_FORCE=0` (el demo elige nivel al azar `1..DEMO_MAX_LEVEL`).
 - Minimapa 96×49 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 - **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
   - **Minimapa**: una **flechita sólida** de 3×2 px (triángulo relleno 1-3) bajo cada zona,
@@ -384,6 +385,8 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 - Validar port en PC: `make && ./test_pc` en `esp32Lander/` (todos los checks pasan).
   Demo visual: `./main_pc` (PPM en `frames/`). Win-rate del autopilot de demo:
   `./demo_sim <seeds>`; render de un demo: `./demo_render <seed>` (PPM en `frames/`).
+  Tormenta: `./storm_demo <seed> <level>` (terreno + nave estática + rayos, sin física,
+  PPM en `frames/`; selftest `bolts>0` + `maxAlive>0`).
 - Compilar sketch: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
 - Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
 - Sync PC↔ESP32: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.
@@ -444,13 +447,30 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     `b=45+205·t²·strength·flick`) y claros solo al llegar al landing spot (cúmulo en cruz de 5 px
     con `nearF>0.7` + salto hacia arriba si `nearF>0.6`); (c) llama del motor
     **desviada** en la dirección del viento en `Ship::draw()` (+ rastro atenuado). HUD `WIND nn>`/
-    `<` en `(250,52)`, debajo de `VY`; glifos `<`/`>` en la fuente 5x7. `DEMO_LEVEL_FORCE=4` fuerza al demo al nivel
-    4 para evaluar el efecto. **Física (9/8/2026)**: `WIND_ACCEL=0.0004` ≈ 80% de la gravedad a
+    `<` en `(250,52)`, debajo de `VY`; glifos `<`/`>` en la fuente 5x7. **Física (9/8/2026)**: `WIND_ACCEL=0.0004` ≈ 80% de la gravedad a
     ráfaga máxima; `Ship::update()` aplica `velX += windDir·windStrength·WIND_ACCEL` por tick (sin
     `GAME_DT`). El **autopilot del demo** se re-trabajó a control desacoplado
     (ángulo↔horizontal, empuje↔vertical, con feedforward contra el viento) para seguir jugable con
-    viento. Validado en PC: `test_pc` (45 checks ALL PASSED), `demo_sim` 200 seeds (54% win, 0
-    timeouts, ~100 s/vuelo; sin viento ~70–76%), `wind_test` (viento 1.0 acelera `velX` 0.350 vs
-    0.259 en caída libre 10 s) y análisis de PPM. **Sync completado** a
-    `esp32LanderComposite/src/`; compila (429 KB, 20%). **Pendiente**: revisar el efecto en CRT y
-    subir la build con la física.
+     viento. Validado en PC: `test_pc` (45 checks ALL PASSED), `demo_sim` 200 seeds (54% win, 0
+     timeouts, ~100 s/vuelo; sin viento ~70–76%), `wind_test` (viento 1.0 acelera `velX` 0.350 vs
+     0.259 en caída libre 10 s) y análisis de PPM. **Sync completado** a
+     `esp32LanderComposite/src/`; compila (429 KB, 20%). **Pendiente**: revisar el efecto en CRT y
+     subir la build con la física.
+12. ~~Restaurar demo y viento a valores de producción~~ **COMPLETADA (11/8/2026)**
+    — `DEMO_LEVEL_FORCE=0` (el demo vuelve a elegir nivel al azar 1..4) y `WIND_START_LEVEL=4`
+    (viento siempre presente desde el nivel 4), en `esp32Lander/` y `esp32LanderComposite/src/`.
+    `test_pc` (45 checks) OK.
+13. **Tormenta eléctrica — integración visual (11/8/2026)**
+    — módulo `Storm` (`storm.h/cpp`, solo visual, sin física) + `storm_demo <seed> <level>` (PC):
+    terreno + nave estática + rayos → PPM en `frames/` (selftest `bolts>0` + `maxAlive>0`).
+    Rayo: polilínea con jitter + glow (`pixelShade`), destello único con `fade` al final de vida
+    (sin parpadeo aleatorio). **Sin nubes, sin flash/lavado de pantalla**: se quitaron el 12/8/2026
+    porque el lavado de fondo (`STORM_FLASH_MAX=48`) y las nubes hacían que "toda la pantalla"
+    apareciera/desapareciera estroboscópicamente en CRT. El rayo ahora es **fino, de brillo moderado
+    (~185) y breve** (`STORM_BOLT_LIFE=0.22`, sin ramas ni brillo de impacto), ocasional
+    (`STORM_BOLT_MIN/MAX=4/8 s`) para no entorpecer la aproximación. `Storm` está **integrado en
+    `Game`** (visual, sin física): `drawSky` (no-op) tras el `clear()` y `drawBolts` tras
+    `ship.draw()`, con `update(dt, terrain)` cada tick (excluye el título). **`STORM_START_LEVEL=1`
+    temporal** (para verla al probar; pendiente restaurar a 5). Validado en PC: `test_pc` 45 checks,
+    `./storm_demo 3 9` (rayo OK), mediana de cielo = 0 (sin wash). **Sync completado** a
+    `esp32LanderComposite/src/`; subido a placa (433 KB, 7%). Confirmar en CRT.
