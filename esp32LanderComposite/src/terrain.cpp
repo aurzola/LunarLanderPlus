@@ -191,6 +191,13 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
 
         r.line(sx1, sy1, sx2, sy2);
 
+        if (i + 1 < (int)lines.size()) {
+            const TerrainLine &n = lines[i + 1];
+            if (l.x2 == n.x1 && l.y2 != n.y1) {
+                r.line(sx2, sy2, n.x1 * viewScale + viewX, n.y1 * viewScale + viewY);
+            }
+        }
+
         if (l.landable && l.multiplier > 1) {
             r.line(sx1, sy1 - 1, sx2, sy2 - 1);
             if (l.labelX >= 0) {

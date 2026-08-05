@@ -99,6 +99,12 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - Zonas de aterrizaje: índices `{34, 63, 106, 133}` con multiplicadores `{4, 5, 5, 2}`, 4 segmentos c/u.
   `checkLanding()` trata cada grupo de segmentos `landable` contiguos como una plataforma entera.
 - `labelX` se setea solo en el primer segmento de cada zona → el label "Nx" se dibuja una sola vez.
+- **Muros verticales de las plataformas (8/8/2026)**: al aplanar la zona (`init()` solo aplanaba
+  los segmentos `idx..idx+3`) el punto `idx+4` conservaba su `y` original → quedaba un salto de
+  altura en el mismo `x` que **no se dibujaba** (muro invisible en la vista y en el minimapa).
+  Fix: `Terrain::draw()` (y el minimapa en `game.cpp`) dibujan un **conector vertical** cuando dos
+  segmentos consecutivos comparten `x2==x1` y difieren en `y`. `generate()` no tenía el bug
+  (aplana el punto de frontera `zoneStart..zoneStart+4`).
 - **Niveles procedurales (5/8/2026)**: `Terrain::generate(level)` para nivel ≥ 2. Nivel 1 = terreno
   clásico (`init()`). Generación: random walk con deriva acotada (±40) + colinas sinusoidales
   (`freq`/`phase` por nivel) + 2 pasadas de suavizado; 150 puntos, ancho ~900. 4 zonas planas de 4

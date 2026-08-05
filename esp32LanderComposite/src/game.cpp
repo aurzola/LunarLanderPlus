@@ -623,6 +623,9 @@ void Game::draw(Renderer &r)
                 float c = (tl[i].x2 - minTX) * ms + ox;
                 float d = (tl[i].y2 - minTY) * ms + oy;
                 r.line(a, b, c, d);
+                if (i + 1 < (int)tl.size() && tl[i].x2 == tl[i + 1].x1 && tl[i].y2 != tl[i + 1].y1) {
+                    r.line(c, d, (tl[i + 1].x1 - minTX) * ms + ox, (tl[i + 1].y1 - minTY) * ms + oy);
+                }
             }
 
             float smx = (ship.posX - minTX) * ms + ox;
