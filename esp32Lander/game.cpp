@@ -371,7 +371,7 @@ void Game::draw(Renderer &r)
         auto centerText = [&r](float y, const char *s) {
             r.text((SCREEN_W - (int)strlen(s) * 6) / 2.0f, y, s);
         };
-        centerText(40, "COPYRIGHT ALEX URZOLA 2026/OPENCODE");
+        centerText(40, "Copyright Alex Urzola 2026/Opencode");
 
         if ((ship.counter % 50) < 30) r.text(103, 183, "PRESS BUTTON TO PLAY");
 
