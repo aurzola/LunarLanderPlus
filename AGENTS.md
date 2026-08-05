@@ -148,17 +148,18 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). Una sola línea
   de crédito abajo a la derecha: `COPYRIGHT ALEX URZOLA 2026/OPENCODE`. El fondo es el de juego
   (estrellas + nave).
-- **Demo / attract mode (8/8/2026)**: tras `DEMO_START_DELAY=6 s` en el título, `Game::startDemo()`
+- **Demo / attract mode (8/8/2026)**: tras `DEMO_START_DELAY=11 s` en el título, `Game::startDemo()`
   lanza un nivel (1..3) jugado por un **autopilot** (`Game::runDemoAI()`): control horizontal PD
   hacia una plataforma (`demoTargetX/Y`), fase de crucero con descenso acotado (`maxVY` por
   altitud, guarda de altitud mínima con subida forzada `alt<60`) y fase de aproximación con frenado
   vertical (`vy≤0.075`) y enderezado cerca del suelo (`alt<12`). **A veces gana, a veces pierde**:
   ~50 % de demos son "torpes" (`demoSkill` 0.00–0.35) y apuntan desviado (offset de hasta ±110 u)
   → aterrizan en la ladera y se estrellan; el resto (skill 0.60–1.00) aterriza casi siempre. Ruido
-  por-frame `(rand−0.5)·(1−skill)` en ángulo/empuje. Win-rate validado en PC (~70 % con
-  `./demo_sim`, 200 seeds, sin timeouts, ~80 s/vuelo). Al aterrizar/estrellarse muestra el resultado
-  (`CRASH_RESET_DELAY`) y vuelve al título; `DEMO` se muestra en el HUD **arriba-centro
-  `(150,22)`** (alineado con la fila de HUD). Cualquier
+  por-frame `(rand−0.5)·(1−skill)` en ángulo/empuje. La **potencia (PWR) se rampea** a velocidad
+  humana (`DEMO_POWER_RATE=0.4/s`, en vez de saltar al valor del autopilot). Win-rate validado en PC
+  (~70 % con `./demo_sim`, 200 seeds, sin timeouts, ~80 s/vuelo). Al aterrizar/estrellarse muestra el
+  resultado (`CRASH_RESET_DELAY`) y vuelve al título; `DEMO` se muestra en el HUD **debajo de
+  `PWR`** en `(22,62)`. Cualquier
   `startPressed` cancela el demo y arranca partida real (`demo=false`). `srand(esp_random())` en
   `setup()`. Validado en PC: `test_pc` (45 checks) + `demo_sim`.
 - **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido

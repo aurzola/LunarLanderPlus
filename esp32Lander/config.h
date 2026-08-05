@@ -35,8 +35,9 @@ const float LAND_MAX_ROTATION = 5.0f;
 const float CRASH_RESET_DELAY = 4.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
-const float DEMO_START_DELAY = 6.0f;
+const float DEMO_START_DELAY = 11.0f;
 const int DEMO_MAX_LEVEL = 3;
+const float DEMO_POWER_RATE = 0.4f;
 
 const float LEVEL_INTRO_TIME = 2.4f;
 const float INTRO_FADE_IN = 0.35f;

@@ -197,7 +197,7 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
                 char buf[8];
                 snprintf(buf, sizeof buf, "%dx", l.multiplier);
                 float mx = l.labelX * viewScale + viewX;
-                float my = (l.y1 + 20.0f) * viewScale + viewY;
+                float my = (l.y1 + 10.0f) * viewScale + viewY;
                 r.text(mx - 6, my, buf);
             }
         }

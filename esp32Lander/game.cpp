@@ -168,7 +168,11 @@ void Game::runDemoAI()
 
     input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
     input.thrust = thrust;
-    input.powerLevel = thrust;
+    float pw = input.powerLevel;
+    float step = DEMO_POWER_RATE * GAME_DT;
+    if (thrust > pw) pw = fminf(thrust, pw + step);
+    else pw = fmaxf(thrust, pw - step);
+    input.powerLevel = pw;
 }
 
 void Game::setZoom(bool zoom)
@@ -537,7 +541,7 @@ void Game::draw(Renderer &r)
             snprintf(buf, sizeof buf, "VY %d", (int)(ship.velY * 200));
             r.text(250, 42, buf);
 
-            if (demo) r.text(150, 24, "DEMO");
+            if (demo) r.text(22, 62, "DEMO");
         }
 
         if (state == STATE_LANDED) {
