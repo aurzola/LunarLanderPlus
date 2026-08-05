@@ -32,6 +32,7 @@ Game::Game()
     input.thrust = 0;
     input.powerLevel = 0;
     terrain.init();
+    setZoom(false);
     setupTitleShip();
 }
 
