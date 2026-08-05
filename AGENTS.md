@@ -178,7 +178,8 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   combustible → `nextLevel()`. Aterrizaje perfecto sigue dando +50 (con tope `FUEL_MAX`).
 - Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
   El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
-- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~415 KB flash (31%), RAM 7%.
+- Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~425 KB flash
+  (20% del app slot), RAM 7%. **Esquema de partición `no_ota`** (ver "Flash"), app slot de 2 MB.
 - Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
 
 ## Controles físicos decididos
@@ -314,6 +315,23 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 - Compilar sketch: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
 - Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
 - Sync PC↔ESP32: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.
+
+## Flash / memoria
+
+- Placa: ESP32 Dev Module, flash **4 MB** (QIO 80 MHz), core 3.3.10.
+- **Esquema de partición `no_ota`** ("No OTA (2MB APP/2MB SPIFFS)", `tools/partitions/no_ota.csv`),
+  usado para aprovechar todo el flash de programa al máximo (no se hace OTA). Layout leído de la
+  flash: `nvs 20K` (`0x9000`), `otadata 8K` (`0xe000`), **`app0 2 MB`** (`0x10000`),
+  `spiffs 1.9 MB` (`0x210000`), `coredump 64K` (`0x3f0000`).
+- Sketch ≈ **425 KB → 20% del app slot (2 MB)**; RAM: 24.8 KB estáticos (**7%**) y quedan 302.9 KB
+  (92.4%) para stack/heap. En cualquier caso no hay presión de memoria.
+- Para volver a flashear manteniendo el esquema `no_ota` (el `arduino-cli upload` simple usa el
+  esquema `default` de 1.25 MB, que también es suficiente), se puede forzar el particionado en la
+  compilación con:
+  `arduino-cli compile --config-file …/arduino-cli.yaml --fqbn esp32:esp32:esp32 --build-property build.partitions=no_ota --build-property upload.maximum_size=2097152 esp32LanderComposite/esp32LanderComposite.ino`
+  y luego flashear el binario resultante (`…ino.merged.bin`/`…ino.bin`) con `esptool.py`. Si se
+  reflashea con el comando simple de `arduino-cli upload`, se revierte al esquema `default`
+  (1.25 MB app), que sigue con abundante margen.
 
 ## Proceso de trabajo
 
