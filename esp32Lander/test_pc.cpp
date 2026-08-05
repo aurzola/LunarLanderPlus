@@ -183,6 +183,20 @@ static int testDemo()
     return 0;
 }
 
+static int testStorm()
+{
+    Terrain t;
+    t.generate(4);
+    Storm s;
+    s.reset(STORM_START_LEVEL);
+    CHECK(s.active());
+    CHECK(s.activeBolts() == 0);
+    CHECK(!s.strikes(0, 0, STORM_HIT_RADIUS));
+
+    s.update(GAME_DT, t);
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -195,6 +209,8 @@ int main()
     r = testLevels();
     if (r) return r;
     r = testDemo();
+    if (r) return r;
+    r = testStorm();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

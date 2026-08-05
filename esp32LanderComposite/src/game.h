@@ -68,6 +68,7 @@ private:
     float demoTargetY;
     float windPhase;
     float windFlipTimer;
+    float stormHitTimer;
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
     void updateView();

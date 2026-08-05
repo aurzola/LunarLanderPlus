@@ -51,6 +51,36 @@ float Storm::terrainYAt(const Terrain &t, float x, float fallback)
     return fallback;
 }
 
+float Storm::segDist(float px, float py, float x1, float y1, float x2, float y2)
+{
+    float dx = x2 - x1, dy = y2 - y1;
+    float len2 = dx * dx + dy * dy;
+    float t = (len2 > 0.0f)
+        ? ((px - x1) * dx + (py - y1) * dy) / len2 : 0.0f;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float qx = x1 + t * dx, qy = y1 + t * dy;
+    float ex = px - qx, ey = py - qy;
+    return sqrtf(ex * ex + ey * ey);
+}
+
+bool Storm::strikes(float sx, float sy, float radius)
+{
+    for (int i = 0; i < (int)bolts_.size(); i++) {
+        Bolt &b = bolts_[i];
+        if (b.hit) continue;
+        const std::vector<StormPoint> &p = b.path;
+        if (p.size() < 2) continue;
+        for (int k = 1; k < (int)p.size(); k++) {
+            if (segDist(sx, sy, p[k - 1].x, p[k - 1].y, p[k].x, p[k].y) <= radius) {
+                b.hit = true;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void Storm::spawnBolt(const Terrain &t)
 {
     float w = t.getWidth();
@@ -64,6 +94,7 @@ void Storm::spawnBolt(const Terrain &t)
     Bolt b;
     b.maxLife = STORM_BOLT_LIFE * (0.7f + randf01() * 0.6f);
     b.life = b.maxLife;
+    b.hit = false;
 
     int n = STORM_BOLT_SEGMENTS;
     b.path.reserve(n + 1);

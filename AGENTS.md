@@ -471,6 +471,15 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     (`STORM_BOLT_MIN/MAX=4/8 s`) para no entorpecer la aproximación. `Storm` está **integrado en
     `Game`** (visual, sin física): `drawSky` (no-op) tras el `clear()` y `drawBolts` tras
     `ship.draw()`, con `update(dt, terrain)` cada tick (excluye el título). **`STORM_START_LEVEL=1`
-    temporal** (para verla al probar; pendiente restaurar a 5). Validado en PC: `test_pc` 45 checks,
+    temporal** (para verla al probar; pendiente restaurar a 5). Validado en PC: `test_pc` 48 checks,
     `./storm_demo 3 9` (rayo OK), mediana de cielo = 0 (sin wash). **Sync completado** a
     `esp32LanderComposite/src/`; subido a placa (433 KB, 7%). Confirmar en CRT.
+    **Física del impacto (11/8/2026)**: `Storm::strikes(sx, sy, STORM_HIT_RADIUS)` detecta si el
+    camino del rayo (distancia punto-segmento) pasa a < `STORM_HIT_RADIUS` (70 u) del centro de la
+    nave (`Bolt::hit` evita dobles golpes del mismo rayo). Al golpe: **−combustible**
+    (`STORM_HIT_FUEL=60`) y **pérdida temporal de control** (`STORM_CONTROL_LOSS=1.5 s`: motor
+    cortado y ángulo con jitter aleatorio ±0.5 rad). Aviso HUD `LIGHTNING` parpadeante.
+    `stormHitTimer` se resetea al iniciar partida/nivel/demo. Se trabaja en la rama **`storm-physics`**.
+    **Llama de exhaust (12/8/2026)**: se reemplazó el contorno de dos líneas por un **cono relleno**
+    (cuerdas con degradado `pixelShade` + núcleo y aristas) en `ship.cpp`, que crece gradualmente con
+    `thrustBuild` (sin `flicker` temporal → sin strobe). `flameLen = thrustBuild*24.0f`.

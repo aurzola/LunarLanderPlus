@@ -70,5 +70,8 @@ const float STORM_BOLT_LIFE = 0.22f;
 const float STORM_BOLT_FADE = 0.35f;
 const int STORM_BOLT_SEGMENTS = 12;
 const float STORM_BOLT_JITTER = 48.0f;
+const float STORM_HIT_RADIUS = 70.0f;
+const float STORM_HIT_FUEL = 60.0f;
+const float STORM_CONTROL_LOSS = 1.5f;
 
 #endif

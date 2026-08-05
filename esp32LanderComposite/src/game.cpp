@@ -27,7 +27,7 @@ Game::Game()
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0)
+      windPhase(0), windFlipTimer(0), stormHitTimer(0)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -35,6 +35,7 @@ Game::Game()
     input.powerLevel = 0;
     terrain.init();
     storm.reset(level);
+    stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
 }
@@ -53,6 +54,7 @@ void Game::newGame()
     ship.velX = 0.415f;
     terrain.init();
     storm.reset(level);
+    stormHitTimer = 0;
 }
 
 void Game::restartLevel()
@@ -79,6 +81,7 @@ void Game::nextLevel()
     terrain.generate(level);
     spawnWind();
     storm.reset(level);
+    stormHitTimer = 0;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -108,6 +111,7 @@ void Game::startDemo()
     else terrain.generate(level);
     spawnWind();
     storm.reset(level);
+    stormHitTimer = 0;
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -525,8 +529,24 @@ void Game::update()
         if (demo) runDemoAI();
 
         float deg = input.angle * 180.0f / PI;
-        ship.setTargetRotation(deg);
-        ship.setThrust(input.thrust);
+        if (stormHitTimer > 0.0f) {
+            stormHitTimer -= dt;
+            if (stormHitTimer < 0.0f) stormHitTimer = 0.0f;
+            deg += ((float)(rand() % 2001) / 1000.0f - 1.0f) * 0.5f * 180.0f / PI;
+            ship.setTargetRotation(deg);
+            ship.setThrust(0.0f);
+        } else {
+            ship.setTargetRotation(deg);
+            ship.setThrust(input.thrust);
+            if (storm.strikes(ship.posX, ship.posY, STORM_HIT_RADIUS)) {
+                float lost = STORM_HIT_FUEL;
+                fuel -= lost;
+                ship.fuel -= lost;
+                if (fuel < 0) fuel = 0;
+                if (ship.fuel < 0) ship.fuel = 0;
+                stormHitTimer = STORM_CONTROL_LOSS;
+            }
+        }
         ship.update();
 
         if (ship.posX > terrain.getWidth() + 10)
@@ -828,6 +848,8 @@ void Game::draw(Renderer &r)
                 (ship.counter % 50) < 30) {
                 r.text(250, fastY, "TOO FAST");
             }
+            if (stormHitTimer > 0 && (ship.counter % 40) < 25)
+                centerText(74, "LIGHTNING");
         }
 
         if (introTimer > 0) {

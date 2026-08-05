@@ -185,7 +185,7 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
     }
 
     if (thrustBuild > 0 && active) {
-        float flameLen = thrustBuild * 20.0f;
+        float flameLen = thrustBuild * 24.0f;
         float fx1 = sx + (-1.5f * cs - 5.0f * sn) * sc;
         float fy1 = sy + (-1.5f * sn + 5.0f * cs) * sc;
         float fx3 = sx + (1.5f * cs - 5.0f * sn) * sc;
@@ -198,6 +198,34 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
         fx1 += bend * 0.3f;
         fx3 += bend * 0.3f;
 
+        float cx = 0.5f * (fx1 + fx3), cy = 0.5f * (fy1 + fy3);
+        float ax = tx - cx, ay = ty - cy;
+        float alen = sqrtf(ax * ax + ay * ay);
+        if (alen < 0.5f) alen = 0.5f;
+        float ux = ax / alen, uy = ay / alen;
+        float px2 = -uy, py2 = ux;
+        float ddx = fx3 - fx1, ddy = fy3 - fy1;
+        float width0 = sqrtf(ddx * ddx + ddy * ddy);
+
+        int rows = 10;
+        for (int i = 1; i <= rows; i++) {
+            float tt = (float)i / (rows + 1);
+            float d = tt * alen;
+            float halfW = 0.5f * width0 * (1.0f - tt);
+            int b = (int)(255.0f * (1.0f - 0.6f * tt));
+            float x0 = cx + ux * d - px2 * halfW;
+            float y0 = cy + uy * d - py2 * halfW;
+            float x1 = cx + ux * d + px2 * halfW;
+            float y1 = cy + uy * d + py2 * halfW;
+            int steps = (int)roundf(fabsf(x1 - x0) + fabsf(y1 - y0));
+            if (steps < 1) steps = 1;
+            for (int s = 0; s <= steps; s++) {
+                float u = (float)s / steps;
+                r.pixelShade(x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, b);
+            }
+        }
+
+        r.line(cx, cy, tx, ty);
         r.line(fx1, fy1, tx, ty);
         r.line(tx, ty, fx3, fy3);
 
