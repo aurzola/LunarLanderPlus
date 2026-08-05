@@ -58,12 +58,16 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   el aterrizaje: mantener rumbo contra el viento cuesta empuje lateral (y por tanto combustible). Los
   tres efectos visuales siguen como estaban:
   - **Trazos de fondo (sutiles)**: campo de `WIND_STREAK_COUNT=18` guiones en el cielo que derivan
-    en la dirección del viento. Cada trazo: **dos guiones delgados de 1 px en fork** (luma 180),
-    separados 1 px, con **longitudes diferentes** por trazo (`f1`/`f2` aleatorios 0.55–0.99, fijos
-    al spawn) + 2 estelas atenuadas (`pixelShade` 90/45) de longitud
-    `(WIND_STREAK_MIN=20..WIND_STREAK_MAX=60)·viewScale` tras la rama larga. **Fix 11/8/2026**: antes
-    era una barra de `thick = 1+2·altFactor` px (hasta 3 px cerca del suelo); el fork elimina el
-    grosor a cualquier altitud y da variedad visual. Los
+    en la dirección del viento. Cada trazo: guión principal delgado de 1 px (luma 180, longitud
+    `(WIND_STREAK_MIN=20..WIND_STREAK_MAX=60)·viewScale·f1` con `f1` aleatorio 0.55–0.99 fijo al
+    spawn) + 2 estelas atenuadas (`pixelShade` 90/45) detrás. **Fix 11/8/2026 — fork solo en la
+    segunda fase**: en la **primera fase** (crucero/alta altitud) se dibuja **una sola línea
+    delgada** (como el original, que se veía bien); en la **segunda fase** (aproximación, cuando
+    `altFactor > WIND_FORK_ALT=0.5`, i.e. `alt<125`) el trazo se convierte en un **fork de dos
+    líneas delgadas de 1 px** separadas 1 px con **longitudes diferentes** (`f1`/`f2`), con la
+    segunda rama desvaneciéndose gradualmente (`180·forkIn`) mientras baja la altitud. Antes era
+    una barra de `thick = 1+2·altFactor` px (hasta 3 px cerca del suelo) que se veía mal al
+    aterrizar; el fork elimina el grosor en la aproximación y conserva la línea única en vuelo. Los
     trazos **viven en una banda de cielo dinámica que sigue la vista** (`skyTop=(0-viewY)/viewScale`,
     `skyBot=(SCREEN_H·0.55-viewY)/viewScale`, recortada por el terreno `terrainYAt-4` por trazo): al
     salir de la banda se **reubican al azar dentro de ella** (con `vy∈[-6,6]`) y hacen wrap
@@ -97,7 +101,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
     `windStrength`/`windDir` que `Game::update()` le propaga cada frame (0 en niveles
     < `WIND_START_LEVEL`).
     Verificado en PC con test determinista: sin viento centrada, viento 1.0 → +3.5 px de sesgo.
-  HUD: `WIND nn>` (o `<`) en `(22,72)`, bajo `DEMO`; glifos `<` y `>` añadidos a la fuente 5x7.
+  HUD: `WIND nn>` (o `<`) en `(250,52)`, en la columna derecha debajo de `VY` (los avisos
+  `LOW FUEL`/`TOO FAST` se desplazan según haya WIND; ver sección Sketch ESP32); glifos `<` y `>`
+  añadidos a la fuente 5x7.
   Config temporal para pruebas: `WIND_START_LEVEL=1` (viento desde el primer nivel, para evaluar
   jugabilidad; antes 4) y `DEMO_LEVEL_FORCE=4` fuerza al demo a jugar el nivel 4 (con viento);
   con `0` elige `1..DEMO_MAX_LEVEL` (ahora 4).
@@ -183,9 +189,12 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   `ALT`/`VX`/`VY` en
   `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
   `VY` mostrado = `velY*200`; `ANG` = rotación en grados; `PWR` = nivel de potencia actual (%)
-  (pot o paso de C). Aviso parpadeante `LOW FUEL` (o `OUT OF FUEL`) en `(250,52)`, debajo de `VY`,
-  alineado con los indicadores de la derecha.
-  **Aviso `TOO FAST` (7/8/2026)**: parpadeante en `(250,62)` (debajo de `LOW FUEL`) cuando la
+  (pot o paso de C). **`WIND nn>`/`<` (11/8/2026)** en `(250,52)`, debajo de `VY`, solo si
+  `level >= WIND_START_LEVEL`. Los avisos de la derecha **se desplazan según haya WIND** para no
+  dejar franja en blanco: si WIND está mostrado, `LOW FUEL`/`OUT OF FUEL` van en `(250,62)` y `TOO
+  FAST` en `(250,72)`; si no, quedan en `(250,52)` y `(250,62)`.
+  Aviso parpadeante `LOW FUEL` (o `OUT OF FUEL`) alineado con los indicadores de la derecha.
+  **Aviso `TOO FAST` (7/8/2026)**: parpadeante (debajo de `LOW FUEL`) cuando la
   velocidad de descenso `velY > LAND_HARD_VY` o la velocidad horizontal `|velX| > LAND_HARD_VX`
   (no se podría aterrizar con seguridad).
   **No hay etiqueta `LVL`** (el nivel se anuncia con la intro).
@@ -364,6 +373,11 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
   con `diff` al cambiar física/dibujado.
 - Idioma del código: inglés (coherente con el port). Respuestas al usuario: español.
 - No usar librerías no verificadas antes de consultar. No añadir comentarios al código salvo que se pidan.
+- **El agente NO hace commit ni push salvo que el usuario lo pida explícitamente.** Los cambios
+  quedan en el working tree; solo se commitea cuando el usuario lo ordena en el chat o al ejecutar
+  el comando `/flash` (que hace el commit como parte de su flujo documentado en
+  `.opencode/commands/flash.md`; "hacer flash" ≠ "que el agente commitee por su cuenta").
+  Subir a la placa (upload) sí está permitido para probar en CRT sin commitear.
 
 ## Comandos útiles
 
@@ -430,7 +444,7 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     `b=45+205·t²·strength·flick`) y claros solo al llegar al landing spot (cúmulo en cruz de 5 px
     con `nearF>0.7` + salto hacia arriba si `nearF>0.6`); (c) llama del motor
     **desviada** en la dirección del viento en `Ship::draw()` (+ rastro atenuado). HUD `WIND nn>`/
-    `<` en `(22,72)`; glifos `<`/`>` en la fuente 5x7. `DEMO_LEVEL_FORCE=4` fuerza al demo al nivel
+    `<` en `(250,52)`, debajo de `VY`; glifos `<`/`>` en la fuente 5x7. `DEMO_LEVEL_FORCE=4` fuerza al demo al nivel
     4 para evaluar el efecto. **Física (9/8/2026)**: `WIND_ACCEL=0.0004` ≈ 80% de la gravedad a
     ráfaga máxima; `Ship::update()` aplica `velX += windDir·windStrength·WIND_ACCEL` por tick (sin
     `GAME_DT`). El **autopilot del demo** se re-trabajó a control desacoplado

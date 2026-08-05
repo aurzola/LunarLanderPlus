@@ -351,8 +351,12 @@ void Game::drawWind(Renderer &r)
             float lenA = base * windStreaks[i].f1;
             float lenB = base * windStreaks[i].f2;
             shadedHLine(r, sx, sx + dir * lenA, sy, 180);
-            shadedHLine(r, sx, sx + dir * lenB, sy + 1, 180);
-            float lenW = fmaxf(lenA, lenB);
+            float forkIn = clampf((altFactor - WIND_FORK_ALT) / (1.0f - WIND_FORK_ALT),
+                                  0.0f, 1.0f);
+            if (forkIn > 0.0f) {
+                shadedHLine(r, sx, sx + dir * lenB, sy + 1, (int)(180.0f * forkIn));
+            }
+            float lenW = (forkIn > 0.0f) ? fmaxf(lenA, lenB) : lenA;
             shadedHLine(r, sx - dir * lenW * 0.5f, sx - dir * lenW * 0.5f + dir * lenW * 0.45f, sy, 90);
             shadedHLine(r, sx - dir * lenW * 0.9f, sx - dir * lenW * 0.9f + dir * lenW * 0.3f, sy, 45);
         }
@@ -579,6 +583,8 @@ void Game::draw(Renderer &r)
 {
     r.clear();
 
+    int warnY = 52, fastY = 62;
+
     if (state == STATE_WAITING) {
         for (int i = 0; i < TITLE_STAR_COUNT; i++) {
             r.rect((float)titleStars[i][0], (float)titleStars[i][1], 1.0f, 1.0f);
@@ -773,10 +779,13 @@ void Game::draw(Renderer &r)
             r.text(250, 42, buf);
 
             if (demo) r.text(22, 62, "DEMO");
-            if (level >= WIND_START_LEVEL) {
+            bool windShown = (level >= WIND_START_LEVEL);
+            if (windShown) {
                 snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
                          windDir > 0 ? '>' : '<');
-                r.text(22, 72, buf);
+                r.text(250, 52, buf);
+                warnY = 62;
+                fastY = 72;
             }
         }
 
@@ -802,14 +811,14 @@ void Game::draw(Renderer &r)
 
         if (state == STATE_PLAYING && introTimer <= 0) {
             if (ship.fuel <= 0) {
-                if ((ship.counter % 50) < 30) r.text(250, 52, "OUT OF FUEL");
+                if ((ship.counter % 50) < 30) r.text(250, warnY, "OUT OF FUEL");
             } else if (ship.fuel < 300) {
-                if ((ship.counter % 50) < 30) r.text(250, 52, "LOW FUEL");
+                if ((ship.counter % 50) < 30) r.text(250, warnY, "LOW FUEL");
             }
             if ((ship.velY > LAND_HARD_VY ||
                  ship.velX > LAND_HARD_VX || ship.velX < -LAND_HARD_VX) &&
                 (ship.counter % 50) < 30) {
-                r.text(250, 62, "TOO FAST");
+                r.text(250, fastY, "TOO FAST");
             }
         }
 

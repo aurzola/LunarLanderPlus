@@ -31,3 +31,6 @@ frames/
 *~
 .vscode/
 .idea/
+
+# opencode runtime deps
+.opencode/node_modules/

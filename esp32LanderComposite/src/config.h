@@ -48,6 +48,7 @@ const float WIND_STREAK_MIN = 20.0f;
 const float WIND_STREAK_MAX = 60.0f;
 const float WIND_STREAK_SPEED = 45.0f;
 const float WIND_ALT_MAX = 250.0f;
+const float WIND_FORK_ALT = 0.5f;
 const int WIND_STREAK_MIN_VISIBLE = 3;
 
 const int DUST_COUNT = 24;
