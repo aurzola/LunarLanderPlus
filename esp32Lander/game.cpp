@@ -359,6 +359,11 @@ void Game::draw(Renderer &r)
 
         if ((ship.counter % 50) < 30) r.text(103, 183, "PRESS BUTTON TO PLAY");
 
+        r.rect(78, 95, 15, 20);   // ascent stage (dome interior)
+        r.rect(74, 123, 23, 28);  // descent stage body
+        r.rect(26, 167, 5, 5);    // left footpad
+        r.rect(140, 167, 5, 5);   // right footpad
+
         r.circle(85, 76, 4);
         r.line(85, 78, 85, 89);
         r.circle(54, 83, 5);
@@ -445,7 +450,7 @@ void Game::draw(Renderer &r)
             snprintf(buf, sizeof buf, "VY %d", (int)(ship.velY * 200));
             r.text(250, 42, buf);
 
-            if (demo) r.text(150, 22, "DEMO");
+            if (demo) r.text(150, 24, "DEMO");
         }
 
         if (state == STATE_LANDED) {
