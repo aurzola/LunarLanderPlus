@@ -24,6 +24,7 @@ struct Input {
 
 struct WindStreak {
     float x, y, vy;
+    float f1, f2;
 };
 
 struct DustParticle {

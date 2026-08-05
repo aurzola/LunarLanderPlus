@@ -49,7 +49,8 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   segmento: las plataformas quedan ~19–31 de ancho vs caja de la nave 6.4 (antes el segmento
   plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
-- **Viento (visual desde 5/8/2026; física desde 9/8/2026)**: se activa a partir de `WIND_START_LEVEL=4`.
+- **Viento (visual desde 5/8/2026; física desde 9/8/2026)**: se activa a partir de `WIND_START_LEVEL`
+  (ahora **1**, temporal para probar jugabilidad; antes 4).
   Ráfagas: `windStrength = WIND_MIN(0.35) + (1-WIND_MIN)*gust` con `gust = 0.5+0.5*sin(windPhase*0.6)`;
   `windDir` (+1/-1) cambia cada 8–20 s. **Física (9/8/2026)**: el viento ahora **empuja la nave**
   (`Ship::update()`: `velX += windDir·windStrength·WIND_ACCEL` por tick, sin `GAME_DT`, como el resto
@@ -57,20 +58,26 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   el aterrizaje: mantener rumbo contra el viento cuesta empuje lateral (y por tanto combustible). Los
   tres efectos visuales siguen como estaban:
   - **Trazos de fondo (sutiles)**: campo de `WIND_STREAK_COUNT=18` guiones en el cielo que derivan
-    en la dirección del viento. Cada trazo: guión principal (luma 180) + 2 estelas atenuadas
-    (`pixelShade` 90/45) de longitud `(WIND_STREAK_MIN=20..WIND_STREAK_MAX=60)·viewScale`. Los
+    en la dirección del viento. Cada trazo: **dos guiones delgados de 1 px en fork** (luma 180),
+    separados 1 px, con **longitudes diferentes** por trazo (`f1`/`f2` aleatorios 0.55–0.99, fijos
+    al spawn) + 2 estelas atenuadas (`pixelShade` 90/45) de longitud
+    `(WIND_STREAK_MIN=20..WIND_STREAK_MAX=60)·viewScale` tras la rama larga. **Fix 11/8/2026**: antes
+    era una barra de `thick = 1+2·altFactor` px (hasta 3 px cerca del suelo); el fork elimina el
+    grosor a cualquier altitud y da variedad visual. Los
     trazos **viven en una banda de cielo dinámica que sigue la vista** (`skyTop=(0-viewY)/viewScale`,
     `skyBot=(SCREEN_H·0.55-viewY)/viewScale`, recortada por el terreno `terrainYAt-4` por trazo): al
     salir de la banda se **reubican al azar dentro de ella** (con `vy∈[-6,6]`) y hacen wrap
     horizontal en `[0, tileWidth]`. Así son **siempre visibles en vista normal y en zoom** (antes se
-    reciclaban a ±20/720 u fuera de pantalla y casi nunca se veían). **Cantidad y grosor según
+    reciclaban a ±20/720 u fuera de pantalla y casi nunca se veían). **Cantidad según
     altitud**: solo se dibujan los primeros `N = max(WIND_STREAK_MIN_VISIBLE(3), count·altFactor)`
-    trazos con `altFactor = 1-alt/WIND_ALT_MAX(250)`, y el grosor es `1+2·altFactor` px (1 px a gran
-    altura, hasta 3 px cerca del suelo). En zoom se limita `N≤8` para no saturar.
+    trazos con `altFactor = 1-alt/WIND_ALT_MAX(250)`. En zoom se limita `N≤8` para no saturar.
     **Fix 9/8/2026**: la intro de nivel (`introTimer`) congelaba la física y `ship.altitude`
     quedaba en 0 → `altFactor=1` → líneas de 3 px durante el anuncio `LEVEL N`. Ahora la intro
-    recalcula `ship.altitude` (terreno bajo la nave) para que los trazos se vean igual de finos
-    que al arrancar el nivel.
+    recalcula `ship.altitude` (terreno bajo la nave). **Fix 11/8/2026**: además la intro actualiza
+    el **box real de la nave** (`left/right/bottom/top` desde `posX/posY/scale`), porque con la
+    física congelada `ship.bottom` quedaba stale del barco del título → la altitud de la intro podía
+    salir distinta a la del arranque del nivel; con esto los trazos se ven **idénticos** al
+    anunciar `LEVEL N` y al empezar a volar.
   - **Polvo en el suelo**: `DUST_COUNT=24` motas (`DustParticle {x,y,vy,life}`) que derivan con el
     viento (`x += speed*DUST_SPEED(0.7)`) pegadas al terreno (`terrainYAt()`, y entre 3 y 35 u
     sobre la superficie, nunca por debajo), con deriva vertical `vy∈[-2,2]`. **Se generan cerca de
@@ -87,11 +94,13 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   - **Llama del motor desviada**: `Ship::draw()` inclina la llama (triángulo de la tobera) en la
     dirección del viento (`bend = windDir*windStrength*flameLen*sc*0.7`, base inclinada ×0.3) y le
     añade un rastro atenuado `(pixelShade` 90→0)` en la dirección del viento. `Ship` tiene
-    `windStrength`/`windDir` que `Game::update()` le propaga cada frame (0 en niveles < 4).
+    `windStrength`/`windDir` que `Game::update()` le propaga cada frame (0 en niveles
+    < `WIND_START_LEVEL`).
     Verificado en PC con test determinista: sin viento centrada, viento 1.0 → +3.5 px de sesgo.
   HUD: `WIND nn>` (o `<`) en `(22,72)`, bajo `DEMO`; glifos `<` y `>` añadidos a la fuente 5x7.
-  Config temporal para pruebas: `DEMO_LEVEL_FORCE=4` fuerza al demo a jugar el nivel 4 (con
-  viento); con `0` elige `1..DEMO_MAX_LEVEL` (ahora 4).
+  Config temporal para pruebas: `WIND_START_LEVEL=1` (viento desde el primer nivel, para evaluar
+  jugabilidad; antes 4) y `DEMO_LEVEL_FORCE=4` fuerza al demo a jugar el nivel 4 (con viento);
+  con `0` elige `1..DEMO_MAX_LEVEL` (ahora 4).
 - Minimapa 96×49 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 - **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
   - **Minimapa**: una **flechita sólida** de 3×2 px (triángulo relleno 1-3) bajo cada zona,

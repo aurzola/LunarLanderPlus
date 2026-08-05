@@ -210,6 +210,8 @@ void Game::spawnWind()
         s.x = (float)(rand() % (int)(w * 10.0f)) / 10.0f;
         s.y = (float)(rand() % (int)(top - 60.0f)) + 20.0f;
         s.vy = ((float)(rand() % 1201) / 100.0f - 6.0f);
+        s.f1 = 0.55f + (float)(rand() % 45) / 100.0f;
+        s.f2 = 0.55f + (float)(rand() % 45) / 100.0f;
         windStreaks.push_back(s);
     }
 }
@@ -338,20 +340,21 @@ void Game::drawWind(Renderer &r)
         if (visible < WIND_STREAK_MIN_VISIBLE) visible = WIND_STREAK_MIN_VISIBLE;
         if (visible > (int)windStreaks.size()) visible = (int)windStreaks.size();
         if (zoomedIn && visible > 8) visible = 8;
-        int thick = 1 + (int)(2.0f * altFactor);
         float dir = (float)windDir;
         for (int i = 0; i < visible; i++) {
             float sx = windStreaks[i].x * viewScale + viewX;
             float sy = windStreaks[i].y * viewScale + viewY;
             if (sy < -30.0f || sy > SCREEN_H + 30.0f) continue;
 
-            float len = (WIND_STREAK_MIN +
-                         (WIND_STREAK_MAX - WIND_STREAK_MIN) * windStrength) * viewScale;
-            for (int k = 0; k < thick; k++) {
-                shadedHLine(r, sx, sx + dir * len, sy + k - thick / 2, 180);
-            }
-            shadedHLine(r, sx - dir * len * 0.5f, sx - dir * len * 0.5f + dir * len * 0.45f, sy, 90);
-            shadedHLine(r, sx - dir * len * 0.9f, sx - dir * len * 0.9f + dir * len * 0.3f, sy, 45);
+            float base = (WIND_STREAK_MIN +
+                          (WIND_STREAK_MAX - WIND_STREAK_MIN) * windStrength) * viewScale;
+            float lenA = base * windStreaks[i].f1;
+            float lenB = base * windStreaks[i].f2;
+            shadedHLine(r, sx, sx + dir * lenA, sy, 180);
+            shadedHLine(r, sx, sx + dir * lenB, sy + 1, 180);
+            float lenW = fmaxf(lenA, lenB);
+            shadedHLine(r, sx - dir * lenW * 0.5f, sx - dir * lenW * 0.5f + dir * lenW * 0.45f, sy, 90);
+            shadedHLine(r, sx - dir * lenW * 0.9f, sx - dir * lenW * 0.9f + dir * lenW * 0.3f, sy, 45);
         }
     }
 
@@ -491,6 +494,10 @@ void Game::update()
 
     if (state == STATE_PLAYING) {
         if (introTimer > 0) {
+            ship.left = ship.posX - 10.0f * ship.scale;
+            ship.right = ship.posX + 10.0f * ship.scale;
+            ship.bottom = ship.posY + 14.0f * ship.scale;
+            ship.top = ship.posY - 5.0f * ship.scale;
             float minAlt = 9999;
             for (int i = 0; i < (int)terrain.getLines().size(); i++) {
                 const TerrainLine &l = terrain.getLines()[i];

@@ -40,7 +40,7 @@ const int DEMO_MAX_LEVEL = 4;
 const int DEMO_LEVEL_FORCE = 4;
 const float DEMO_POWER_RATE = 0.4f;
 
-const int WIND_START_LEVEL = 4;
+const int WIND_START_LEVEL = 1;
 const float WIND_MIN = 0.35f;
 const float WIND_ACCEL = 0.0004f;
 const int WIND_STREAK_COUNT = 18;
