@@ -151,8 +151,9 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   trazado con lambdas `SX(x)=x*1.2+26`, `SY(y)=y*1.2+56` en el área x26–145, y58–173 (spec de bajo
   nivel, trama cruzada + tramas de sombreado con `pixel`). Controles en letras pequeñas a la derecha
   en x=170
-  (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). Una sola línea
-  de crédito abajo a la derecha: `COPYRIGHT ALEX URZOLA 2026/OPENCODE`. El fondo es el de juego
+  (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). La línea de crédito
+  `COPYRIGHT ALEX URZOLA 2026/OPENCODE` se dibuja **centrada debajo del título** (`y=40`, con
+  `centerText`). El fondo es el de juego
   (estrellas + nave entrando **por la derecha** con deriva lenta a la izquierda
   (`setupTitleShip()`, `velX=-0.35`, `posX=(SCREEN_W-20)/viewScale`)).
 - **Demo / attract mode (8/8/2026)**: tras `DEMO_START_DELAY=13 s` en el título, `Game::startDemo()`

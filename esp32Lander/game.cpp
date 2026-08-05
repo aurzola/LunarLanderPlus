@@ -368,6 +368,11 @@ void Game::draw(Renderer &r)
 
         r.textScaled(70, 20, "LUNAR LANDER++", 2.0f, 255);
 
+        auto centerText = [&r](float y, const char *s) {
+            r.text((SCREEN_W - (int)strlen(s) * 6) / 2.0f, y, s);
+        };
+        centerText(40, "COPYRIGHT ALEX URZOLA 2026/OPENCODE");
+
         if ((ship.counter % 50) < 30) r.text(103, 183, "PRESS BUTTON TO PLAY");
 
         auto SX = [](float x) { return x * 1.2f + 26.0f; };
@@ -497,8 +502,6 @@ void Game::draw(Renderer &r)
         r.text(170, 144, "Z: ENGINE ON/OFF");
         r.text(170, 156, "C: POWER STEPS");
         r.text(170, 168, "POT: POWER LEVEL");
-
-        r.text(40, 232, "COPYRIGHT ALEX URZOLA 2026/OPENCODE");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         ship.draw(r, viewX, viewY, viewScale);
