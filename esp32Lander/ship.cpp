@@ -8,7 +8,8 @@ Ship::Ship()
     : posX(0), posY(0), velX(0), velY(0),
       rotation(-90), targetRotation(-90),
       thrustBuild(0), fuel(FUEL_MAX), scale(1.0f),
-      altitude(0), active(true), exploding(false), counter(0)
+      altitude(0), active(true), exploding(false), counter(0),
+      windStrength(0), windDir(1)
 {
     defineShapes();
     memset(shapePosX, 0, sizeof(shapePosX));
@@ -88,6 +89,8 @@ void Ship::reset(float x, float y)
     active = true;
     exploding = false;
     counter = 0;
+    windStrength = 0;
+    windDir = 1;
     for (int i = 0; i < 6; i++) {
         shapePosX[i] = 0;
         shapePosY[i] = 0;
@@ -132,6 +135,10 @@ void Ship::update()
         velX += THRUST_ACCEL * thrustBuild * sinf(rad);
         velY -= THRUST_ACCEL * thrustBuild * cosf(rad);
         fuel -= FUEL_PER_THRUST * thrustBuild;
+    }
+
+    if (windStrength > 0.0f) {
+        velX += windDir * windStrength * WIND_ACCEL;
     }
 
     posX += velX;
@@ -182,12 +189,31 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
         float flameLen = thrustBuild * 20.0f * flicker;
         float fx1 = sx + (-1.5f * cs - 5.0f * sn) * sc;
         float fy1 = sy + (-1.5f * sn + 5.0f * cs) * sc;
-        float fx2 = sx + (0 * cs - (5.0f + flameLen) * sn) * sc;
-        float fy2 = sy + (0 * sn + (5.0f + flameLen) * cs) * sc;
         float fx3 = sx + (1.5f * cs - 5.0f * sn) * sc;
         float fy3 = sy + (1.5f * sn + 5.0f * cs) * sc;
-        r.line(fx1, fy1, fx2, fy2);
-        r.line(fx2, fy2, fx3, fy3);
+        float tx = sx + (0 * cs - (5.0f + flameLen) * sn) * sc;
+        float ty = sy + (0 * sn + (5.0f + flameLen) * cs) * sc;
+
+        float bend = (float)windDir * windStrength * flameLen * sc * 0.7f;
+        tx += bend;
+        fx1 += bend * 0.3f;
+        fx3 += bend * 0.3f;
+
+        r.line(fx1, fy1, tx, ty);
+        r.line(tx, ty, fx3, fy3);
+
+        if (windStrength > 0.05f) {
+            int tb = (int)(90.0f * windStrength);
+            float ex = tx + (float)windDir * flameLen * sc * 0.6f * windStrength;
+            float ey = ty + flameLen * sc * 0.15f * windStrength;
+            for (int k = 1; k <= 4; k++) {
+                float x = tx + (ex - tx) * k / 4.0f;
+                float y = ty + (ey - ty) * k / 4.0f;
+                int b = tb - k * 12;
+                if (b < 0) b = 0;
+                r.pixelShade(x, y, b);
+            }
+        }
     }
 }
 

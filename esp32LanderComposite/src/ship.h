@@ -37,6 +37,8 @@ public:
     int counter;
 
     float left, right, bottom, top;
+    float windStrength;
+    int windDir;
 
 private:
     ShipShape shapes[6];

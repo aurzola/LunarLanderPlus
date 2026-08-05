@@ -22,6 +22,14 @@ struct Input {
     float powerLevel;
 };
 
+struct WindStreak {
+    float x, y, vy;
+};
+
+struct DustParticle {
+    float x, y, vy, life;
+};
+
 class Game {
 public:
     Game();
@@ -43,6 +51,9 @@ public:
 
     Ship ship;
     Terrain terrain;
+    float windStrength;
+    int windDir;
+    float landingProximity() const;
 
 private:
     float viewX, viewY, viewScale;
@@ -52,6 +63,10 @@ private:
     float demoSkill;
     float demoTargetX;
     float demoTargetY;
+    float windPhase;
+    float windFlipTimer;
+    std::vector<WindStreak> windStreaks;
+    std::vector<DustParticle> dust;
     void updateView();
     void setZoom(bool zoom);
     void checkCollisions();
@@ -60,6 +75,10 @@ private:
     void endDemoToTitle();
     void setupTitleShip();
     void runDemoAI();
+    void spawnWind();
+    void spawnDust();
+    void updateWind(float dt);
+    void drawWind(Renderer &r);
 };
 
 #endif

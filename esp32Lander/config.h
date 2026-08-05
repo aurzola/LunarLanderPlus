@@ -36,8 +36,25 @@ const float CRASH_RESET_DELAY = 4.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 13.0f;
-const int DEMO_MAX_LEVEL = 3;
+const int DEMO_MAX_LEVEL = 4;
+const int DEMO_LEVEL_FORCE = 4;
 const float DEMO_POWER_RATE = 0.4f;
+
+const int WIND_START_LEVEL = 4;
+const float WIND_MIN = 0.35f;
+const float WIND_ACCEL = 0.0004f;
+const int WIND_STREAK_COUNT = 18;
+const float WIND_STREAK_MIN = 20.0f;
+const float WIND_STREAK_MAX = 60.0f;
+const float WIND_STREAK_SPEED = 45.0f;
+const float WIND_ALT_MAX = 250.0f;
+const int WIND_STREAK_MIN_VISIBLE = 3;
+
+const int DUST_COUNT = 24;
+const float DUST_SPEED = 0.7f;
+const float DUST_LIFE = 5.0f;
+const float DUST_RANGE = 120.0f;
+const float DUST_NEAR_RANGE = 150.0f;
 
 const float LEVEL_INTRO_TIME = 2.4f;
 const float INTRO_FADE_IN = 0.35f;

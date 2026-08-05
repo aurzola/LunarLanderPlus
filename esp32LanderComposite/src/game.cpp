@@ -23,9 +23,11 @@ static float clampf(float v, float lo, float hi)
 Game::Game()
     : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX), introTimer(0),
       demo(false), demoTimer(DEMO_START_DELAY),
+      windStrength(0), windDir(1),
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
-      demoSkill(1.0f), demoTargetX(0), demoTargetY(0)
+      demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
+      windPhase(0), windFlipTimer(0)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -73,6 +75,7 @@ void Game::nextLevel()
     level++;
     float f = ship.fuel;
     terrain.generate(level);
+    spawnWind();
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -93,13 +96,14 @@ void Game::startDemo()
     demo = true;
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
-    level = 1 + rand() % DEMO_MAX_LEVEL;
+    level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
+    spawnWind();
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -147,27 +151,21 @@ void Game::runDemoAI()
 
     float desVX = clampf(errX * 0.003f, -0.10f, 0.10f);
     if (distX < 40.0f) desVX = clampf(errX * 0.002f, -0.04f, 0.04f);
-    float want = clampf((desVX - ship.velX) / THRUST_ACCEL, -1.0f, 1.0f);
-    float angle = asinf(want) * 180.0f / PI;
-    float thrust = fabsf(want) * 0.8f;
+    float windPush = ship.windStrength * WIND_ACCEL;
+    float aX = clampf((desVX - ship.velX) * 0.02f - (float)ship.windDir * windPush,
+                      -0.002f, 0.002f);
 
-    if (distX > 50.0f) {
-        float maxVY = (alt < 100.0f) ? 0.04f : 0.12f;
-        if (ship.velY > maxVY) {
-            angle *= 0.4f;
-            thrust = 1.0f;
-        }
-        if (alt < 60.0f) {
-            angle *= 0.2f;
-            thrust = 1.0f;
-        }
-    } else {
-        if (ship.velY > 0.075f) {
-            angle *= 0.3f;
-            thrust = 1.0f;
-        }
-        if (alt < 12.0f) angle *= 0.4f;
-    }
+    float desVY = (distX > 50.0f) ? ((alt < 100.0f) ? 0.04f : 0.12f) : 0.03f;
+    float aY = clampf((ship.velY - desVY) * 0.03f, 0.0f, 0.00075f);
+
+    if (alt < 12.0f) aX *= 0.6f;
+    if (alt < 2.5f) aX *= 0.05f;
+
+    float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
+    float angle = atan2f(aX, aY) * 180.0f / PI;
+    if (thrust > 1.0f) thrust = 1.0f;
+
+    if (ship.velY < -0.01f) thrust = 0.0f;
 
     float imp = 1.0f - demoSkill;
     float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
@@ -181,6 +179,208 @@ void Game::runDemoAI()
     if (thrust > pw) pw = fminf(thrust, pw + step);
     else pw = fmaxf(thrust, pw - step);
     input.powerLevel = pw;
+}
+
+static float terrainYAt(const std::vector<TerrainLine> &tl, float x, float fallback)
+{
+    for (int i = 0; i < (int)tl.size(); i++) {
+        const TerrainLine &l = tl[i];
+        if (x >= l.x1 && x <= l.x2 && l.x2 != l.x1) {
+            float t = (x - l.x1) / (l.x2 - l.x1);
+            return l.y1 + (l.y2 - l.y1) * t;
+        }
+    }
+    return fallback;
+}
+
+void Game::spawnWind()
+{
+    windStreaks.clear();
+    if (level < WIND_START_LEVEL) return;
+
+    float w = terrain.getWidth();
+    float top = 9999;
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].y1 < top) top = tl[i].y1;
+    }
+
+    for (int i = 0; i < (int)WIND_STREAK_COUNT; i++) {
+        WindStreak s;
+        s.x = (float)(rand() % (int)(w * 10.0f)) / 10.0f;
+        s.y = (float)(rand() % (int)(top - 60.0f)) + 20.0f;
+        s.vy = ((float)(rand() % 1201) / 100.0f - 6.0f);
+        windStreaks.push_back(s);
+    }
+}
+
+void Game::spawnDust()
+{
+    dust.clear();
+    if (level < WIND_START_LEVEL) return;
+
+    float w = terrain.getWidth();
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    for (int i = 0; i < DUST_COUNT; i++) {
+        DustParticle d;
+        d.x = ship.posX + ((float)(rand() % (int)(2.0f * DUST_RANGE * 10.0f)) / 10.0f - DUST_RANGE);
+        while (d.x < 0) d.x += w;
+        while (d.x > w) d.x -= w;
+        d.y = terrainYAt(tl, d.x, 480.0f) - ((float)(rand() % 350) / 10.0f + 3.0f);
+        d.vy = (float)(rand() % 401) / 100.0f - 2.0f;
+        d.life = DUST_LIFE * (0.5f + (float)(rand() % 50) / 100.0f);
+        dust.push_back(d);
+    }
+}
+
+void Game::updateWind(float dt)
+{
+    if (level < WIND_START_LEVEL) {
+        windStreaks.clear();
+        dust.clear();
+        return;
+    }
+    if (windStreaks.empty()) spawnWind();
+    if (dust.empty()) spawnDust();
+
+    windPhase += dt;
+    windFlipTimer -= dt;
+    if (windFlipTimer <= 0) {
+        windFlipTimer = 8.0f + (float)(rand() % 120) / 10.0f;
+        if (rand() % 2) windDir = -windDir;
+    }
+
+    float gust = 0.5f + 0.5f * sinf(windPhase * 0.6f);
+    windStrength = WIND_MIN + (1.0f - WIND_MIN) * gust;
+
+    float top = 9999;
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].y1 < top) top = tl[i].y1;
+    }
+
+    float speed = (float)windDir * windStrength * WIND_STREAK_SPEED * dt;
+    float w = terrain.getWidth() + 40.0f;
+    float skyTop = (0.0f - viewY) / viewScale;
+    float skyBot = (SCREEN_H * 0.55f - viewY) / viewScale;
+    if (skyTop < 0.0f) skyTop = 0.0f;
+    if (skyBot <= skyTop) skyBot = skyTop + 1.0f;
+    for (int i = 0; i < (int)windStreaks.size(); i++) {
+        WindStreak &s = windStreaks[i];
+        s.x += speed;
+        s.y += s.vy * dt;
+        if (s.x > w) s.x -= w;
+        else if (s.x < 0) s.x += w;
+        float sBot = skyBot;
+        float gy = terrainYAt(tl, s.x, 480.0f);
+        if (gy - 4.0f < sBot) sBot = gy - 4.0f;
+        if (sBot <= skyTop) sBot = skyTop + 1.0f;
+        if (s.y < skyTop || s.y > sBot) {
+            s.y = skyTop + ((float)(rand() % 1000) / 1000.0f) * (sBot - skyTop);
+            s.vy = (float)(rand() % 1201) / 100.0f - 6.0f;
+        }
+    }
+
+    float dustSpeed = speed * DUST_SPEED;
+    float gw = terrain.getWidth();
+    float nearF = landingProximity();
+    for (int i = 0; i < (int)dust.size(); i++) {
+        DustParticle &d = dust[i];
+        d.life -= dt;
+        d.x += dustSpeed + d.vy * dt * 0.2f;
+        d.y += d.vy * dt;
+        if (d.x > gw) d.x -= gw;
+        else if (d.x < 0) d.x += gw;
+        float gy = terrainYAt(tl, d.x, 480.0f);
+        if (d.y > gy - 2.0f) d.y = gy - 2.0f;
+        if (d.life <= 0) {
+            d.x = ship.posX + ((float)(rand() % (int)(2.0f * DUST_RANGE * 10.0f)) / 10.0f - DUST_RANGE);
+            while (d.x < 0) d.x += gw;
+            while (d.x > gw) d.x -= gw;
+            d.y = terrainYAt(tl, d.x, 480.0f) - ((float)(rand() % 350) / 10.0f + 3.0f);
+            d.vy = (float)(rand() % 401) / 100.0f - 2.0f;
+            if (nearF > 0.6f) d.vy -= nearF * 2.5f;
+            d.life = DUST_LIFE * (0.5f + (float)(rand() % 50) / 100.0f);
+        }
+    }
+}
+
+static void shadedHLine(Renderer &r, float x0, float x1, float y, int brightness)
+{
+    int a = (int)roundf(x0), b = (int)roundf(x1);
+    if (a > b) { int t = a; a = b; b = t; }
+    for (int x = a; x <= b; x++) r.pixelShade((float)x, y, brightness);
+}
+
+float Game::landingProximity() const
+{
+    float w = terrain.getWidth();
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    float best = 1e9f;
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].labelX < 0) continue;
+        float d = fabsf(ship.posX - tl[i].x1);
+        if (d > w * 0.5f) d = w - d;
+        if (d < best) best = d;
+    }
+    if (best >= 1e9f) return 0.0f;
+    return 1.0f - fminf(best / DUST_NEAR_RANGE, 1.0f);
+}
+
+void Game::drawWind(Renderer &r)
+{
+    if (level < WIND_START_LEVEL) return;
+
+    float altFactor = 1.0f - fminf(ship.altitude / WIND_ALT_MAX, 1.0f);
+
+    if (!windStreaks.empty()) {
+        int visible = (int)(windStreaks.size() * altFactor);
+        if (visible < WIND_STREAK_MIN_VISIBLE) visible = WIND_STREAK_MIN_VISIBLE;
+        if (visible > (int)windStreaks.size()) visible = (int)windStreaks.size();
+        if (zoomedIn && visible > 8) visible = 8;
+        int thick = 1 + (int)(2.0f * altFactor);
+        float dir = (float)windDir;
+        for (int i = 0; i < visible; i++) {
+            float sx = windStreaks[i].x * viewScale + viewX;
+            float sy = windStreaks[i].y * viewScale + viewY;
+            if (sy < -30.0f || sy > SCREEN_H + 30.0f) continue;
+
+            float len = (WIND_STREAK_MIN +
+                         (WIND_STREAK_MAX - WIND_STREAK_MIN) * windStrength) * viewScale;
+            for (int k = 0; k < thick; k++) {
+                shadedHLine(r, sx, sx + dir * len, sy + k - thick / 2, 180);
+            }
+            shadedHLine(r, sx - dir * len * 0.5f, sx - dir * len * 0.5f + dir * len * 0.45f, sy, 90);
+            shadedHLine(r, sx - dir * len * 0.9f, sx - dir * len * 0.9f + dir * len * 0.3f, sy, 45);
+        }
+    }
+
+    float nearF = landingProximity();
+
+    for (int i = 0; i < (int)dust.size(); i++) {
+        float sx = dust[i].x * viewScale + viewX;
+        float sy = dust[i].y * viewScale + viewY;
+        if (sy < -20.0f || sy > SCREEN_H + 20.0f) continue;
+        if (sx < -20.0f || sx > SCREEN_W + 20.0f) continue;
+
+        if (nearF < 0.15f) {
+            if ((i & 1) == 0) continue;
+            r.pixelShade(sx, sy, 45);
+        } else {
+            float flick = 0.8f + 0.2f * sinf(windPhase * 2.0f + i * 1.7f);
+            float t = (nearF - 0.15f) / 0.85f;
+            int b = (int)(45.0f + 205.0f * t * t * windStrength * flick);
+            if (b > 250) b = 250;
+            r.pixelShade(sx, sy, b);
+            if (nearF > 0.7f && b > 120) {
+                int hb = b / 2;
+                r.pixelShade(sx - 1.0f, sy, hb);
+                r.pixelShade(sx + 1.0f, sy, hb);
+                r.pixelShade(sx, sy - 1.0f, hb);
+                r.pixelShade(sx, sy + 1.0f, hb);
+            }
+        }
+    }
 }
 
 void Game::setZoom(bool zoom)
@@ -267,6 +467,9 @@ void Game::checkCollisions()
 void Game::update()
 {
     float dt = GAME_DT;
+    updateWind(dt);
+    ship.windStrength = (level >= WIND_START_LEVEL) ? windStrength : 0.0f;
+    ship.windDir = windDir;
 
     if (input.startPressed && demo) {
         demo = false;
@@ -288,6 +491,16 @@ void Game::update()
 
     if (state == STATE_PLAYING) {
         if (introTimer > 0) {
+            float minAlt = 9999;
+            for (int i = 0; i < (int)terrain.getLines().size(); i++) {
+                const TerrainLine &l = terrain.getLines()[i];
+                if (ship.posX >= l.x1 && ship.posX <= l.x2) {
+                    float alt = l.y1 - ship.bottom;
+                    if (alt < minAlt) minAlt = alt;
+                }
+            }
+            if (minAlt >= 9999) minAlt = 300.0f;
+            ship.altitude = minAlt;
             introTimer -= dt;
             if (introTimer < 0) introTimer = 0;
             return;
@@ -504,6 +717,7 @@ void Game::draw(Renderer &r)
         r.text(170, 168, "POT: POWER LEVEL");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
+        drawWind(r);
         ship.draw(r, viewX, viewY, viewScale);
 
         {
@@ -552,6 +766,11 @@ void Game::draw(Renderer &r)
             r.text(250, 42, buf);
 
             if (demo) r.text(22, 62, "DEMO");
+            if (level >= WIND_START_LEVEL) {
+                snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
+                         windDir > 0 ? '>' : '<');
+                r.text(22, 72, buf);
+            }
         }
 
         auto centerText = [&r](float y, const char *s) {
