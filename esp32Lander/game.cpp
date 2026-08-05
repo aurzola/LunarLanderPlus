@@ -551,20 +551,24 @@ void Game::draw(Renderer &r)
             if (demo) r.text(22, 62, "DEMO");
         }
 
+        auto centerText = [&r](float y, const char *s) {
+            r.text((SCREEN_W - (int)strlen(s) * 6) / 2.0f, y, s);
+        };
+
         if (state == STATE_LANDED) {
             if (ship.velY < LAND_PERFECT_VY) {
-                r.text(60, 90, "CONGRATULATIONS");
-                r.text(64, 102, "PERFECT LANDING");
+                centerText(90, "CONGRATULATIONS");
+                centerText(102, "PERFECT LANDING");
             } else {
-                r.text(72, 90, "HARD LANDING");
-                r.text(60, 102, "HOPELESSLY MAROONED");
+                centerText(90, "HARD LANDING");
+                centerText(102, "HOPELESSLY MAROONED");
             }
         } else if (state == STATE_CRASHED) {
-            r.text(72, 90, "YOU CRASHED");
-            r.text(48, 102, "FUEL TANKS DESTROYED");
+            centerText(90, "YOU CRASHED");
+            centerText(102, "FUEL TANKS DESTROYED");
         } else if (state == STATE_GAMEOVER) {
-            r.text(72, 90, "OUT OF FUEL");
-            r.text(96, 102, "GAME OVER");
+            centerText(90, "OUT OF FUEL");
+            centerText(102, "GAME OVER");
         }
 
         if (state == STATE_PLAYING && introTimer <= 0) {
