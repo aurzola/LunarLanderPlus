@@ -531,7 +531,7 @@ void Game::draw(Renderer &r)
 
         char buf[40];
         if (introTimer <= 0) {
-            snprintf(buf, sizeof buf, "SCORE %d", score);
+            snprintf(buf, sizeof buf, "L%d SCORE %d", level, score);
             r.text(22, 22, buf);
             snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
             r.text(22, 32, buf);
