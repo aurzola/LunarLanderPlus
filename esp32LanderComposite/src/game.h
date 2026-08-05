@@ -38,6 +38,8 @@ public:
     int level;
     float fuel;
     float introTimer;
+    bool demo;
+    float demoTimer;
 
     Ship ship;
     Terrain terrain;
@@ -47,10 +49,16 @@ private:
     bool zoomedIn;
     float resetTimer;
     int landMultiplier;
+    float demoSkill;
+    float demoTargetX;
+    float demoTargetY;
     void updateView();
     void setZoom(bool zoom);
     void checkCollisions();
     void endGame();
+    void startDemo();
+    void endDemoToTitle();
+    void runDemoAI();
 };
 
 #endif

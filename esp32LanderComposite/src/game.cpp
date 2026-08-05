@@ -13,10 +13,19 @@ static const int titleStars[][2] = {
     { 274,106 }, { 82,60 },
 };
 
+static float clampf(float v, float lo, float hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
 Game::Game()
     : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX), introTimer(0),
+      demo(false), demoTimer(DEMO_START_DELAY),
       viewX(0), viewY(0), viewScale(1.0f),
-      zoomedIn(false), resetTimer(0), landMultiplier(1)
+      zoomedIn(false), resetTimer(0), landMultiplier(1),
+      demoSkill(1.0f), demoTargetX(0), demoTargetY(0)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -75,6 +84,91 @@ void Game::endGame()
 {
     state = STATE_GAMEOVER;
     resetTimer = GAMEOVER_RESET_DELAY;
+}
+
+void Game::startDemo()
+{
+    demo = true;
+    if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
+    else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
+    level = 1 + rand() % DEMO_MAX_LEVEL;
+    score = 0;
+    fuel = FUEL_MAX;
+    ship.fuel = FUEL_MAX;
+    state = STATE_PLAYING;
+    if (level <= 1) terrain.init();
+    else terrain.generate(level);
+    ship.reset(110, 150);
+    ship.velX = 0.06f;
+    setZoom(false);
+    resetTimer = 0;
+    introTimer = LEVEL_INTRO_TIME;
+
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    std::vector<float> cx, cy;
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].labelX >= 0) {
+            cx.push_back(tl[i].labelX);
+            cy.push_back(tl[i].y1);
+        }
+    }
+    int pick = (int)cx.size() ? rand() % (int)cx.size() : 0;
+    demoTargetX = cx[pick];
+    demoTargetY = cy[pick];
+    if (demoSkill < 0.35f) {
+        float off = ((float)(rand() % 200) / 100.0f - 1.0f) * (0.35f - demoSkill) * 110.0f;
+        demoTargetX += off;
+    }
+}
+
+void Game::endDemoToTitle()
+{
+    state = STATE_WAITING;
+    demoTimer = DEMO_START_DELAY;
+    terrain.init();
+    ship.reset(110, 150);
+    ship.velX = 2;
+    setZoom(false);
+}
+
+void Game::runDemoAI()
+{
+    float errX = demoTargetX - ship.posX;
+    float distX = fabsf(errX);
+    float alt = ship.altitude;
+
+    float desVX = clampf(errX * 0.003f, -0.10f, 0.10f);
+    if (distX < 40.0f) desVX = clampf(errX * 0.002f, -0.04f, 0.04f);
+    float want = clampf((desVX - ship.velX) / THRUST_ACCEL, -1.0f, 1.0f);
+    float angle = asinf(want) * 180.0f / PI;
+    float thrust = fabsf(want) * 0.8f;
+
+    if (distX > 50.0f) {
+        float maxVY = (alt < 100.0f) ? 0.04f : 0.12f;
+        if (ship.velY > maxVY) {
+            angle *= 0.4f;
+            thrust = 1.0f;
+        }
+        if (alt < 60.0f) {
+            angle *= 0.2f;
+            thrust = 1.0f;
+        }
+    } else {
+        if (ship.velY > 0.075f) {
+            angle *= 0.3f;
+            thrust = 1.0f;
+        }
+        if (alt < 12.0f) angle *= 0.4f;
+    }
+
+    float imp = 1.0f - demoSkill;
+    float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
+    angle += n * imp * 40.0f;
+    thrust = clampf(thrust + n * imp * 0.25f, 0.0f, 1.0f);
+
+    input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+    input.thrust = thrust;
+    input.powerLevel = thrust;
 }
 
 void Game::setZoom(bool zoom)
@@ -162,11 +256,20 @@ void Game::update()
 {
     float dt = GAME_DT;
 
+    if (input.startPressed && demo) {
+        demo = false;
+        newGame();
+        return;
+    }
+
     if (state == STATE_WAITING) {
         ship.update();
         ship.altitude = terrain.getLines()[0].y1 - ship.bottom;
         if (input.startPressed) {
             newGame();
+        } else {
+            demoTimer -= dt;
+            if (demoTimer <= 0) startDemo();
         }
         return;
     }
@@ -177,6 +280,8 @@ void Game::update()
             if (introTimer < 0) introTimer = 0;
             return;
         }
+
+        if (demo) runDemoAI();
 
         float deg = input.angle * 180.0f / PI;
         ship.setTargetRotation(deg);
@@ -212,7 +317,9 @@ void Game::update()
         ship.update();
         resetTimer -= dt;
         if (resetTimer <= 0) {
-            if (ship.fuel <= 0) {
+            if (demo) {
+                endDemoToTitle();
+            } else if (ship.fuel <= 0) {
                 endGame();
             } else if (state == STATE_LANDED) {
                 nextLevel();
@@ -228,6 +335,11 @@ void Game::update()
         resetTimer -= dt;
         if (resetTimer <= 0) {
             state = STATE_WAITING;
+            demo = false;
+            demoTimer = DEMO_START_DELAY;
+            ship.reset(110, 150);
+            ship.velX = 2;
+            setZoom(false);
         }
     }
 }
@@ -332,6 +444,8 @@ void Game::draw(Renderer &r)
             r.text(250, 32, buf);
             snprintf(buf, sizeof buf, "VY %d", (int)(ship.velY * 200));
             r.text(250, 42, buf);
+
+            if (demo) r.text(250, 72, "DEMO");
         }
 
         if (state == STATE_LANDED) {

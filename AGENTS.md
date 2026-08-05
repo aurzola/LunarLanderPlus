@@ -144,8 +144,19 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   24 `r.line` en x18–132, y48–122). Controles en letras pequeñas a la derecha en x=170
   (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). Una sola línea
   de crédito abajo a la derecha: `COPYRIGHT ALEX URZOLA 2026/OPENCODE`. El fondo es el de juego
-  (estrellas + nave). **PENDIENTE**: la pantalla dará paso a un **demo** tras unos segundos
-  (NO implementado aún; sigue esperando el botón start).
+  (estrellas + nave).
+- **Demo / attract mode (8/8/2026)**: tras `DEMO_START_DELAY=6 s` en el título, `Game::startDemo()`
+  lanza un nivel (1..3) jugado por un **autopilot** (`Game::runDemoAI()`): control horizontal PD
+  hacia una plataforma (`demoTargetX/Y`), fase de crucero con descenso acotado (`maxVY` por
+  altitud, guarda de altitud mínima con subida forzada `alt<60`) y fase de aproximación con frenado
+  vertical (`vy≤0.075`) y enderezado cerca del suelo (`alt<12`). **A veces gana, a veces pierde**:
+  ~50 % de demos son "torpes" (`demoSkill` 0.00–0.35) y apuntan desviado (offset de hasta ±110 u)
+  → aterrizan en la ladera y se estrellan; el resto (skill 0.60–1.00) aterriza casi siempre. Ruido
+  por-frame `(rand−0.5)·(1−skill)` en ángulo/empuje. Win-rate validado en PC (~70 % con
+  `./demo_sim`, 200 seeds, sin timeouts, ~80 s/vuelo). Al aterrizar/estrellarse muestra el resultado
+  (`CRASH_RESET_DELAY`) y vuelve al título; `DEMO` se muestra en el HUD `(250,72)`. Cualquier
+  `startPressed` cancela el demo y arranca partida real (`demo=false`). `srand(esp_random())` en
+  `setup()`. Validado en PC: `test_pc` (45 checks) + `demo_sim`.
 - **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido
   (`ship.fuel` se conserva en `nextLevel()`/`restartLevel()`, que antes lo reiniciaban vía
   `Ship::reset()`). El juego **NO termina al quedarse sin combustible en pleno vuelo**: se puede
@@ -285,7 +296,8 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 ## Comandos útiles
 
 - Validar port en PC: `make && ./test_pc` en `esp32Lander/` (todos los checks pasan).
-  Demo visual: `./main_pc` (PPM en `frames/`).
+  Demo visual: `./main_pc` (PPM en `frames/`). Win-rate del autopilot de demo:
+  `./demo_sim <seeds>`; render de un demo: `./demo_render <seed>` (PPM en `frames/`).
 - Compilar sketch: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
 - Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
 - Sync PC↔ESP32: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.

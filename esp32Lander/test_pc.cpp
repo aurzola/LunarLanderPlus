@@ -145,6 +145,44 @@ static int testLevels()
     return 0;
 }
 
+static int testDemo()
+{
+    srand(1234);
+    Game g;
+    CHECK(g.state == STATE_WAITING);
+    CHECK(!g.demo);
+    CHECK(g.demoTimer > 0);
+
+    for (int i = 0; i < (int)(DEMO_START_DELAY / GAME_DT) + 1; i++) g.update();
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(g.demo);
+    CHECK(g.level >= 1 && g.level <= DEMO_MAX_LEVEL);
+
+    bool finished = false;
+    bool outcomeSeen = false;
+    for (int i = 0; i < 200000; i++) {
+        g.update();
+        if (g.state == STATE_LANDED || g.state == STATE_CRASHED) outcomeSeen = true;
+        if (g.state == STATE_WAITING) {
+            finished = true;
+            break;
+        }
+    }
+    CHECK(finished);
+    CHECK(outcomeSeen);
+
+    Game g2;
+    srand(7);
+    for (int i = 0; i < (int)(DEMO_START_DELAY / GAME_DT) + 1; i++) g2.update();
+    CHECK(g2.state == STATE_PLAYING && g2.demo);
+    g2.input.startPressed = true;
+    g2.update();
+    CHECK(!g2.demo);
+    CHECK(g2.state == STATE_PLAYING);
+
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -155,6 +193,8 @@ int main()
     r = testGame();
     if (r) return r;
     r = testLevels();
+    if (r) return r;
+    r = testDemo();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;
