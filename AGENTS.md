@@ -139,9 +139,12 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 - **Pantalla de título (7/8/2026)** (`STATE_WAITING`): título **`LUNAR LANDER++`** en **negrita**
   (`textScaled` escala 2, 3 pasadas) sin marco (el marco y el disco lunar previos se quitaron por
   parpadeo/molestia). Bajo el título, aviso parpadeante `PRESS BUTTON TO PLAY`. A la izquierda de
-  los controles, **dibujo en líneas del módulo lunar Apollo "Eagle"** (antena con plato, etapa de
-  ascenso con ventanas, etapa de descenso octogonal, 4 patas con plataformas y tobera del motor,
-  24 `r.line` en x18–132, y48–122). Controles en letras pequeñas a la derecha en x=170
+  los controles, **dibujo en líneas del módulo lunar Apollo "Eagle"** (base octogonal con escalera
+  central, etapa de ascenso con panel central/ventana, cajas laterales, plato de rastreo con cardán,
+  antena omnidireccional con esfera, antena helicoidal, propulsores RCS y sombras bajo las patas),
+  trazado con lambdas `SX(x)=x*1.2+26`, `SY(y)=y*1.2+56` en el área x26–145, y58–173 (spec de bajo
+  nivel, trama cruzada + tramas de sombreado con `pixel`). Controles en letras pequeñas a la derecha
+  en x=170
   (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). Una sola línea
   de crédito abajo a la derecha: `COPYRIGHT ALEX URZOLA 2026/OPENCODE`. El fondo es el de juego
   (estrellas + nave).

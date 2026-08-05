@@ -359,41 +359,128 @@ void Game::draw(Renderer &r)
 
         if ((ship.counter % 50) < 30) r.text(103, 183, "PRESS BUTTON TO PLAY");
 
-        r.rect(78, 95, 15, 20);   // ascent stage (dome interior)
-        r.rect(74, 123, 23, 28);  // descent stage body
-        r.rect(26, 167, 5, 5);    // left footpad
-        r.rect(140, 167, 5, 5);   // right footpad
+        auto SX = [](float x) { return x * 1.2f + 26.0f; };
+        auto SY = [](float y) { return y * 1.2f + 56.0f; };
 
-        r.circle(85, 76, 4);
-        r.line(85, 78, 85, 89);
-        r.circle(54, 83, 5);
-        r.line(54, 89, 71, 96);
-        r.circle(85, 105, 17);
-        r.line(73, 100, 81, 100);
-        r.line(89, 100, 97, 100);
-        r.line(73, 122, 97, 122);
-        r.line(73, 122, 73, 151);
-        r.line(97, 122, 97, 151);
-        r.line(73, 151, 97, 151);
-        r.line(73, 129, 54, 133);
-        r.line(54, 133, 54, 151);
-        r.line(54, 151, 73, 151);
-        r.line(97, 129, 114, 133);
-        r.line(114, 133, 114, 151);
-        r.line(114, 151, 97, 151);
-        r.line(73, 143, 28, 168);
-        r.line(54, 151, 28, 168);
-        r.circle(28, 169, 5);
-        r.line(97, 143, 142, 168);
-        r.line(114, 151, 142, 168);
-        r.circle(142, 169, 5);
-        r.line(81, 129, 81, 157);
-        r.line(89, 129, 89, 157);
-        r.line(81, 137, 89, 137);
-        r.line(81, 143, 89, 143);
-        r.line(81, 150, 89, 150);
-        r.line(77, 163, 93, 163);
-        r.circle(85, 169, 4);
+        // Descent stage: octagonal base and landing legs.
+        r.line(SX(40), SY(55), SX(60), SY(55));
+        r.line(SX(40), SY(55), SX(30), SY(80));
+        r.line(SX(60), SY(55), SX(70), SY(80));
+        r.line(SX(30), SY(80), SX(70), SY(80));
+
+        r.line(SX(50), SY(80), SX(50), SY(95));
+        r.circle(SX(50), SY(95), 2.4f);
+        r.line(SX(30), SY(80), SX(15), SY(90));
+        r.line(SX(15), SY(90), SX(5), SY(95));
+        r.circle(SX(5), SY(95), 1.8f);
+        r.line(SX(70), SY(80), SX(85), SY(90));
+        r.line(SX(85), SY(90), SX(95), SY(95));
+        r.circle(SX(95), SY(95), 1.8f);
+
+        r.rect(SX(48), SY(55), 4.8f, 30.0f);
+        r.line(SX(48), SY(57), SX(52), SY(57));
+        r.line(SX(48), SY(61), SX(52), SY(61));
+        r.line(SX(48), SY(65), SX(52), SY(65));
+        r.line(SX(48), SY(69), SX(52), SY(69));
+        r.line(SX(48), SY(73), SX(52), SY(73));
+        r.line(SX(48), SY(77), SX(52), SY(77));
+
+        for (int y = 56; y < 79; y += 2) {
+            for (float x = 40 + (y - 56) * 0.5f; x < 60 - (y - 56) * 0.5f; x += 3) {
+                r.pixel(SX(x), SY((float)y));
+            }
+        }
+        for (int y = 56; y < 79; y += 1) {
+            r.pixel(SX(38 - (y - 56) * 0.3f), SY((float)y));
+            r.pixel(SX(37 - (y - 56) * 0.3f), SY((float)y));
+            r.pixel(SX(62 + (y - 56) * 0.3f), SY((float)y));
+            r.pixel(SX(63 + (y - 56) * 0.3f), SY((float)y));
+        }
+
+        // Ascent stage: body, central panel and side boxes.
+        r.line(SX(35), SY(55), SX(35), SY(30));
+        r.line(SX(65), SY(55), SX(65), SY(30));
+        r.line(SX(35), SY(30), SX(45), SY(15));
+        r.line(SX(65), SY(30), SX(55), SY(15));
+        r.line(SX(45), SY(15), SX(55), SY(15));
+
+        r.line(SX(43), SY(30), SX(57), SY(30));
+        r.line(SX(43), SY(30), SX(40), SY(50));
+        r.line(SX(57), SY(30), SX(60), SY(50));
+        r.line(SX(40), SY(50), SX(60), SY(50));
+        r.rect(SX(48), SY(35), 4.8f, 12.0f);
+
+        r.rect(SX(28), SY(38), 8.4f, 9.6f);
+        r.line(SX(28), SY(38), SX(26), SY(40));
+        r.rect(SX(65), SY(38), 8.4f, 9.6f);
+        r.line(SX(72), SY(38), SX(74), SY(40));
+
+        for (int y = 16; y < 30; y += 2) {
+            r.line(SX(45 - (y - 15) * 0.1f), SY((float)y), SX(46 - (y - 15) * 0.1f), SY((float)y));
+            r.line(SX(54 + (y - 15) * 0.1f), SY((float)y), SX(55 + (y - 15) * 0.1f), SY((float)y));
+        }
+        for (int y = 30; y < 50; y += 1) {
+            if (y % 3 == 0) {
+                r.line(SX(36), SY((float)y), SX(39), SY((float)y));
+                r.line(SX(61), SY((float)y), SX(64), SY((float)y));
+            }
+        }
+        for (int y = 31; y < 49; y += 2) {
+            for (int x = 40; x < 60; x += 2) {
+                if ((x + y) % 4 == 0) r.pixel(SX((float)x), SY((float)y));
+            }
+        }
+
+        // Tracking dish antenna (left).
+        r.line(SX(32), SY(28), SX(25), SY(23));
+        r.line(SX(25), SY(23), SX(23), SY(26));
+        r.rect(SX(21), SY(23), 4.8f, 3.6f);
+        r.circle(SX(23), SY(23), 3.6f);
+        r.circle(SX(23), SY(23), 1.8f);
+
+        // Omnidirectional antenna (top).
+        r.line(SX(50), SY(15), SX(50), SY(2));
+        r.circle(SX(50), SY(10), 3.6f);
+        r.line(SX(47), SY(10), SX(53), SY(10));
+        r.line(SX(50), SY(7), SX(50), SY(13));
+        r.line(SX(50), SY(10), SX(50), SY(8));
+        r.pixel(SX(50), SY(8));
+        for (float a = 0; a < 6.2832f; a += 0.3491f) {
+            r.pixel(SX(50 + cosf(a) * 2.5f), SY(10 + sinf(a) * 2.5f));
+        }
+
+        // RCS thrusters.
+        for (int i = 0; i < 4; ++i) {
+            float ox = 45 + i * 3.3f;
+            float oy = 25;
+            r.circle(SX(ox), SY(oy), 1.2f);
+            r.pixel(SX(ox), SY(oy - 1));
+            r.pixel(SX(ox), SY(oy + 1));
+            r.pixel(SX(ox - 1), SY(oy));
+            r.pixel(SX(ox + 1), SY(oy));
+        }
+        r.circle(SX(30), SY(35), 1.2f);
+        r.line(SX(30), SY(34), SX(30), SY(36));
+        r.circle(SX(70), SY(35), 1.2f);
+        r.line(SX(70), SY(34), SX(70), SY(36));
+
+        // Helical antenna (right).
+        r.line(SX(62), SY(25), SX(68), SY(20));
+        r.rect(SX(67), SY(18), 1.2f, 4.8f);
+        for (int y = 18; y < 22; y += 1) {
+            r.pixel(SX(68), SY((float)y));
+        }
+
+        // Ground shadows under the footpads.
+        for (int x = 0; x < 10; ++x) {
+            if (x % 3 == 0) r.line(SX((float)x), SY(96), SX((float)x + 1), SY(96));
+        }
+        for (int x = 45; x < 55; ++x) {
+            if (x % 3 == 0) r.line(SX((float)x), SY(97), SX((float)x + 1), SY(97));
+        }
+        for (int x = 90; x < 100; ++x) {
+            if (x % 3 == 0) r.line(SX((float)x), SY(96), SX((float)x + 1), SY(96));
+        }
 
         r.text(170, 132, "STICK: ROTATION");
         r.text(170, 144, "Z: ENGINE ON/OFF");
