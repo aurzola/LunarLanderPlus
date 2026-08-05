@@ -58,6 +58,7 @@ private:
     void endGame();
     void startDemo();
     void endDemoToTitle();
+    void setupTitleShip();
     void runDemoAI();
 };
 

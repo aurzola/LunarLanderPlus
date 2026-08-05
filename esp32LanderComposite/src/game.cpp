@@ -32,6 +32,7 @@ Game::Game()
     input.thrust = 0;
     input.powerLevel = 0;
     terrain.init();
+    setupTitleShip();
 }
 
 void Game::newGame()
@@ -60,7 +61,7 @@ void Game::restartLevel()
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
         state = STATE_WAITING;
-        ship.velX = 2;
+        setupTitleShip();
     } else {
         state = STATE_PLAYING;
     }
@@ -126,9 +127,15 @@ void Game::endDemoToTitle()
     state = STATE_WAITING;
     demoTimer = DEMO_START_DELAY;
     terrain.init();
-    ship.reset(110, 150);
-    ship.velX = 2;
     setZoom(false);
+    setupTitleShip();
+}
+
+void Game::setupTitleShip()
+{
+    ship.reset(110, 150);
+    ship.velX = -0.35f;
+    ship.posX = (SCREEN_W - 20.0f) / viewScale;
 }
 
 void Game::runDemoAI()
@@ -341,9 +348,8 @@ void Game::update()
             state = STATE_WAITING;
             demo = false;
             demoTimer = DEMO_START_DELAY;
-            ship.reset(110, 150);
-            ship.velX = 2;
             setZoom(false);
+            setupTitleShip();
         }
     }
 }
@@ -588,7 +594,7 @@ void Game::draw(Renderer &r)
         }
 
         if (zoomedIn) {
-            const float MX = 112, MY = 22, MW = 96, MH = 54;
+            const float MX = 112, MY = 22, MW = 96, MH = 49;
             r.line(MX, MY, MX + MW, MY);
             r.line(MX, MY + MH, MX + MW, MY + MH);
             r.line(MX, MY, MX, MY + MH);
@@ -626,11 +632,10 @@ void Game::draw(Renderer &r)
                 if (tl[i].labelX < 0) continue;
                 float ax = (tl[i].labelX - minTX) * ms + ox;
                 float ay = (tl[i].y1 - minTY) * ms + oy + 5.0f;
-                if (ay + 3 > MY + MH - 1) ay = MY + MH - 4;
+                if (ay + 2 > MY + MH - 1) ay = MY + MH - 3;
                 if ((ship.counter / 25) & 1) continue;
                 r.rect(ax, ay, 1, 1);
                 r.rect(ax - 1, ay + 1, 3, 1);
-                r.rect(ax - 2, ay + 2, 5, 1);
             }
         }
     }

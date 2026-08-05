@@ -49,9 +49,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   segmento: las plataformas quedan ~19–31 de ancho vs caja de la nave 6.4 (antes el segmento
   plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
-- Minimapa 96×54 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
+- Minimapa 96×49 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 - **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
-  - **Minimapa**: una **flechita sólida** de 5×3 px (triángulo relleno 1-3-5) bajo cada zona,
+  - **Minimapa**: una **flechita sólida** de 3×2 px (triángulo relleno 1-3) bajo cada zona,
     centrada en su `labelX` y ~5 px bajo la superficie del pad (recortada al borde del minimapa),
     que **parpadea on/off** con `(ship.counter/25)&1`.
   - **Vista principal** (vista normal y zoom): hilera de **cuadritos 2×2 que parpadean alternando**
@@ -147,8 +147,9 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   en x=170
   (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). Una sola línea
   de crédito abajo a la derecha: `COPYRIGHT ALEX URZOLA 2026/OPENCODE`. El fondo es el de juego
-  (estrellas + nave).
-- **Demo / attract mode (8/8/2026)**: tras `DEMO_START_DELAY=11 s` en el título, `Game::startDemo()`
+  (estrellas + nave entrando **por la derecha** con deriva lenta a la izquierda
+  (`setupTitleShip()`, `velX=-0.35`, `posX=(SCREEN_W-20)/viewScale`)).
+- **Demo / attract mode (8/8/2026)**: tras `DEMO_START_DELAY=13 s` en el título, `Game::startDemo()`
   lanza un nivel (1..3) jugado por un **autopilot** (`Game::runDemoAI()`): control horizontal PD
   hacia una plataforma (`demoTargetX/Y`), fase de crucero con descenso acotado (`maxVY` por
   altitud, guarda de altitud mínima con subida forzada `alt<60`) y fase de aproximación con frenado
@@ -283,7 +284,7 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 
 - Mundo 800×600 → pantalla 320×240. La física NO cambia, solo el dibujado.
 - Zoom: multiplica `viewScale` ×5 y la nave pasa a `scale=0.32` (se ve más grande).
-- Minimapa cuando hay zoom: 96×54 px arriba-centro, escala el terreno completo y marca la nave.
+- Minimapa cuando hay zoom: 96×49 px arriba-centro, escala el terreno completo y marca la nave.
 
 ## Decisiones de arquitectura / convenciones
 
