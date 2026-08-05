@@ -445,7 +445,7 @@ void Game::draw(Renderer &r)
             snprintf(buf, sizeof buf, "VY %d", (int)(ship.velY * 200));
             r.text(250, 42, buf);
 
-            if (demo) r.text(250, 72, "DEMO");
+            if (demo) r.text(150, 22, "DEMO");
         }
 
         if (state == STATE_LANDED) {

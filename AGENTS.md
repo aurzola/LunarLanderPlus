@@ -154,7 +154,8 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   → aterrizan en la ladera y se estrellan; el resto (skill 0.60–1.00) aterriza casi siempre. Ruido
   por-frame `(rand−0.5)·(1−skill)` en ángulo/empuje. Win-rate validado en PC (~70 % con
   `./demo_sim`, 200 seeds, sin timeouts, ~80 s/vuelo). Al aterrizar/estrellarse muestra el resultado
-  (`CRASH_RESET_DELAY`) y vuelve al título; `DEMO` se muestra en el HUD `(250,72)`. Cualquier
+  (`CRASH_RESET_DELAY`) y vuelve al título; `DEMO` se muestra en el HUD **arriba-centro
+  `(150,22)`** (alineado con la fila de HUD). Cualquier
   `startPressed` cancela el demo y arranca partida real (`demo=false`). `srand(esp_random())` en
   `setup()`. Validado en PC: `test_pc` (45 checks) + `demo_sim`.
 - **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido
