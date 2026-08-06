@@ -6,6 +6,7 @@
 #include "terrain.h"
 #include "game.h"
 #include "config.h"
+#include "moons.h"
 
 static int checks = 0;
 
@@ -205,6 +206,34 @@ static int testStorm()
     return 0;
 }
 
+static int testMoon()
+{
+    CHECK(moonIndex(1) == 0);
+    CHECK(moonIndex(8) == 7);
+    CHECK(moonIndex(9) == 0);
+    CHECK(moonGravity(1) == 1.0f);
+    CHECK(moonGravity(3) < 1.0f);
+
+    Ship s;
+    s.reset(100, 400);
+    s.velY = 0;
+    s.gravity = GRAVITY * moonGravity(3);
+    float g = s.gravity;
+    s.update();
+    CHECK(fabsf(s.velY - g) < 1e-6f);
+    s.gravity = GRAVITY;
+    s.velY = 0;
+    s.update();
+    CHECK(fabsf(s.velY - GRAVITY) < 1e-6f);
+
+    Game g2;
+    g2.input.startPressed = true;
+    g2.update();
+    g2.input.startPressed = false;
+    CHECK(g2.ship.gravity == GRAVITY * moonGravity(1));
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -219,6 +248,8 @@ int main()
     r = testDemo();
     if (r) return r;
     r = testStorm();
+    if (r) return r;
+    r = testMoon();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

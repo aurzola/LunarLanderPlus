@@ -9,7 +9,7 @@ Ship::Ship()
       rotation(-90), targetRotation(-90),
       thrustBuild(0), fuel(FUEL_MAX), scale(1.0f),
       altitude(0), active(true), exploding(false), counter(0),
-      windStrength(0), windDir(1)
+      windStrength(0), windDir(1), gravity(GRAVITY)
 {
     defineShapes();
     memset(shapePosX, 0, sizeof(shapePosX));
@@ -91,6 +91,7 @@ void Ship::reset(float x, float y)
     counter = 0;
     windStrength = 0;
     windDir = 1;
+    gravity = GRAVITY;
     for (int i = 0; i < 6; i++) {
         shapePosX[i] = 0;
         shapePosY[i] = 0;
@@ -144,7 +145,7 @@ void Ship::update()
     posX += velX;
     posY += velY;
     velX *= DRAG;
-    velY += GRAVITY;
+    velY += gravity;
 
     if (velY > TOP_SPEED) velY = TOP_SPEED;
     else if (velY < -TOP_SPEED) velY = -TOP_SPEED;

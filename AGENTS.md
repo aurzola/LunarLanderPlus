@@ -32,7 +32,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `test_pc.cpp` | Tests de validación (asserts) |
 | `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
 | `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
-| `moons.h` | **Lunares de nivel (14/8/2026)**: tabla `MoonInfo {name}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (gravedad, personalidad, dificultad, cielo, título) |
+| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (personalidad, dificultad, cielo, título) |
 
 ### Mundo y pantalla
 
@@ -42,6 +42,13 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 ### Constantes del port (config.h)
 
 - `GRAVITY=0.0005`, `THRUST_ACCEL=0.0018`, `DRAG=0.9997`, `TOP_SPEED=0.35`.
+- **Gravedad por luna (15/8/2026, rama `moon-gravity`)**: cada luna tiene un multiplicador
+  (`moonGravity(level)`), la gravedad efectiva es `GRAVITY · moonGravity(level)`. Valores: LUNA
+  1.00, IO 1.10, EUROPA 0.85, GANYMEDES 0.95, CALLISTO 0.90, TITAN 0.90, ENCELADUS 0.70, TRITON
+  0.75. `Game::update()` propaga `ship.gravity` cada frame (nuevo campo en `Ship`, default
+  `GRAVITY`); `Ship::update()` aplica `velY += gravity` (único punto de la física). El HUD muestra
+  el multiplicador como **`G 0.85`** en `(250,52)` (bajo `VY`), con glitch al impacto de rayo.
+  Los umbrales de aterrizaje (`LAND_PERFECT_VY`/`LAND_HARD_VY`) no cambian.
 - `FUEL_MAX=1000`, `FUEL_PER_THRUST=0.2`, `GAME_DT=0.01`.
 - Rotación `[-90°, +90°]`, lerp `ROTATION_LERP=0.3`, la nave **arranca en 0°** (boquilla abajo).
 - Empuje: `velX += THRUST_ACCEL*thrustBuild*sin(rad)`, `velY -= THRUST_ACCEL*thrustBuild*cos(rad)`.
@@ -106,7 +113,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
     `windStrength`/`windDir` que `Game::update()` le propaga cada frame (0 en niveles
     < `WIND_START_LEVEL`).
     Verificado en PC con test determinista: sin viento centrada, viento 1.0 → +3.5 px de sesgo.
-  HUD: `WIND nn>` (o `<`) en `(250,52)`, en la columna derecha debajo de `VY` (los avisos
+  HUD: `WIND nn>` (o `<`) en `(250,62)`, en la columna derecha debajo de `G` (los avisos
   `LOW FUEL`/`TOO FAST` se desplazan según haya WIND; ver sección Sketch ESP32); glifos `<` y `>`
   añadidos a la fuente 5x7.
   Config: `WIND_START_LEVEL=4` y `WIND_CHANCE_PERCENT=50` (viento **aleatorio por nivel** desde el
@@ -194,10 +201,12 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   `ALT`/`VX`/`VY` en
   `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
   `VY` mostrado = `velY*200`; `ANG` = rotación en grados; `PWR` = nivel de potencia actual (%)
-  (pot o paso de C). **`WIND nn>`/`<` (11/8/2026)** en `(250,52)`, debajo de `VY`, solo si
+  (pot o paso de C). **`G x.xx` (15/8/2026)**: multiplicador de gravedad de la luna
+  (`ship.gravity / GRAVITY`) en `(250,52)`, debajo de `VY` (con glitch al impacto de rayo).
+  **`WIND nn>`/`<` (11/8/2026)** en `(250,62)`, debajo de `G`, solo si
   `game.windEnabled` (viento aleatorio por nivel ≥ 4). Los avisos de la derecha **se desplazan según haya WIND** para no
-  dejar franja en blanco: si WIND está mostrado, `LOW FUEL`/`OUT OF FUEL` van en `(250,62)` y `TOO
-  FAST` en `(250,72)`; si no, quedan en `(250,52)` y `(250,62)`.
+  dejar franja en blanco: si WIND está mostrado, `LOW FUEL`/`OUT OF FUEL` van en `(250,72)` y `TOO
+  FAST` en `(250,82)`; si no, quedan en `(250,62)` y `(250,72)`.
   Aviso parpadeante `LOW FUEL` (o `OUT OF FUEL`) alineado con los indicadores de la derecha.
   **Aviso `TOO FAST` (7/8/2026)**: parpadeante (debajo de `LOW FUEL`) cuando la
   velocidad de descenso `velY > LAND_HARD_VY` o la velocidad horizontal `|velX| > LAND_HARD_VX`
@@ -531,3 +540,14 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     Validado en PC: `test_pc` **50 checks ALL PASSED**, `demo_sim` 60 seeds (**45 % win, 0 timeouts,
     ~90 s/vuelo**, niveles 1..12), `storm_demo 3 9` y `5 4` (rayo OK). **Sync completado** a
     `esp32LanderComposite/src/`; sketch compila (486 KB, 37 % del slot default). Confirmar en CRT.
+15. **Gravedad por luna (15/8/2026, rama `moon-gravity`)** — cada luna tiene un multiplicador de
+    gravedad (`moons.h`: `MoonInfo {name, gravity}` + `moonGravity(level)`). La gravedad efectiva
+    es `GRAVITY · moonGravity(level)`; `Game::update()` propaga `ship.gravity` cada frame (nuevo
+    campo en `Ship`, default `GRAVITY`) y `Ship::update()` aplica `velY += gravity` (único punto
+    de la física). El HUD muestra el multiplicador como **`G x.xx`** en `(250,52)`, bajo `VY`, con
+    glitch al impacto de rayo; `WIND` se movió a `(250,62)` y los avisos de la derecha se
+    desplazan según haya WIND. Los umbrales de aterrizaje no cambian. Validado en PC: `test_pc`
+    **58 checks ALL PASSED** (nuevos checks de `moonGravity`/propagación/aplicación), `demo_sim`
+    20 seeds (**55 % win, 0 timeouts**, autopilot compensa la gravedad variable).
+    **Sync completado** a `esp32LanderComposite/src/`; sketch compila (486 KB, 37 %).
+    Confirmar en CRT.

@@ -500,6 +500,7 @@ void Game::update()
     updateWind(dt);
     ship.windStrength = windEnabled ? windStrength : 0.0f;
     ship.windDir = windDir;
+    ship.gravity = GRAVITY * moonGravity(level);
     if (state != STATE_WAITING) storm.update(dt, terrain);
 
     if (input.startPressed && demo) {
@@ -625,7 +626,7 @@ void Game::draw(Renderer &r)
 
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
 
-    int warnY = 52, fastY = 62;
+    int warnY = 62, fastY = 72;
 
     if (state == STATE_WAITING) {
         for (int i = 0; i < TITLE_STAR_COUNT; i++) {
@@ -836,6 +837,9 @@ void Game::draw(Renderer &r)
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "VY  %s", gb);
                 r.text(250, 42, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "G   %s", gb);
+                r.text(250, 52, buf);
             } else {
                 snprintf(buf, sizeof buf, "ANG %d", ang);
                 r.text(22, 42, buf);
@@ -847,6 +851,8 @@ void Game::draw(Renderer &r)
                 r.text(250, 32, buf);
                 snprintf(buf, sizeof buf, "VY %d", vy);
                 r.text(250, 42, buf);
+                snprintf(buf, sizeof buf, "G %.2f", ship.gravity / GRAVITY);
+                r.text(250, 52, buf);
             }
 
             if (demo) r.text(22, 62, "DEMO");
@@ -854,9 +860,9 @@ void Game::draw(Renderer &r)
             if (windShown) {
                 snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
                          windDir > 0 ? '>' : '<');
-                r.text(250, 52, buf);
-                warnY = 62;
-                fastY = 72;
+                r.text(250, 62, buf);
+                warnY = 72;
+                fastY = 82;
             }
         }
 
