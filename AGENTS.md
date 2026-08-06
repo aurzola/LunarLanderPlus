@@ -32,6 +32,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `test_pc.cpp` | Tests de validación (asserts) |
 | `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
 | `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
+| `moons.h` | **Lunares de nivel (14/8/2026)**: tabla `MoonInfo {name}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (gravedad, personalidad, dificultad, cielo, título) |
 
 ### Mundo y pantalla
 
@@ -207,6 +208,9 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   escala 3, 3 pasadas de dibujo para espesar), con **fade de luminancia**: entrada `INTRO_FADE_IN
   =0.35 s`, salida `INTRO_FADE_OUT=0.9 s` (escribe valores < 255 vía `pixelShade`). HUD oculto
   durante la intro. `Renderer` gana `pixelShade(x,y,brightness)` y `textScaled(...)`.
+  **Nombre de luna (14/8/2026, rama `moon-names`)**: debajo de `LEVEL N` se dibuja el nombre de la
+  luna del nivel (`moonName(level)`, escala 2, mismo fade), por ejemplo `LEVEL 3` / `EUROPA`.
+  Validado en CRT; se ampliará en ramas posteriores.
 - **Pantalla de título (7/8/2026)** (`STATE_WAITING`): título **`LUNAR LANDER++`** en **negrita**
   (`textScaled` escala 2, 3 pasadas) sin marco (el marco y el disco lunar previos se quitaron por
   parpadeo/molestia). Bajo el título, aviso parpadeante `PRESS BUTTON TO PLAY`. A la izquierda de

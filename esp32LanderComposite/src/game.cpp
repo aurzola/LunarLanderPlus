@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include "game.h"
+#include "moons.h"
 
 static const int TITLE_STAR_COUNT = 32;
 static const int titleStars[][2] = {
@@ -904,6 +905,13 @@ void Game::draw(Renderer &r)
             float tx = (SCREEN_W - tw) / 2.0f;
             float ty = (SCREEN_H - 7 * scale) / 2.0f;
             r.textScaled(tx, ty, buf, (float)scale, brightness);
+
+            int scale2 = 2;
+            const char *mn = moonName(level);
+            int tw2 = (int)strlen(mn) * 6 * scale2;
+            float tx2 = (SCREEN_W - tw2) / 2.0f;
+            float ty2 = ty + 7 * scale + 4;
+            r.textScaled(tx2, ty2, mn, (float)scale2, brightness);
         }
 
         if (zoomedIn) {
