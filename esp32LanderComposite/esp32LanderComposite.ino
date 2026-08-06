@@ -215,6 +215,9 @@ void loop()
         lastGameState = game.state;
     }
     Audio::setThrust(game.state == STATE_PLAYING ? game.ship.thrustBuild : 0.0f);
+    Audio::setWind(game.windEnabled && game.state == STATE_PLAYING
+                   ? game.windStrength : 0.0f);
+    if (game.storm.takeNewBolt()) Audio::playLightning();
 
     if (millis() - lastIsrPrint > 1000) {
         lastIsrPrint = millis();

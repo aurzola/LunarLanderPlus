@@ -36,11 +36,12 @@ const float CRASH_RESET_DELAY = 4.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 13.0f;
-const int DEMO_MAX_LEVEL = 4;
+const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;
 const float DEMO_POWER_RATE = 0.4f;
 
 const int WIND_START_LEVEL = 4;
+const int WIND_CHANCE_PERCENT = 50;
 const float WIND_MIN = 0.35f;
 const float WIND_ACCEL = 0.0004f;
 const int WIND_STREAK_COUNT = 18;
@@ -63,7 +64,8 @@ const float INTRO_FADE_OUT = 0.9f;
 
 const int MAX_STARS = 60;
 
-const int STORM_START_LEVEL = 1;
+const int STORM_START_LEVEL = 3;
+const int STORM_CHANCE_PERCENT = 50;
 const float STORM_BOLT_MIN = 4.0f;
 const float STORM_BOLT_MAX = 8.0f;
 const float STORM_BOLT_LIFE = 0.22f;

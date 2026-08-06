@@ -188,8 +188,16 @@ static int testStorm()
     Terrain t;
     t.generate(4);
     Storm s;
-    s.reset(STORM_START_LEVEL);
-    CHECK(s.active());
+    s.reset(1);
+    CHECK(!s.active());
+    int activeCount = 0;
+    for (int i = 0; i < 30; i++) {
+        s.reset(STORM_START_LEVEL);
+        if (s.active()) activeCount++;
+    }
+    CHECK(activeCount > 0);
+    CHECK(activeCount < 30);
+    s.reset(STORM_START_LEVEL + 3);
     CHECK(s.activeBolts() == 0);
     CHECK(!s.strikes(0, 0, STORM_HIT_RADIUS));
 

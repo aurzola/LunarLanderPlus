@@ -211,7 +211,10 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
         for (int i = 1; i <= rows; i++) {
             float tt = (float)i / (rows + 1);
             float d = tt * alen;
-            float halfW = 0.5f * width0 * (1.0f - tt);
+            // Tear-drop profile: narrow at the nozzle (base) and tip, widest
+            // mid-flame. Keeps the start hugging the body yet never overlaps
+            // it when the ship rotates.
+            float halfW = 0.5f * width0 * (tt * (1.0f - tt)) * 4.0f;
             int b = (int)(255.0f * (1.0f - 0.6f * tt));
             float x0 = cx + ux * d - px2 * halfW;
             float y0 = cy + uy * d - py2 * halfW;
@@ -226,8 +229,6 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
         }
 
         r.line(cx, cy, tx, ty);
-        r.line(fx1, fy1, tx, ty);
-        r.line(tx, ty, fx3, fy3);
 
         if (windStrength > 0.05f) {
             int tb = (int)(90.0f * windStrength);

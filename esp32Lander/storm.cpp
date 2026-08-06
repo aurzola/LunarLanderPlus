@@ -20,7 +20,8 @@ float clampf(float v, float lo, float hi)
 } // namespace
 
 Storm::Storm()
-    : level_(1), nextBolt_(STORM_BOLT_MAX), spawned_(0)
+    : level_(1), enabled_(false), nextBolt_(STORM_BOLT_MAX), spawned_(0),
+      spawnedSeen_(0)
 {
 }
 
@@ -33,8 +34,11 @@ float Storm::interval() const
 void Storm::reset(int level)
 {
     level_ = level;
+    enabled_ = (level >= STORM_START_LEVEL) &&
+               ((rand() % 100) < STORM_CHANCE_PERCENT);
     bolts_.clear();
     spawned_ = 0;
+    spawnedSeen_ = 0;
     nextBolt_ = interval();
 }
 
@@ -81,6 +85,14 @@ bool Storm::strikes(float sx, float sy, float radius)
     return false;
 }
 
+bool Storm::takeNewBolt()
+{
+    if (spawned_ == spawnedSeen_) return false;
+    bool isNew = (spawned_ > spawnedSeen_);
+    spawnedSeen_ = spawned_;
+    return isNew;
+}
+
 void Storm::spawnBolt(const Terrain &t)
 {
     float w = t.getWidth();
@@ -88,6 +100,7 @@ void Storm::spawnBolt(const Terrain &t)
     float startY = 30.0f + randf01() * 40.0f;
     float strikeX = cloudX + (randf01() - 0.5f) * 160.0f;
     strikeX = clampf(strikeX, 10.0f, w - 10.0f);
+
     float strikeY = terrainYAt(t, strikeX, 600.0f);
     if (strikeY < startY + 40.0f) strikeY = startY + 40.0f;
 

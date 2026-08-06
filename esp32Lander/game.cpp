@@ -20,10 +20,19 @@ static float clampf(float v, float lo, float hi)
     return v;
 }
 
+// Fill `n` chars with random display garbage (digits + letters, occasionally a
+// dash) to simulate a scrambled instrument readout after a lightning hit.
+static void glitchChars(char *out, int n)
+{
+    static const char CH[] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ-";
+    for (int i = 0; i < n; i++) out[i] = CH[rand() % (sizeof(CH) - 1)];
+    out[n] = 0;
+}
+
 Game::Game()
     : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX), introTimer(0),
       demo(false), demoTimer(DEMO_START_DELAY),
-      windStrength(0), windDir(1),
+      windEnabled(false), windStrength(0), windDir(1),
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
@@ -53,6 +62,7 @@ void Game::newGame()
     introTimer = LEVEL_INTRO_TIME;
     ship.velX = 0.415f;
     terrain.init();
+    windEnabled = false;
     storm.reset(level);
     stormHitTimer = 0;
 }
@@ -79,6 +89,8 @@ void Game::nextLevel()
     level++;
     float f = ship.fuel;
     terrain.generate(level);
+    windEnabled = (level >= WIND_START_LEVEL) &&
+                  (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
     stormHitTimer = 0;
@@ -109,6 +121,8 @@ void Game::startDemo()
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
+    windEnabled = (level >= WIND_START_LEVEL) &&
+                  (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
     stormHitTimer = 0;
@@ -204,7 +218,7 @@ static float terrainYAt(const std::vector<TerrainLine> &tl, float x, float fallb
 void Game::spawnWind()
 {
     windStreaks.clear();
-    if (level < WIND_START_LEVEL) return;
+    if (!windEnabled) return;
 
     float w = terrain.getWidth();
     float top = 9999;
@@ -227,7 +241,7 @@ void Game::spawnWind()
 void Game::spawnDust()
 {
     dust.clear();
-    if (level < WIND_START_LEVEL) return;
+    if (!windEnabled) return;
 
     float w = terrain.getWidth();
     const std::vector<TerrainLine> &tl = terrain.getLines();
@@ -245,7 +259,7 @@ void Game::spawnDust()
 
 void Game::updateWind(float dt)
 {
-    if (level < WIND_START_LEVEL) {
+    if (!windEnabled) {
         windStreaks.clear();
         dust.clear();
         return;
@@ -339,7 +353,7 @@ float Game::landingProximity() const
 
 void Game::drawWind(Renderer &r)
 {
-    if (level < WIND_START_LEVEL) return;
+    if (!windEnabled) return;
 
     float altFactor = 1.0f - fminf(ship.altitude / WIND_ALT_MAX, 1.0f);
 
@@ -483,7 +497,7 @@ void Game::update()
 {
     float dt = GAME_DT;
     updateWind(dt);
-    ship.windStrength = (level >= WIND_START_LEVEL) ? windStrength : 0.0f;
+    ship.windStrength = windEnabled ? windStrength : 0.0f;
     ship.windDir = windDir;
     if (state != STATE_WAITING) storm.update(dt, terrain);
 
@@ -789,25 +803,53 @@ void Game::draw(Renderer &r)
 
         char buf[40];
         if (introTimer <= 0) {
+            bool glitch = (stormHitTimer > 0.0f);
+
+            int ang = (int)ship.rotation;
+            int pwr = (int)(input.powerLevel * 100);
+            int alt = (ship.altitude < 0) ? 0 : (int)ship.altitude;
+            int vx = (int)(ship.velX * 200);
+            int vy = (int)(ship.velY * 200);
+
+            // A lightning hit scrambles the instruments (EM interference):
+            // readouts show random alphanumeric garbage that dances around.
             snprintf(buf, sizeof buf, "L%d SCORE %d", level, score);
             r.text(22, 22, buf);
             snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
             r.text(22, 32, buf);
-            snprintf(buf, sizeof buf, "ANG %d", (int)ship.rotation);
-            r.text(22, 42, buf);
-            snprintf(buf, sizeof buf, "PWR %d", (int)(input.powerLevel * 100));
-            r.text(22, 52, buf);
 
-            int alt = (ship.altitude < 0) ? 0 : (int)ship.altitude;
-            snprintf(buf, sizeof buf, "ALT %d", alt);
-            r.text(250, 22, buf);
-            snprintf(buf, sizeof buf, "VX %d", (int)(ship.velX * 200));
-            r.text(250, 32, buf);
-            snprintf(buf, sizeof buf, "VY %d", (int)(ship.velY * 200));
-            r.text(250, 42, buf);
+            if (glitch) {
+                char gb[8];
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "ANG %s", gb);
+                r.text(22, 42, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "PWR %s", gb);
+                r.text(22, 52, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "ALT %s", gb);
+                r.text(250, 22, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "VX  %s", gb);
+                r.text(250, 32, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "VY  %s", gb);
+                r.text(250, 42, buf);
+            } else {
+                snprintf(buf, sizeof buf, "ANG %d", ang);
+                r.text(22, 42, buf);
+                snprintf(buf, sizeof buf, "PWR %d", pwr);
+                r.text(22, 52, buf);
+                snprintf(buf, sizeof buf, "ALT %d", alt);
+                r.text(250, 22, buf);
+                snprintf(buf, sizeof buf, "VX %d", vx);
+                r.text(250, 32, buf);
+                snprintf(buf, sizeof buf, "VY %d", vy);
+                r.text(250, 42, buf);
+            }
 
             if (demo) r.text(22, 62, "DEMO");
-            bool windShown = (level >= WIND_START_LEVEL);
+            bool windShown = windEnabled;
             if (windShown) {
                 snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
                          windDir > 0 ? '>' : '<');
@@ -848,8 +890,6 @@ void Game::draw(Renderer &r)
                 (ship.counter % 50) < 30) {
                 r.text(250, fastY, "TOO FAST");
             }
-            if (stormHitTimer > 0 && (ship.counter % 40) < 25)
-                centerText(74, "LIGHTNING");
         }
 
         if (introTimer > 0) {

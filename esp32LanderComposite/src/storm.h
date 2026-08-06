@@ -15,11 +15,13 @@ public:
     Storm();
 
     void reset(int level);
-    bool active() const { return level_ >= STORM_START_LEVEL; }
+    bool active() const { return enabled_; }
     void update(float dt, const Terrain &t);
     void drawSky(Renderer &r, float viewX, float viewY, float viewScale) const;
     void drawBolts(Renderer &r, float viewX, float viewY, float viewScale) const;
     bool strikes(float sx, float sy, float radius);
+    // True exactly once per newly spawned bolt (for audio triggers).
+    bool takeNewBolt();
 
     int boltsSpawned() const { return spawned_; }
     int activeBolts() const { return (int)bolts_.size(); }
@@ -32,8 +34,10 @@ private:
     };
 
     int level_;
+    bool enabled_;
     float nextBolt_;
     int spawned_;
+    int spawnedSeen_;
     std::vector<Bolt> bolts_;
 
     float interval() const;

@@ -12,32 +12,79 @@
 #define AUDIO_PWM_RESOLUTION 8
 #define BEEP_LEN 8000
 
+// Per-tick volume easing step (INTEGER, IRAM-safe): moves current level by
+// ~1/24 of the gap each sample (~30 ms attack/release at 16 kHz, no FPU).
+#define ENV_DIV 24
+// How strongly the wind is scaled down (subtle by design, but audible).
+#define WIND_GAIN 140.0f
+// Max wind volume out of 256.
+#define WIND_MAX 160
+
 static hw_timer_t *audioTimer = NULL;
 static uint8_t *thrustBuf = NULL;
 static uint8_t *explBuf = NULL;
+static uint8_t *windBuf = NULL;
+static uint8_t *boltBuf = NULL;
 static uint8_t *beepBuf = NULL;
 
 static volatile uint16_t thrustPos = 0;
 static volatile uint16_t explPos = 0xFFFF;
-static volatile uint16_t thrustLevel = 0;
+static volatile uint16_t windPos = 0;
+static volatile uint16_t boltPos = 0xFFFF;
 static volatile uint16_t beepPos = BEEP_LEN;
 static volatile uint16_t beepLen = 0;
+
+// Targets set from the game; current levels are eased toward them in the ISR
+// using integer math only (no FPU inside the IRAM ISR).
+static volatile int thrustTarget = 0;
+static volatile int windTarget = 0;
+static volatile int thrustLevel = 0;
+static volatile int windLevel = 0;
+
 static volatile uint32_t audioIsrCount = 0;
+
+// Integer easing toward target (IRAM/ISR-safe, no floating point).
+static inline IRAM_ATTR int envEase(int cur, int tgt) {
+    int diff = tgt - cur;
+    if (diff == 0) return cur;
+    int step = diff / ENV_DIV;
+    if (step == 0) step = (diff > 0) ? 1 : -1;
+    cur += step;
+    if ((diff > 0 && cur > tgt) || (diff < 0 && cur < tgt)) cur = tgt;
+    return cur;
+}
 
 static void IRAM_ATTR audioIsr() {
     int32_t v = 0;
 
     audioIsrCount++;
 
-    if (thrustLevel > 0) {
-        v += (int32_t)(thrustBuf[thrustPos] - 128) * (int32_t)thrustLevel >> 8;
+    // Ease engine/wind volume toward target (attack/release -> no clicks).
+    thrustLevel = envEase(thrustLevel, thrustTarget);
+    windLevel = envEase(windLevel, windTarget);
+
+    int16_t lvl = (int16_t)thrustLevel;
+    int16_t wlvl = (int16_t)windLevel;
+
+    if (lvl > 0) {
+        v += (int32_t)(thrustBuf[thrustPos] - 128) * lvl >> 8;
         thrustPos++;
         if (thrustPos >= THRUST_SOUND_LEN) thrustPos = 0;
+    }
+    if (wlvl > 0) {
+        v += (int32_t)(windBuf[windPos] - 128) * wlvl >> 8;
+        windPos++;
+        if (windPos >= WIND_SOUND_LEN) windPos = 0;
     }
     if (explPos < EXPLOSION_SOUND_LEN) {
         v += (int32_t)explBuf[explPos] - 128;
         explPos++;
         if (explPos >= EXPLOSION_SOUND_LEN) explPos = 0xFFFF;
+    }
+    if (boltPos < LIGHTNING_SOUND_LEN) {
+        v += (int32_t)boltBuf[boltPos] - 128;
+        boltPos++;
+        if (boltPos >= LIGHTNING_SOUND_LEN) boltPos = 0xFFFF;
     }
     if (beepPos < beepLen) {
         v += (int32_t)beepBuf[beepPos] - 128;
@@ -71,15 +118,37 @@ void Audio::begin() {
 
     thrustBuf = (uint8_t *)malloc(THRUST_SOUND_LEN);
     explBuf = (uint8_t *)malloc(EXPLOSION_SOUND_LEN);
+    windBuf = (uint8_t *)malloc(WIND_SOUND_LEN);
+    boltBuf = (uint8_t *)malloc(LIGHTNING_SOUND_LEN);
     beepBuf = (uint8_t *)malloc(BEEP_LEN);
-    memcpy_P(thrustBuf, THRUST_SOUND, THRUST_SOUND_LEN);
+
     memcpy_P(explBuf, EXPLOSION_SOUND, EXPLOSION_SOUND_LEN);
+    memcpy_P(windBuf, WIND_SOUND, WIND_SOUND_LEN);
+    memcpy_P(boltBuf, LIGHTNING_SOUND, LIGHTNING_SOUND_LEN);
+
+    // Smooth the engine tone: gentle one-pole low-pass to soften high freqs.
+    memcpy_P(thrustBuf, THRUST_SOUND, THRUST_SOUND_LEN);
+    {
+        const float a = 0.45f;           // kept moderately light
+        float prev = (float)(thrustBuf[0] - 128);
+        for (int i = 0; i < THRUST_SOUND_LEN; i++) {
+            float x = (float)(thrustBuf[i] - 128);
+            float y = prev + a * (x - prev);
+            prev = y;
+            int s = (int)(y + 128);
+            if (s < 0) s = 0;
+            if (s > 255) s = 255;
+            thrustBuf[i] = (uint8_t)s;
+        }
+    }
+
     for (int i = 0; i < BEEP_LEN; i++) {
         float t = (float)i / (float)AUDIO_SAMPLE_RATE;
         float s = 0.5f + 0.4f * sinf(2.0f * PI * 440.0f * t);
         beepBuf[i] = (uint8_t)(s * 255.0f);
     }
-    Serial.printf("[audio] buffers: thrust=%p expl=%p beep=%p\n", (void *)thrustBuf, (void *)explBuf, (void *)beepBuf);
+    Serial.printf("[audio] buffers: thrust=%p expl=%p wind=%p bolt=%p beep=%p\n",
+                  (void *)thrustBuf, (void *)explBuf, (void *)windBuf, (void *)boltBuf, (void *)beepBuf);
 
     audioTimer = timerBegin(AUDIO_SAMPLE_RATE);
     timerAttachInterrupt(audioTimer, audioIsr);
@@ -95,15 +164,31 @@ void Audio::debugBeep() {
 
 void Audio::setThrust(float level) {
     if (level <= 0.0f) {
-        thrustLevel = 0;
+        thrustTarget = 0;
         return;
     }
     if (level > 1.0f) level = 1.0f;
-    thrustLevel = (uint16_t)(level * 256.0f);
+    thrustTarget = (int)(level * 256.0f);
+}
+
+void Audio::setWind(float level) {
+    if (level <= 0.0f) {
+        windTarget = 0;
+        return;
+    }
+    if (level > 1.0f) level = 1.0f;
+    // Subtle, and proportional to wind strength.
+    float v = WIND_GAIN * level;
+    if (v > WIND_MAX) v = WIND_MAX;
+    windTarget = (int)v;
 }
 
 void Audio::playExplosion() {
     explPos = 0;
+}
+
+void Audio::playLightning() {
+    boltPos = 0;
 }
 
 uint32_t Audio::debugIsrCount() {

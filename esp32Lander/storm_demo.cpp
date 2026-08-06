@@ -20,6 +20,11 @@ int main(int argc, char **argv)
 
     t.generate(level);
     storm.reset(level);
+    for (int tries = 0; tries < 100 && !storm.active(); tries++) storm.reset(level);
+    if (!storm.active()) {
+        fprintf(stderr, "FAIL: storm did not activate\n");
+        return 1;
+    }
 
     ship.reset(400.0f, 380.0f);
     ship.scale = 1.0f;

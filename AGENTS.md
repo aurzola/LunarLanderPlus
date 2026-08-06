@@ -51,8 +51,10 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   segmento: las plataformas quedan ~19–31 de ancho vs caja de la nave 6.4 (antes el segmento
   plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
-- **Viento (visual desde 5/8/2026; física desde 9/8/2026)**: se activa a partir de `WIND_START_LEVEL`
-  (ahora **4**, siempre presente desde ese nivel; ráfagas y dirección aleatorias).
+- **Viento (visual desde 5/8/2026; física desde 9/8/2026)**: se activa desde el nivel
+  `WIND_START_LEVEL` (**4**) y **aleatoriamente por nivel** (desde 13/8/2026: 50 % de
+  probabilidad por nivel ≥ 4, `WIND_CHANCE_PERCENT`; ver sección de efectos aleatorios);
+  ráfagas y dirección aleatorias.
   Ráfagas: `windStrength = WIND_MIN(0.35) + (1-WIND_MIN)*gust` con `gust = 0.5+0.5*sin(windPhase*0.6)`;
   `windDir` (+1/-1) cambia cada 8–20 s. **Física (9/8/2026)**: el viento ahora **empuja la nave**
   (`Ship::update()`: `velX += windDir·windStrength·WIND_ACCEL` por tick, sin `GAME_DT`, como el resto
@@ -106,8 +108,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   HUD: `WIND nn>` (o `<`) en `(250,52)`, en la columna derecha debajo de `VY` (los avisos
   `LOW FUEL`/`TOO FAST` se desplazan según haya WIND; ver sección Sketch ESP32); glifos `<` y `>`
   añadidos a la fuente 5x7.
-  Config: `WIND_START_LEVEL=4` (viento siempre presente desde el nivel 4; ráfagas y dirección
-  aleatorias) y `DEMO_LEVEL_FORCE=0` (el demo elige nivel al azar `1..DEMO_MAX_LEVEL`).
+  Config: `WIND_START_LEVEL=4` y `WIND_CHANCE_PERCENT=50` (viento **aleatorio por nivel** desde el
+  nivel 4: 50 % de probabilidad por nivel; ráfagas y dirección aleatorias) y `DEMO_LEVEL_FORCE=0`
+  (el demo elige nivel al azar `1..DEMO_MAX_LEVEL`).
 - Minimapa 96×49 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 - **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
   - **Minimapa**: una **flechita sólida** de 3×2 px (triángulo relleno 1-3) bajo cada zona,
@@ -191,7 +194,7 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   `(250,22)`/`(250,32)`/`(250,42)` (desplazado a la derecha por overscan del CRT).
   `VY` mostrado = `velY*200`; `ANG` = rotación en grados; `PWR` = nivel de potencia actual (%)
   (pot o paso de C). **`WIND nn>`/`<` (11/8/2026)** en `(250,52)`, debajo de `VY`, solo si
-  `level >= WIND_START_LEVEL`. Los avisos de la derecha **se desplazan según haya WIND** para no
+  `game.windEnabled` (viento aleatorio por nivel ≥ 4). Los avisos de la derecha **se desplazan según haya WIND** para no
   dejar franja en blanco: si WIND está mostrado, `LOW FUEL`/`OUT OF FUEL` van en `(250,62)` y `TOO
   FAST` en `(250,72)`; si no, quedan en `(250,52)` y `(250,62)`.
   Aviso parpadeante `LOW FUEL` (o `OUT OF FUEL`) alineado con los indicadores de la derecha.
@@ -218,8 +221,9 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   `centerText`). El fondo es el de juego
   (estrellas + nave entrando **por la derecha** con deriva lenta a la izquierda
   (`setupTitleShip()`, `velX=-0.35`, `posX=(SCREEN_W-20)/viewScale`)).
-- **Demo / attract mode (8/8/2026; re-trabajado para viento 9/8/2026)**: tras `DEMO_START_DELAY=13 s`
-  en el título, `Game::startDemo()` lanza un nivel (1..4; `DEMO_MAX_LEVEL=4`) jugado por un
+- **Demo / attract mode (8/8/2026; re-trabajado para viento 9/8/2026; niveles al azar 1..12 desde
+  13/8/2026)**: tras `DEMO_START_DELAY=13 s`
+  en el título, `Game::startDemo()` lanza un nivel al azar (1..12; `DEMO_MAX_LEVEL=12`) jugado por un
   **autopilot** (`Game::runDemoAI()`) hacia una plataforma (`demoTargetX/Y`). **Control desacoplado
   (9/8/2026)**: en vez del antiguo "ángulo por `asin(want)` + empuje acoplado", el AI calcula una
   aceleración horizontal `aX = (desVX−velX)·0.02 − windDir·windPush` (PD sobre la posición + contra
@@ -233,11 +237,12 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   (`demoSkill` 0.00–0.35) y apuntan desviado (offset de hasta ±110 u) → aterrizan en la ladera; el
   resto (skill 0.60–1.00) aterriza casi siempre salvo que el viento cambie en la aproximación final.
   Ruido por-frame `(rand−0.5)·(1−skill)` en ángulo/empuje. Win-rate validado en PC
-  (sin viento ~70–76 %; **con física de viento ~54 %** con `./demo_sim`, 200 seeds, sin timeouts,
-  ~100 s/vuelo). Al aterrizar/estrellarse muestra el resultado (`CRASH_RESET_DELAY`) y vuelve al
+  (con niveles 1..12 y efectos aleatorios: **~45 %** con `./demo_sim` 60 seeds, 0 timeouts,
+  ~90 s/vuelo; con niveles 1..4 y viento físico ~54 %). Al aterrizar/estrellarse muestra el
+  resultado (`CRASH_RESET_DELAY`) y vuelve al
   título; `DEMO` se muestra en el HUD **debajo de `PWR`** en `(22,62)`. Cualquier
   `startPressed` cancela el demo y arranca partida real (`demo=false`). `srand(esp_random())` en
-  `setup()`. Validado en PC: `test_pc` (45 checks) + `demo_sim`.
+  `setup()`. Validado en PC: `test_pc` (50 checks) + `demo_sim`.
 - **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido
   (`ship.fuel` se conserva en `nextLevel()`/`restartLevel()`, que antes lo reiniciaban vía
   `Ship::reset()`). El juego **NO termina al quedarse sin combustible en pleno vuelo**: se puede
@@ -337,20 +342,32 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
   libera la almohadilla y se usa **LEDC (canal 0, HS mode) como PWM portador a 312.5 kHz
   (resolución 8-bit = máx)**.
 - `src/audio.h/cpp`: timer gptimer a **16 kHz** con ISR (`IRAM_ATTR`) que mezcla
-  `THRUST_SOUND` (loop) + `EXPLOSION_SOUND` (one-shot) en RAM (copiados desde PROGMEM al
-  arrancar) y escribe el duty directo al registro `LEDC.channel_group[0].channel[0].duty.duty`
-  (`val<<4`) + handshake `duty_start`. API: `Audio::begin()`, `Audio::setThrust(0..1)`,
-  `Audio::playExplosion()`.
-- Datos: `src/audio_data.h` generado (PROGMEM) desde `sounds/rocket_thrust.wav` (32 k muestras,
-  2 s, loopable) y `sounds/explosion.wav` (27.4 k muestras, 1.71 s) — mono 8-bit / 16 kHz.
+  `THRUST_SOUND` (loop) + `WIND_SOUND` (loop) + `EXPLOSION_SOUND` (one-shot) + `LIGHTNING_SOUND`
+  (one-shot) en RAM (copiados desde PROGMEM al arrancar) y escribe el duty directo al registro
+  `LEDC.channel_group[0].channel[0].duty.duty` (`val<<4`) + handshake `duty_start`. API:
+  `Audio::begin()`, `Audio::setThrust(0..1)`, `Audio::setWind(0..1)`, `Audio::playExplosion()`,
+  `Audio::playLightning()`.
+- Datos: `src/audio_data.h` generado (PROGMEM) desde `sounds/rocket_thrust.wav` (32 k, loop),
+  `sounds/explosion.wav` (27.4 k, one-shot), `sounds/wind.wav` (32 k, loop) y
+  `sounds/lightning.wav` (19.2 k, one-shot) — mono 8-bit / 16 kHz. Generados por
+  `sounds/gen_storm_sounds.py` (viento y rayo; los reales de motor/explosión no se tocan) y
+  combinados por `sounds/convert_wav.py`.
 - Origen de los sonidos: **reales**, extraídos de `tblazevic/moonlander` (clon arcade JS)
   `audio/rocket.mp3` (loop de motor) + `audio/crash.mp3`. Pipeline en `sounds/real_sounds.py`
   (extrae el segmento 2 s más estable del mp3, hace **loop sin clic** cruzando la continuación
   natural hacia la cabeza, sube ganancia con `tanh`, convierte a 8-bit). Los mp3 se convierten
   primero a PCM16 16 kHz con ffmpeg (`/tmp/opencode/rocket16.wav`).
-- RAM: los dos sonidos se copian a RAM al arrancar (~59 KB) para lectura segura desde el ISR.
+- RAM: los sonidos se copian a RAM al arrancar (~116 KB incl. beep) para lectura segura desde el ISR.
 - Disparo en el `.ino`: transición a `STATE_CRASHED` → explosión; `thrustBuild` durante
-  `STATE_PLAYING` → motor.
+  `STATE_PLAYING` → motor; `game.windEnabled` (viento activo en el nivel y jugando) → viento;
+  `game.storm.takeNewBolt()` → rayo.
+- **Suavizado del sonido (12/8/2026)**: el volumen de motor y viento usa **rampa de ataque/release**
+  con easing **entero** (`envEase`, `ENV_DIV=24`) en el ISR (sin FPU: punto flotante en el IRAM ISR
+  del núcleo Arduino → `LoadProhibited`/reset) para que entren/salgan sin clic, y el tono del motor
+  se **suaviza con un low-pass** (alpha 0.45) al copiarlo a RAM. El **viento se mantiene sutil**
+  (`WIND_GAIN=140`, tope `WIND_MAX=160` sobre 256) y **proporcional a la velocidad del viento**
+  (`setWind(windStrength)`). El rayo es un one-shot (crack + trueno) al formarse cada rayo.
+  Validado: `test_pc` 50 checks, sketch compila 486 KB / RAM 7%, monitor serial estable (sin reset).
 - Debug (serial): `debugBeep()` emite un pitido 440 Hz (0.5 s) al arrancar para confirmar el
   audio; `debugIsrCount()` imprime `[audio] isr=%u` 1×/s (~16156 ISR/s → 16 kHz reales).
 - Cableado: **GPIO26 → condensador de acople en serie (1–10 µF) → RCA blanco del TV**
@@ -470,16 +487,43 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     (~185) y breve** (`STORM_BOLT_LIFE=0.22`, sin ramas ni brillo de impacto), ocasional
     (`STORM_BOLT_MIN/MAX=4/8 s`) para no entorpecer la aproximación. `Storm` está **integrado en
     `Game`** (visual, sin física): `drawSky` (no-op) tras el `clear()` y `drawBolts` tras
-    `ship.draw()`, con `update(dt, terrain)` cada tick (excluye el título). **`STORM_START_LEVEL=1`
-    temporal** (para verla al probar; pendiente restaurar a 5). Validado en PC: `test_pc` 48 checks,
+    `ship.draw()`, con `update(dt, terrain)` cada tick (excluye el título).
+    **`STORM_START_LEVEL=3` y activación aleatoria por nivel** (`STORM_CHANCE_PERCENT=50`,
+    13/8/2026; antes `1` temporal para probarla). Validado en PC: `test_pc` 50 checks,
     `./storm_demo 3 9` (rayo OK), mediana de cielo = 0 (sin wash). **Sync completado** a
     `esp32LanderComposite/src/`; subido a placa (433 KB, 7%). Confirmar en CRT.
     **Física del impacto (11/8/2026)**: `Storm::strikes(sx, sy, STORM_HIT_RADIUS)` detecta si el
     camino del rayo (distancia punto-segmento) pasa a < `STORM_HIT_RADIUS` (70 u) del centro de la
     nave (`Bolt::hit` evita dobles golpes del mismo rayo). Al golpe: **−combustible**
     (`STORM_HIT_FUEL=60`) y **pérdida temporal de control** (`STORM_CONTROL_LOSS=1.5 s`: motor
-    cortado y ángulo con jitter aleatorio ±0.5 rad). Aviso HUD `LIGHTNING` parpadeante.
-    `stormHitTimer` se resetea al iniciar partida/nivel/demo. Se trabaja en la rama **`storm-physics`**.
-    **Llama de exhaust (12/8/2026)**: se reemplazó el contorno de dos líneas por un **cono relleno**
-    (cuerdas con degradado `pixelShade` + núcleo y aristas) en `ship.cpp`, que crece gradualmente con
-    `thrustBuild` (sin `flicker` temporal → sin strobe). `flameLen = thrustBuild*24.0f`.
+    cortado y ángulo con jitter aleatorio ±0.5 rad). **HUD con glitch (13/8/2026)**: durante el
+    golpe los instrumentos se "cubren" de lecturas scrambled (`glitchChars`, dígitos+letras
+    aleatorios que bailan) en `ANG`/`PWR`/`ALT`/`VX`/`VY`; el aviso de texto `LIGHTNING` se quitó
+    (el glitch lo sustituye).
+    `stormHitTimer` se resetea al iniciar partida/nivel/demo.
+    **Llama de exhaust (12/8/2026; perfil teardrop 14/8/2026)**: cono relleno (cuerdas con
+    degradado `pixelShade` + núcleo y aristas) en `ship.cpp`, que crece gradualmente con
+    `thrustBuild` (sin `flicker` temporal → sin strobe). `flameLen = thrustBuild*24.0f`. Desde
+    14/8/2026 la sección usa **perfil teardrop** `halfW = 0.5·width0·tt(1−tt)·4` (angosto en tobera
+    y punta, ancho en el medio) y se quitaron las dos líneas del contorno exterior: la llama
+    empieza pegada al cuerpo pero nunca lo solapa al rotar la nave.
+14. **Efectos aleatorios por nivel (13/8/2026)** — la demo, la tormenta y el viento pasan a ser
+    **aleatorios por nivel**:
+    - **Demo**: `DEMO_MAX_LEVEL=12` — `Game::startDemo()` elige nivel al azar `1..12`
+      (`DEMO_LEVEL_FORCE=0`); el nivel juega con sus efectos aleatorios propios (tormenta/viento).
+    - **Tormenta**: `STORM_START_LEVEL=3` + `STORM_CHANCE_PERCENT=50` — `Storm::reset(level)`
+      activa `enabled_` (nuevo campo; `active()` = `enabled_`) con 50 % de probabilidad solo si
+      `level >= STORM_START_LEVEL`. Se decide de nuevo en cada `reset()` (nueva partida/nivel/demo);
+      `restartLevel()` (mismo nivel) conserva el estado. La demo **ya no fuerza** la tormenta
+      (`startDemo()` usa `storm.reset(level)`). **Los rayos caen al azar** (en el demo también): se
+      eliminó `Storm::aimAt` (14/8/2026), que apuntaba cada rayo a la nave en el demo; el rayo solo
+      golpea si `strikes()` detecta que su camino pasa cerca de la nave.
+    - **Viento**: `WIND_START_LEVEL=4` + `WIND_CHANCE_PERCENT=50` — `Game::windEnabled` (nuevo
+      campo público) se decide con 50 % de probabilidad en `newGame()` (nivel 1 → siempre off),
+      `nextLevel()` y `startDemo()`. Todos los gate del viento (`spawnWind`, `spawnDust`,
+      `updateWind`, `drawWind`, `ship.windStrength`, HUD `WIND`, y `Audio::setWind` en el `.ino`)
+      usan `windEnabled` en vez de `level >= WIND_START_LEVEL`.
+    - **Ambos efectos pueden coincidir** en un mismo nivel (decisiones independientes).
+    Validado en PC: `test_pc` **50 checks ALL PASSED**, `demo_sim` 60 seeds (**45 % win, 0 timeouts,
+    ~90 s/vuelo**, niveles 1..12), `storm_demo 3 9` y `5 4` (rayo OK). **Sync completado** a
+    `esp32LanderComposite/src/`; sketch compila (486 KB, 37 % del slot default). Confirmar en CRT.

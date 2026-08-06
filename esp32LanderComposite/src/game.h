@@ -54,6 +54,7 @@ public:
     Ship ship;
     Terrain terrain;
     Storm storm;
+    bool windEnabled;
     float windStrength;
     int windDir;
     float landingProximity() const;
