@@ -32,7 +32,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `test_pc.cpp` | Tests de validación (asserts) |
 | `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
 | `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
-| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (personalidad, dificultad, cielo, título) |
+| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (personalidad, dificultad, cielo, título) |
+| `geysers.h/cpp` | **Géiseres de Encélado (16/8/2026, rama `moon-flavor`)**: activo en niveles de Encélado (`moonHasGeysers(level)` → `moonIndex==6`, i.e. nivel 7, 15, 23…). `reset(level, terrain)` coloca `GEYSER_VENTS=5` respiraderos **en las bases de las laderas junto a las plataformas de aterrizaje** (`GEYSER_VENT_OFFSET=14 u` del borde del pad) para que estén en la trayectoria de vuelo, `update(dt)` + `draw(r,viewX,viewY,viewScale)`. Cada respiradero erupciona cíclicamente (burst `GEYSER_BURST=3 s` + pausa `GEYSER_GAP_MIN..MAX=3..9 s`, desincronizados):     emite partículas (máx `GEYSER_MAX_PARTS=250`, ~50 % de los ticks) que ascienden con `GEYSER_PART_SPEED=24` y arco por `GEYSER_PART_GRAV=7` (~38 u de altura) y se desvanecen (`pixelShade` 200→60); mientras erupciona dibuja una **columna cónica** (relleno por filas con degradado radial: brillo 215 en el centro de la base → desvanecido hacia arriba/bordes; **doblez en S** `sin(t·1.7)·1.5·t` y "puffos" lentos `sin(t·5+age·1.5)`, sin parpadeo; paso 2 px en zoom si la columna mide ≥40 px, alto `GEYSER_SPOUT_H=40 u`) + brillo de tobera en cruz/plus de 5 px (220). **Física (térmica, 16/8/2026)**: `inPlume(x,y)` detecta si la nave está en el chorro (|x−vent|≤`GEYSER_RADIUS=8`, y entre suelo y `GEYSER_PLUME_H=40`); `Game::update()` aplica `ship.velY -= GEYSER_PUSH=0.00025` por tick (~50 % de la gravedad de Encélado) → la nave recibe un pequeño empuje hacia arriba al cruzar la columna. Se añadieron `ventCount()`/`ventX(i)` para tests |
+| `geyser_demo.cpp` | Prueba de visualización en PC: terreno generado + géiseres → PPM en `frames/` (selftest `active` + `maxAlive>0`) |
 
 ### Mundo y pantalla
 
@@ -551,3 +553,25 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     20 seeds (**55 % win, 0 timeouts**, autopilot compensa la gravedad variable).
     **Sync completado** a `esp32LanderComposite/src/`; sketch compila (486 KB, 37 %).
     Confirmar en CRT.
+16. **Géiseres de Encélado (16/8/2026, rama `moon-flavor`)**: en niveles
+    de Encélado (`moonHasGeysers(level)`, `moonIndex==6` → nivel 7, 15, 23…) `Geysers::reset(level,
+    terrain)` coloca `GEYSER_VENTS=5` respiraderos **en las bases de las laderas junto a las
+    plataformas de aterrizaje** (`GEYSER_VENT_OFFSET=14 u` del borde del pad) y cada uno erupciona
+    cíclicamente (burst `GEYSER_BURST=3 s` + pausa `GEYSER_GAP_MIN..MAX=3..9 s`, desincronizados).
+    Durante la erupción emite partículas (máx `GEYSER_MAX_PARTS=250`, ~50 % de ticks) que ascienden
+    (`GEYSER_PART_SPEED=24`, arco por `GEYSER_PART_GRAV=7`) y se desvanecen (`pixelShade` 200→60),
+    y dibuja una **columna cónica** (relleno por filas con degradado radial: brillo 215 en el centro
+    de la base → desvanecido hacia arriba/bordes; **doblez en S** `sin(t·1.7)·1.5·t` y "puffos"
+    lentos `sin(t·5+age·1.5)`, sin parpadeo; paso 2 px en zoom, alto `GEYSER_SPOUT_H=40 u`) + brillo
+    de tobera en cruz/plus de 5 px (220). **Física (térmica)**: `inPlume(x,y)` detecta si la nave
+    está en el chorro
+    (|x−vent|≤`GEYSER_RADIUS=8`, y entre suelo y `GEYSER_PLUME_H=40`); `Game::update()` aplica
+    `ship.velY -= GEYSER_PUSH=0.00025` por tick (~50 % de la gravedad de Encélado). Integrado en
+    `Game` junto a `storm`: `reset` en constructor/newGame/nextLevel/startDemo, `update` tras
+    `storm` (excluye título), `draw` tras `terrain.draw` (antes de la nave). Validado en PC:
+    `test_pc` **68 checks ALL PASSED** (nuevos de `moonHasGeysers`/actividad/`inPlume`/pluma),
+    `geyser_demo 3 7` (máx 250 partículas visibles), `demo_sim` 20 seeds en nivel 7 (**50 % win,
+    0 timeouts**, el autopilot aguanta el empuje). **Sync completado** a `esp32LanderComposite/src/`;
+    sketch compila (492 KB, 37 %). **Validado en CRT** (16/8/2026): se afinó el ancho de la columna
+    (pico 2.3 px de media anchura) y se añadió punta cónica; `DEMO_LEVEL_FORCE` y `START_LEVEL`
+    (temporal 7) revertidos a 0/1 tras validar.

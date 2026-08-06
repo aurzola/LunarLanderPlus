@@ -45,6 +45,7 @@ Game::Game()
     input.powerLevel = 0;
     terrain.init();
     storm.reset(level);
+    geysers.reset(level, terrain);
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -52,7 +53,7 @@ Game::Game()
 
 void Game::newGame()
 {
-    level = 1;
+    level = START_LEVEL;
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
@@ -62,9 +63,13 @@ void Game::newGame()
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
     ship.velX = 0.415f;
-    terrain.init();
-    windEnabled = false;
+    if (level <= 1) terrain.init();
+    else terrain.generate(level);
+    windEnabled = (level >= WIND_START_LEVEL) &&
+                  (rand() % 100) < WIND_CHANCE_PERCENT;
+    spawnWind();
     storm.reset(level);
+    geysers.reset(level, terrain);
     stormHitTimer = 0;
 }
 
@@ -94,6 +99,7 @@ void Game::nextLevel()
                   (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
+    geysers.reset(level, terrain);
     stormHitTimer = 0;
     state = STATE_PLAYING;
     ship.reset(110, 150);
@@ -126,6 +132,7 @@ void Game::startDemo()
                   (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
+    geysers.reset(level, terrain);
     stormHitTimer = 0;
     ship.reset(110, 150);
     ship.velX = 0.06f;
@@ -502,6 +509,7 @@ void Game::update()
     ship.windDir = windDir;
     ship.gravity = GRAVITY * moonGravity(level);
     if (state != STATE_WAITING) storm.update(dt, terrain);
+    if (state != STATE_WAITING) geysers.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -564,6 +572,7 @@ void Game::update()
             }
         }
         ship.update();
+        if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
 
         if (ship.posX > terrain.getWidth() + 10)
             ship.posX = -10;
@@ -773,6 +782,7 @@ void Game::draw(Renderer &r)
         r.text(170, 168, "POT: POWER LEVEL");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
+        geysers.draw(r, viewX, viewY, viewScale);
         drawWind(r);
         ship.draw(r, viewX, viewY, viewScale);
         storm.drawBolts(r, viewX, viewY, viewScale);

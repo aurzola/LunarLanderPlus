@@ -1,8 +1,8 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -O2
-SRC = ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp
+SRC = ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp geysers.cpp
 
-all: test_pc main_pc demo_sim demo_render storm_demo
+all: test_pc main_pc demo_sim demo_render storm_demo geyser_demo
 
 test_pc: test_pc.cpp $(SRC)
 	$(CXX) $(CXXFLAGS) -o test_pc test_pc.cpp $(SRC)
@@ -19,8 +19,11 @@ demo_render: demo_render.cpp $(SRC)
 storm_demo: storm_demo.cpp $(SRC)
 	$(CXX) $(CXXFLAGS) -o storm_demo storm_demo.cpp $(SRC)
 
+geyser_demo: geyser_demo.cpp $(SRC)
+	$(CXX) $(CXXFLAGS) -o geyser_demo geyser_demo.cpp $(SRC)
+
 clean:
-	rm -f test_pc main_pc demo_sim demo_render storm_demo
+	rm -f test_pc main_pc demo_sim demo_render storm_demo geyser_demo
 	rm -rf frames
 
 .PHONY: all clean

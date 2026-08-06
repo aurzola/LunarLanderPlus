@@ -7,6 +7,7 @@
 #include "game.h"
 #include "config.h"
 #include "moons.h"
+#include "geysers.h"
 
 static int checks = 0;
 
@@ -121,7 +122,7 @@ static int testLevels()
     g.update();
     g.input.startPressed = false;
     CHECK(g.state == STATE_PLAYING);
-    CHECK(g.level == 1);
+    CHECK(g.level == START_LEVEL);
     CHECK(g.introTimer > 0);
 
     for (int i = 0; i < (int)(LEVEL_INTRO_TIME / GAME_DT) + 1; i++) g.update();
@@ -130,7 +131,7 @@ static int testLevels()
     g.ship.fuel = 50.0f;
     g.state = STATE_LANDED;
     g.update();
-    CHECK(g.level == 2);
+    CHECK(g.level == START_LEVEL + 1);
     CHECK(g.state == STATE_PLAYING);
     CHECK(g.introTimer > 0);
     CHECK(fabsf(g.ship.fuel - 50.0f) < 1.0f);
@@ -230,7 +231,48 @@ static int testMoon()
     g2.input.startPressed = true;
     g2.update();
     g2.input.startPressed = false;
-    CHECK(g2.ship.gravity == GRAVITY * moonGravity(1));
+    g2.update();
+    CHECK(g2.ship.gravity == GRAVITY * moonGravity(START_LEVEL));
+    return 0;
+}
+
+static int testGeysers()
+{
+    CHECK(moonHasGeysers(7));
+    CHECK(moonHasGeysers(15));
+    CHECK(!moonHasGeysers(1));
+    CHECK(!moonHasGeysers(8));
+
+    Geysers g;
+    Terrain t;
+    t.generate(7);
+    g.reset(7, t);
+    CHECK(g.active());
+    CHECK(g.ventCount() > 0);
+    CHECK(!g.inPlume(-50.0f, -50.0f));
+    g.reset(1, t);
+    CHECK(!g.active());
+
+    g.reset(7, t);
+    int maxAlive = 0;
+    bool sawPlume = false;
+    float vx = g.ventX(0);
+    float gy = 500.0f;
+    const std::vector<TerrainLine> &tl = t.getLines();
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (vx >= tl[i].x1 && vx <= tl[i].x2 && tl[i].x2 != tl[i].x1) {
+            float tt = (vx - tl[i].x1) / (tl[i].x2 - tl[i].x1);
+            gy = tl[i].y1 + (tl[i].y2 - tl[i].y1) * tt;
+            break;
+        }
+    }
+    for (int i = 0; i < 2000; i++) {
+        g.update(GAME_DT);
+        if (g.particlesAlive() > maxAlive) maxAlive = g.particlesAlive();
+        if (g.inPlume(vx, gy - 5.0f)) sawPlume = true;
+    }
+    CHECK(maxAlive > 0);
+    CHECK(sawPlume);
     return 0;
 }
 
@@ -250,6 +292,8 @@ int main()
     r = testStorm();
     if (r) return r;
     r = testMoon();
+    if (r) return r;
+    r = testGeysers();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

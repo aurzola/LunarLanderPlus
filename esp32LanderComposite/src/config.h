@@ -38,6 +38,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 const float DEMO_START_DELAY = 13.0f;
 const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;
+const int START_LEVEL = 1;
 const float DEMO_POWER_RATE = 0.4f;
 
 const int WIND_START_LEVEL = 4;
@@ -75,5 +76,21 @@ const float STORM_BOLT_JITTER = 48.0f;
 const float STORM_HIT_RADIUS = 70.0f;
 const float STORM_HIT_FUEL = 60.0f;
 const float STORM_CONTROL_LOSS = 1.5f;
+
+const int GEYSER_VENTS = 5;
+const float GEYSER_BURST = 3.0f;
+const float GEYSER_GAP_MIN = 3.0f;
+const float GEYSER_GAP_MAX = 9.0f;
+const int GEYSER_PARTS_PER_TICK = 1;
+const float GEYSER_PART_LIFE = 2.5f;
+const float GEYSER_PART_SPEED = 24.0f;
+const float GEYSER_PART_GRAV = 7.0f;
+const float GEYSER_PART_SPREAD = 0.6f;
+const float GEYSER_SPOUT_H = 40.0f;
+const int GEYSER_MAX_PARTS = 250;
+const float GEYSER_VENT_OFFSET = 14.0f;
+const float GEYSER_RADIUS = 8.0f;
+const float GEYSER_PLUME_H = 40.0f;
+const float GEYSER_PUSH = 0.00025f;
 
 #endif

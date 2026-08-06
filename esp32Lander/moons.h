@@ -36,4 +36,9 @@ static inline float moonGravity(int level)
     return MOONS[moonIndex(level)].gravity;
 }
 
+static inline bool moonHasGeysers(int level)
+{
+    return moonIndex(level) == 6; // ENCELADUS
+}
+
 #endif

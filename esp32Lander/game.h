@@ -6,6 +6,7 @@
 #include "terrain.h"
 #include "renderer.h"
 #include "storm.h"
+#include "geysers.h"
 #include "config.h"
 
 enum GameState {
@@ -54,6 +55,7 @@ public:
     Ship ship;
     Terrain terrain;
     Storm storm;
+    Geysers geysers;
     bool windEnabled;
     float windStrength;
     int windDir;
