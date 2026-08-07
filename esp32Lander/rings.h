@@ -5,46 +5,63 @@
 #include "terrain.h"
 #include "config.h"
 
-// Debris rings (Ganymede): two concentric rings of orbiting rock. The inner
-// ring turns slowly, the outer one faster and in the opposite direction, so
-// the gaps between rocks are never static. Each ring is a circle centered at
-// (RING_CX, RING_CY); a rock only exists (and collides) when it is above the
-// terrain silhouette at its x - the far side of the ring is hidden behind the
-// moon itself. The objective is to weave the descending ship through without
-// hitting a rock.
+// Ganymede debris bands (franjas de roca): the moon's debris is rendered as a
+// few bands of hollow rock polygons hugging the terrain silhouette (the same
+// "band" concept as Titan's fog sheets, but made of rocks). Each band sits at
+// a fixed height above the terrain and is filled with danger rocks drawn only
+// as outlines (hollow), of varying irregular shape and size. The ship must
+// weave down through both bands without touching a rock. The higher band is
+// denser (harder), the lower sparser, but both keep a guaranteed passable gap.
 class Rings {
 public:
     Rings();
 
-    void reset(int level);
+    void reset(int level, const Terrain &t);
     bool active() const { return enabled_; }
     void update(float dt);
     void draw(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const;
 
     int ringCount() const { return RING_COUNT; }
     int rocksInRing(int ringIndex) const;
-    // Rock (ringIndex, rockIndex) world center in (x, y); false if that rock
-    // is at/below the terrain surface there (hidden behind the moon), in which
-    // case it neither draws nor collides.
+    // Band rock (ringIndex, rockIndex) world center in (x, y); true while the
+    // band is active (rocks float above the terrain by design).
     bool rockVisible(const Terrain &t, int ringIndex, int rockIndex, float &x, float &y) const;
+    bool rockDanger(int ringIndex, int rockIndex) const;
 
-    // True if any visible ring rock intersects the ship circle (sx, sy, shipR).
+    // True if any danger rock intersects the ship circle (sx, sy, shipR).
     bool hitsShip(const Terrain &t, float sx, float sy, float shipR) const;
 
 private:
-    struct Ring {
-        float radius;
-        float w;       // angular speed (rad/s; negative = reverse direction)
-        float phase;
+    enum { MAX_VERTS = 8, MAX_ROCKS = 24 };
+
+    struct Rock {
+        float x;      // world x (drifts and wraps over the band)
+        float size;   // nominal world radius (collision = this value)
+        float yOff;   // fixed vertical scatter within the band
+        float rot;    // current polygon rotation
+        float spin;   // rotation speed
+        int nVerts;   // polygon vertex count
+        float vrad[MAX_VERTS]; // per-vertex radius factor
+    };
+
+    struct Band {
+        float cy;     // world-y base center of the ring
+        float drift;  // horizontal drift speed (u/s)
+        int count;    // danger rocks in this band
+        Rock rocks[MAX_ROCKS];
     };
 
     int level_;
     bool enabled_;
     float t_;
-    Ring rings_[RING_COUNT];
+    float width_;    // world width over which rocks wrap
+    Band bands_[RING_COUNT];
 
+    float rockY(const Terrain &t, int b, int i) const;
+    float bandY(int b, float x) const;
+    void tracePoly(Renderer &r, const float *px, const float *py, int n) const;
+    void drawFog(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const;
     static float terrainYAt(const Terrain &t, float x, float fallback);
-    void rockPos(int ringIndex, int rockIndex, float &x, float &y) const;
 };
 
 #endif

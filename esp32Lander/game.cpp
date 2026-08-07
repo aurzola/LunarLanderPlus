@@ -4,6 +4,10 @@
 #include "game.h"
 #include "moons.h"
 
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
+
 static const int TITLE_STAR_COUNT = 32;
 static const int titleStars[][2] = {
     { 293,199 }, { 283,19 }, { 188,90 }, { 169,29 }, { 62,94 }, { 10,20 },
@@ -50,7 +54,7 @@ Game::Game()
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
-    rings.reset(level);
+    rings.reset(level, terrain);
     twister.reset(level, terrain);
     stormHitTimer = 0;
     setZoom(false);
@@ -73,14 +77,15 @@ void Game::newGame()
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
-                  !moonHasTwister(level);
+                  !moonHasTwister(level) &&
+                  !moonHasRings(level);
     spawnWind();
     storm.reset(level);
     if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
-    rings.reset(level);
+    rings.reset(level, terrain);
     twister.reset(level, terrain);
     stormHitTimer = 0;
     lavaBurn = false;
@@ -114,14 +119,15 @@ void Game::nextLevel()
     terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
-                  !moonHasTwister(level);
+                  !moonHasTwister(level) &&
+                  !moonHasRings(level);
     spawnWind();
     storm.reset(level);
     if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
-    rings.reset(level);
+    rings.reset(level, terrain);
     twister.reset(level, terrain);
     stormHitTimer = 0;
     lavaBurn = false;
@@ -155,14 +161,15 @@ void Game::startDemo()
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
-                  !moonHasTwister(level);
+                  !moonHasTwister(level) &&
+                  !moonHasRings(level);
     spawnWind();
     storm.reset(level);
     if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
-    rings.reset(level);
+    rings.reset(level, terrain);
     twister.reset(level, terrain);
     stormHitTimer = 0;
     lavaBurn = false;
@@ -199,7 +206,7 @@ void Game::startDemo()
         geysers.reset(level, terrain);
         volcanoes.reset(level, terrain);
         atmosphere.reset(level);
-        rings.reset(level);
+        rings.reset(level, terrain);
         twister.reset(level, terrain);
     }
 
@@ -1059,7 +1066,11 @@ void Game::draw(Renderer &r)
                 r.text(250, 52, buf);
             }
 
-            if (demo) r.text(22, 62, "DEMO");
+#if defined(ARDUINO)
+            snprintf(buf, sizeof buf, "MEM %uK", (unsigned)(ESP.getFreeHeap() / 1024));
+            r.text(22, 62, buf);
+#endif
+            if (demo) r.text(22, 72, "DEMO");
             bool windShown = windEnabled;
             if (windShown) {
                 snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),

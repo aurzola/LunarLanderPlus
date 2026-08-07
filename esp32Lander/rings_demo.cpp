@@ -18,8 +18,8 @@ int main(int argc, char **argv)
     Ship s;
 
     t.generate(level);
-    rings.reset(level);
-    for (int tries = 0; tries < 100 && !rings.active(); tries++) rings.reset(level);
+    rings.reset(level, t);
+    for (int tries = 0; tries < 100 && !rings.active(); tries++) rings.reset(level, t);
     if (!rings.active()) {
         fprintf(stderr, "FAIL: rings did not activate (level %d is not Ganymede)\n", level);
         return 1;

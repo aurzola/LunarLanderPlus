@@ -569,15 +569,17 @@ static int testRings()
     Rings r;
     Terrain t;
     t.generate(4);
-    r.reset(4);
+    r.reset(4, t);
     CHECK(r.active());
     CHECK(r.ringCount() == RING_COUNT);
-    CHECK(r.rocksInRing(0) == RING_ROCKS_INNER);
-    CHECK(r.rocksInRing(1) == RING_ROCKS_OUTER);
-    r.reset(1);
+    CHECK(r.rocksInRing(0) == RING_ROCKS_HIGH);
+    CHECK(r.rocksInRing(1) == RING_ROCKS_LOW);
+    CHECK(r.rockDanger(0, 0) == true);
+    CHECK(r.rockDanger(0, RING_ROCKS_HIGH) == false);
+    r.reset(1, t);
     CHECK(!r.active());
 
-    r.reset(4);
+    r.reset(4, t);
     // Some rock must be visible above the terrain and another reachable to hit.
     float wx = 0, wy = 0;
     bool sawVisible = false;
@@ -588,7 +590,7 @@ static int testRings()
         if (sawVisible) break;
     }
     CHECK(sawVisible);
-    // Park the ship exactly on that rock -> guaranteed hit.
+    // Park the ship exactly on the first rock -> guaranteed hit.
     float rx = 0, ry = 0;
     for (int k = 0; k < RING_COUNT; k++) {
         for (int i = 0; i < r.rocksInRing(k); i++) {
@@ -596,7 +598,8 @@ static int testRings()
         }
     }
     CHECK(r.hitsShip(t, rx, ry, RING_SHIP_RADIUS));
-    // Above the highest possible rock (RING_CY-RING_RADIUS_OUTER=45) -> never hit.
+    // Far above the highest possible band (terrain top - RING_HEIGHT_HIGH) ->
+    // never hit.
     CHECK(!r.hitsShip(t, 400.0f, 10.0f, RING_SHIP_RADIUS));
 
     // Rings move over time (positions are a function of the advancing phase).

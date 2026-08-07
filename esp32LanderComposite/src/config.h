@@ -37,7 +37,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 8;   // TEMP: demo fija nivel Tritón (twister; revertir a 0 tras CRT)
+const int DEMO_LEVEL_FORCE = 4;   // TEMP: demo fija nivel Ganímedes (rings; revertir a 0 tras CRT)
 const int START_LEVEL = 8; // TEMP: primer nivel = Tritón (twister)
 const float DEMO_POWER_RATE = 0.4f;
 
@@ -133,23 +133,46 @@ const float FOG_WAVE_SPEED = 0.15f;
 // make them flicker during the approach phase. 100 clears them all.
 const int FOG_SCREEN_TOP = 100;
 
-// Ganymede debris rings: two concentric rings of orbiting rock the ship must
-// weave through while descending. The inner ring turns slowly, the outer one
-// fast (opposite direction), so the gaps are never static. Rocks only exist
-// (and collide) above the terrain silhouette - the far side is hidden by the
-// moon itself.
+// Ganymede debris bands (franjas de roca): the moon's debris is rendered as
+// two layers of rock floating above the terrain silhouette, like Jupiter's
+// rings seen edge-on. Each band hugs the terrain at a fixed height; rocks are
+// irregular polygons of various sizes drifting along the band so the gaps
+// shift, and the ship weaves down through both without touching one. The
+// higher band is denser (harder), the lower sparser, but both keep a minimum
+// passable gap (RING_GAP_MIN) so it is never impossible.
+// Ganymede debris bands (franjas de roca): the moon's debris is rendered as a
+// few bands of hollow rock polygons hugging the terrain silhouette (the same
+// "band" concept as Titan's fog sheets, but made of rocks). Each band sits at
+// a fixed height above the terrain and holds danger rocks drawn only as
+// outlines (hollow), of varying irregular shape and size. The ship weaves down
+// through both without touching a rock. Higher band is denser (harder), the
+// lower sparser, but both keep a guaranteed passable gap (RING_GAP_MIN).
 const int RING_COUNT = 2;
-const float RING_CX = 400.0f;
-const float RING_CY = 260.0f;
-const float RING_RADIUS_INNER = 130.0f;
-const float RING_RADIUS_OUTER = 215.0f;
-const int RING_ROCKS_INNER = 22;
-const int RING_ROCKS_OUTER = 32;
-const float RING_SPEED_INNER = 0.06f;   // slow ring (rad/s)
-const float RING_SPEED_OUTER = -0.30f;  // fast ring, opposite direction
-const float RING_ROCK_RADIUS = 6.0f;    // world radius of one rock (collision)
-const float RING_SHIP_RADIUS = 12.0f;   // ship collision circle radius
-const int RING_ROCK_DRAW_MIN = 1;       // min screen radius in px
+const float RING_CY_HIGH = 300.0f;   // upper band: crossed first in the normal
+                                     // approach (higher in the sky)
+const float RING_CY_LOW = 500.0f;    // lower band: near the ground, crossed
+                                     // during the zoom-in approach
+const int RING_ROCKS_HIGH = 7;       // upper band: fewer rocks (easier)
+const int RING_ROCKS_LOW = 14;       // lower band: more rocks (harder)
+const float RING_DRIFT_LOW = 4.0f;     // horizontal drift (world u/s)
+const float RING_DRIFT_HIGH = -6.0f;   // opposite direction for the upper band
+const float RING_DANGER_MIN_R = 4.0f;  // rock radius range (collides); varied so
+const float RING_DANGER_MAX_R = 11.0f; // some read near (big) / far (small)
+const float RING_Y_JITTER = 45.0f;     // vertical scatter: rocks spread up/down,
+                                       // not a single row
+const float RING_SPIN_MAX = 0.6f;      // rock rotation speed (rad/s)
+const float RING_GAP_MIN = 26.0f;      // guaranteed gap between rocks (u)
+const float RING_SHIP_RADIUS = 8.0f;   // ship collision circle radius
+// Concentric elliptical arc the rings follow (like real rings around a moon):
+// a smooth bow peaking over the moon's center, no sharp edges. Both rings
+// share the same ellipse center (concentric), only their ring radius differs.
+const float RING_ELLIPSE_CX = 400.0f;  // shared ellipse center x (world)
+const float RING_ELLIPSE_RAD = 520.0f; // semi-major axis spanning the world
+const float RING_CURVE_A = 55.0f;      // vertical bow amplitude at the center (u)
+// Denser debris fog behind the rocks so they stand out on the band (Ganymede).
+// Brightness is higher than Titan's fog (FOG_BRIGHT=32) for extra contrast.
+const float RING_FOG_HALF = 34.0f;     // band half thickness (u)
+const int RING_FOG_BRIGHT = 90;        // fog luma (Titan uses 32; denser here)
 
 // Triton nitrogen twister: a wandering vortex that sucks the ship toward its
 // base (on the ground). While captured the ship is held ON the funnel wall (a
