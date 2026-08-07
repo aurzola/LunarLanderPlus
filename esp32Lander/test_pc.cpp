@@ -572,10 +572,11 @@ static int testRings()
     r.reset(4, t);
     CHECK(r.active());
     CHECK(r.ringCount() == RING_COUNT);
-    CHECK(r.rocksInRing(0) == RING_ROCKS_HIGH);
-    CHECK(r.rocksInRing(1) == RING_ROCKS_LOW);
-    CHECK(r.rockDanger(0, 0) == true);
-    CHECK(r.rockDanger(0, RING_ROCKS_HIGH) == false);
+    CHECK(r.rocksInRing(0) == RING_SMALL_HIGH + RING_DANGER_HIGH);
+    CHECK(r.rocksInRing(1) == RING_SMALL_LOW + RING_DANGER_LOW);
+    CHECK(r.rockDanger(0, 0) == false);
+    CHECK(r.rockDanger(0, RING_SMALL_HIGH) == true);
+    CHECK(r.rockDanger(0, RING_SMALL_HIGH + RING_DANGER_HIGH) == false);
     r.reset(1, t);
     CHECK(!r.active());
 
@@ -590,11 +591,11 @@ static int testRings()
         if (sawVisible) break;
     }
     CHECK(sawVisible);
-    // Park the ship exactly on the first rock -> guaranteed hit.
+    // Park the ship exactly on the first DANGER rock -> guaranteed hit.
     float rx = 0, ry = 0;
-    for (int k = 0; k < RING_COUNT; k++) {
+    for (int k = 0; k < RING_COUNT && ry == 0.0f && rx == 0.0f; k++) {
         for (int i = 0; i < r.rocksInRing(k); i++) {
-            if (r.rockVisible(t, k, i, rx, ry)) break;
+            if (r.rockVisible(t, k, i, rx, ry) && r.rockDanger(k, i)) break;
         }
     }
     CHECK(r.hitsShip(t, rx, ry, RING_SHIP_RADIUS));
@@ -616,9 +617,18 @@ static int testRings()
     CHECK(vis1);
     CHECK(p0x != p1x || p0y != p1y);
 
-    // Game integration: advancing to a Ganymede level activates the rings.
+    // Game integration: at a Ganymede level the rings are active; a nearby
+    // non-Ganymede level (e.g. LUNA level 1) keeps them off.
     Game g;
     g.newGame();
+    bool started = moonHasRings(g.level);
+    CHECK(g.rings.active() == started);
+    int guard = 0;
+    while (moonHasRings(g.level) && guard < 8) { g.nextLevel(); guard++; }
+    if (moonHasRings(g.level)) { // newGame may have started on Ganymede; step on
+        for (int i = 0; i < 8 && moonHasRings(g.level); i++) g.nextLevel();
+    }
+    CHECK(!moonHasRings(g.level));
     CHECK(!g.rings.active());
     for (int i = 0; i < 8 && !moonHasRings(g.level); i++) g.nextLevel();
     CHECK(moonHasRings(g.level));

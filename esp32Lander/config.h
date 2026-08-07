@@ -38,7 +38,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 4;   // TEMP: demo fija nivel Ganímedes (rings; revertir a 0 tras CRT)
-const int START_LEVEL = 8; // TEMP: primer nivel = Tritón (twister)
+const int START_LEVEL = 4; // TEMP: primer nivel = Ganímedes (anillos)
 const float DEMO_POWER_RATE = 0.4f;
 
 const int WIND_START_LEVEL = 4;
@@ -148,21 +148,27 @@ const int FOG_SCREEN_TOP = 100;
 // through both without touching a rock. Higher band is denser (harder), the
 // lower sparser, but both keep a guaranteed passable gap (RING_GAP_MIN).
 const int RING_COUNT = 2;
-const float RING_CY_HIGH = 300.0f;   // upper band: crossed first in the normal
-                                     // approach (higher in the sky)
-const float RING_CY_LOW = 500.0f;    // lower band: near the ground, crossed
-                                     // during the zoom-in approach
-const int RING_ROCKS_HIGH = 7;       // upper band: fewer rocks (easier)
-const int RING_ROCKS_LOW = 14;       // lower band: more rocks (harder)
+const float RING_CY_HIGH = 360.0f;   // upper band: crossed first in the normal
+                                     // (zoom-out) approach, higher in the sky
+const float RING_CY_LOW = 560.0f;    // lower band: concentric ellipse, lower
+                                     // (crossed in zoom-in), kept above terrain
+const int RING_SMALL_HIGH = 24;      // decorative small rocks (no collision)
+const int RING_SMALL_LOW = 30;
+const int RING_DANGER_HIGH = 8;      // big dangerous rocks (collide)
+const int RING_DANGER_LOW = 16;      // more, so the lower band is harder
 const float RING_DRIFT_LOW = 4.0f;     // horizontal drift (world u/s)
 const float RING_DRIFT_HIGH = -6.0f;   // opposite direction for the upper band
-const float RING_DANGER_MIN_R = 4.0f;  // rock radius range (collides); varied so
-const float RING_DANGER_MAX_R = 11.0f; // some read near (big) / far (small)
+const float RING_SMALL_MIN_R = 1.2f;  // small rock radius range (never collide)
+const float RING_SMALL_MAX_R = 3.0f;
+const float RING_DANGER_MIN_R = 7.0f; // big rock radius range (collides)
+const float RING_DANGER_MAX_R = 13.0f;
 const float RING_Y_JITTER = 45.0f;     // vertical scatter: rocks spread up/down,
                                        // not a single row
 const float RING_SPIN_MAX = 0.6f;      // rock rotation speed (rad/s)
-const float RING_GAP_MIN = 26.0f;      // guaranteed gap between rocks (u)
+const float RING_GAP_MIN = 22.0f;      // gap between danger rocks (u); grouped so
+                                       // they are tighter but still passable
 const float RING_SHIP_RADIUS = 8.0f;   // ship collision circle radius
+const float RING_ROCK_HIT = 0.7f;      // danger collision radius = RING_ROCK_HIT*size
 // Concentric elliptical arc the rings follow (like real rings around a moon):
 // a smooth bow peaking over the moon's center, no sharp edges. Both rings
 // share the same ellipse center (concentric), only their ring radius differs.

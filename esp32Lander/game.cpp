@@ -1097,12 +1097,23 @@ void Game::draw(Renderer &r)
             if (lavaBurn) {
                 centerText(90, "YOU BURNED");
                 centerText(102, "LAVA DESTROYED THE SHIP");
+            } else if (ringHit) {
+                if (zoomedIn) {
+                    // In zoom-in place the two lines below the lower band so
+                    // they read clearly instead of overlapping the debris.
+                    float bandSy = rings.lowerBandY(terrain, ship.posX) * viewScale + viewY;
+                    float yTxt = bandSy + 18.0f;
+                    if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
+                    if (yTxt < 20.0f) yTxt = 20.0f;
+                    centerText(yTxt, "YOU CRASHED");
+                    centerText(yTxt + 12, "STRUCK BY ORBITAL DEBRIS");
+                } else {
+                    centerText(108, "YOU CRASHED");
+                    centerText(120, "STRUCK BY ORBITAL DEBRIS");
+                }
             } else if (twisterCrash) {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "TWISTER SMASHED THE SHIP");
-            } else if (ringHit) {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "STRUCK BY ORBITAL DEBRIS");
             } else {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "FUEL TANKS DESTROYED");

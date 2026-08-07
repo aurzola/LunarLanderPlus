@@ -28,11 +28,15 @@ public:
     bool rockVisible(const Terrain &t, int ringIndex, int rockIndex, float &x, float &y) const;
     bool rockDanger(int ringIndex, int rockIndex) const;
 
+    // World-y of the lower band's center above world-x (for placing crash text
+    // below it during zoom-in).
+    float lowerBandY(const Terrain &t, float x) const { return bandY(t, 1, x); }
+
     // True if any danger rock intersects the ship circle (sx, sy, shipR).
     bool hitsShip(const Terrain &t, float sx, float sy, float shipR) const;
 
 private:
-    enum { MAX_VERTS = 8, MAX_ROCKS = 24 };
+    enum { MAX_VERTS = 8, MAX_ROCKS = 60 };
 
     struct Rock {
         float x;      // world x (drifts and wraps over the band)
@@ -47,7 +51,8 @@ private:
     struct Band {
         float cy;     // world-y base center of the ring
         float drift;  // horizontal drift speed (u/s)
-        int count;    // danger rocks in this band
+        int smallCount; // small decorative rocks (no collision)
+        int dangerCount; // big dangerous rocks (collide)
         Rock rocks[MAX_ROCKS];
     };
 
@@ -58,8 +63,10 @@ private:
     Band bands_[RING_COUNT];
 
     float rockY(const Terrain &t, int b, int i) const;
-    float bandY(int b, float x) const;
+    float bandY(const Terrain &t, int b, float x) const;
+    float bandCy(int b) const { return bands_[b].cy; }
     void tracePoly(Renderer &r, const float *px, const float *py, int n) const;
+    void fillDanger(Renderer &r, const float *px, const float *py, int n) const;
     void drawFog(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const;
     static float terrainYAt(const Terrain &t, float x, float fallback);
 };
