@@ -37,7 +37,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 0;   // demo elige nivel al azar 1..DEMO_MAX_LEVEL
+const int DEMO_LEVEL_FORCE = 6;   // TEMP: demo fija nivel Titán (revertir a 0 tras CRT)
 const int START_LEVEL = 1;
 const float DEMO_POWER_RATE = 0.4f;
 
@@ -108,5 +108,28 @@ const int VOLCANO_MAX_PARTS = 200;
 const float VOLCANO_MIN_DROP = 14.0f;
 const float VOLCANO_PEAK_R = 20.0f;
 const float VOLCANO_SAFE_STRIP = 8.0f;
+const int VOLCANO_MAX_VISIBLE = 3;
+
+// Titan (thick methane atmosphere): extra horizontal drag and a gentle
+// downdraft per tick, plus fog bands that hide the ship while crossing them.
+const float ATMOS_DRAG = 0.9992f;
+const float ATMOS_DOWN = 0.00008f;
+const int FOG_BAND_COUNT = 3;
+const float FOG_BAND_HALF_MIN = 35.0f;
+const float FOG_BAND_HALF_MAX = 50.0f;
+const float FOG_BAND_START = 185.0f;
+const float FOG_BAND_GAP_MIN = 70.0f;
+const float FOG_BRIGHT = 32.0f;
+// Fog is alive so the blind zones can't be memorized: each band drifts
+// vertically and its edges undulate (variable thickness across x and time).
+const float FOG_DRIFT_A = 20.0f;
+const float FOG_DRIFT_SPEED_MIN = 0.12f;
+const float FOG_DRIFT_SPEED_MAX = 0.20f;
+const float FOG_WAVE_A = 0.35f;
+const float FOG_WAVE_K = 0.02f;
+const float FOG_WAVE_SPEED = 0.15f;
+// Fog is never drawn above this screen row so it can't cover the HUD /
+// minimap / indicators and make them flicker (bad during the approach phase).
+const int FOG_SCREEN_TOP = 78;
 
 #endif

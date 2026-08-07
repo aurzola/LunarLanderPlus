@@ -16,6 +16,7 @@ public:
     void flush() override;
     int width() const override { return w_; }
     int height() const override { return h_; }
+    const uint8_t *data() const { return fb_.data(); }
 
 private:
     int w_;

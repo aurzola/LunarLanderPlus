@@ -46,4 +46,9 @@ static inline bool moonHasVolcanoes(int level)
     return moonIndex(level) == 1; // IO
 }
 
+static inline bool moonHasTitan(int level)
+{
+    return moonIndex(level) == 5; // TITAN
+}
+
 #endif

@@ -20,6 +20,11 @@ public:
     void draw(Renderer &r, float viewX, float viewY, float viewScale) const;
     int particlesAlive() const { return (int)parts_.size(); }
     int volcanoCount() const { return (int)volc_.size(); }
+    float volcanoX(int i) const { return volc_[i].x; }
+
+    // Number of volcanoes shown for a given viewport (viewX, viewScale),
+    // capped at VOLCANO_MAX_VISIBLE.
+    int countInView(float viewX, float viewScale) const;
 
     // True if the ship footprint [left,right] overlaps lava poured onto a
     // landing pad. Only the near portion of a pad can be covered (capped), so
@@ -50,6 +55,7 @@ private:
     std::vector<LavaRange> lava_;
 
     static float terrainYAt(const Terrain &t, float x, float fallback);
+    int pickVisible(float viewX, float viewScale, int *out) const;
     void buildFlow(const Terrain &t, Volcano &v, float w);
     void emit(const Volcano &v);
     void computeLava(const Terrain &t);

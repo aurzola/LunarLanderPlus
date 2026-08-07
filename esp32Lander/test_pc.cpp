@@ -10,6 +10,7 @@
 #include "moons.h"
 #include "geysers.h"
 #include "volcanoes.h"
+#include "renderer_pc.h"
 
 static int checks = 0;
 
@@ -301,6 +302,16 @@ static int testVolcanoes()
         if (v.particlesAlive() > maxAlive) maxAlive = v.particlesAlive();
     }
     CHECK(maxAlive > 0);
+
+    const float vs = SCREEN_H / 700.0f;
+    CHECK(v.countInView(0.0f, vs) <= VOLCANO_MAX_VISIBLE);
+    CHECK(v.countInView(-200.0f, vs) <= VOLCANO_MAX_VISIBLE);
+    for (float vx = -300.0f; vx <= 1200.0f; vx += 37.0f) {
+        CHECK(v.countInView(vx, vs) <= VOLCANO_MAX_VISIBLE);
+        CHECK(v.countInView(vx, vs * 5.0f) <= VOLCANO_MAX_VISIBLE);
+    }
+    float zx = v.volcanoX(0);
+    CHECK(v.countInView(160.0f - zx * vs * 5.0f, vs * 5.0f) >= 1);
     return 0;
 }
 
@@ -450,6 +461,99 @@ static int testVolcanoLava()
     return 0;
 }
 
+static int testAtmosphere()
+{
+    CHECK(moonHasTitan(6));
+    CHECK(moonHasTitan(14));
+    CHECK(moonHasTitan(30));
+    CHECK(!moonHasTitan(1));
+    CHECK(!moonHasTitan(5));
+
+    Atmosphere a;
+    a.reset(6);
+    CHECK(a.active());
+    CHECK(a.bandCount() == FOG_BAND_COUNT);
+    // At the band centers the ship is always hidden (drift < min half).
+    CHECK(a.hidesShip(200.0f, a.bandCenter(0)));
+    CHECK(a.hidesShip(500.0f, a.bandCenter(1)));
+    // Far from every band it is never hidden.
+    CHECK(!a.hidesShip(400.0f, a.bandCenter(0) + 250.0f));
+    CHECK(!a.hidesShip(400.0f, 50.0f));
+    // The blind zones move: sampling a grid, both hidden and clear points
+    // exist, and the pattern is not the same after time has passed.
+    bool sawClear = false;
+    for (float y = 50.0f; y < 700.0f; y += 4.0f) {
+        if (!a.hidesShip(400.0f, y)) sawClear = true;
+    }
+    CHECK(sawClear);
+    int hidT0 = 0;
+    for (float x = 0.0f; x < 900.0f; x += 30.0f) {
+        for (float y = 180.0f; y < 500.0f; y += 30.0f) {
+            if (a.hidesShip(x, y)) hidT0++;
+        }
+    }
+    for (int i = 0; i < 2000; i++) a.update(GAME_DT);
+    int hidT1 = 0;
+    for (float x = 0.0f; x < 900.0f; x += 30.0f) {
+        for (float y = 180.0f; y < 500.0f; y += 30.0f) {
+            if (a.hidesShip(x, y)) hidT1++;
+        }
+    }
+    CHECK(hidT0 > 0);
+    CHECK(hidT0 != hidT1);
+    a.reset(1);
+    CHECK(!a.active());
+    CHECK(!a.hidesShip(200.0f, 250.0f));
+
+    a.reset(6);
+    for (int i = 0; i < 3000; i++) a.update(GAME_DT);
+    CHECK(a.active());
+
+    // The fog and the terrain halo must never be drawn over the HUD strip
+    // (top of the screen): with a zoomed approach camera that pushes a band
+    // across the top, the whole strip above FOG_SCREEN_TOP stays black.
+    {
+        Terrain t;
+        t.generate(6);
+        float vs = SCREEN_H / 700.0f * 5.0f;
+        float vx = 400.0f;
+        float vy = 100.0f - (FOG_BAND_START + FOG_BAND_HALF_MAX) * vs;
+        RendererPC fr((int)SCREEN_W, (int)SCREEN_H, "");
+        fr.clear();
+        a.reset(6);
+        a.drawSky(fr, t, vx, vy, vs);
+        const uint8_t *fb = fr.data();
+        for (int y = 0; y < FOG_SCREEN_TOP; y++) {
+            for (int x = 0; x < 320; x++) {
+                if (fb[y * 320 + x] != 0) {
+                    printf("FAIL fog/halo above HUD at (%d,%d) luma %d\n",
+                           x, y, (int)fb[y * 320 + x]);
+                    return 1;
+                }
+            }
+        }
+        // sanity: the band really overlapped the top strip (clamp was active)
+        bool clampActive = false;
+        for (int x = 0; x < 320; x += 2) {
+            if (fb[FOG_SCREEN_TOP * 320 + x] != 0) {
+                clampActive = true;
+                break;
+            }
+        }
+        CHECK(clampActive);
+    }
+
+    Game g;
+    g.newGame();
+    CHECK(!g.atmosphere.active());
+    for (int i = 0; i < 5; i++) g.nextLevel();
+    CHECK(g.level == 6);
+    CHECK(g.atmosphere.active());
+    CHECK(!g.storm.active());
+    g.atmosphere.update(GAME_DT);
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -472,6 +576,8 @@ int main()
     r = testVolcanoes();
     if (r) return r;
     r = testVolcanoLava();
+    if (r) return r;
+    r = testAtmosphere();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

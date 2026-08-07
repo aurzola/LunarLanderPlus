@@ -15,6 +15,7 @@ demo_render
 storm_demo
 geyser_demo
 volcano_demo
+titan_demo
 
 # Generated output
 frames/

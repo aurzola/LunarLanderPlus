@@ -45,8 +45,10 @@ Game::Game()
     input.powerLevel = 0;
     terrain.init();
     storm.reset(level);
+    if (moonHasTitan(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -70,8 +72,10 @@ void Game::newGame()
                   (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
+    if (moonHasTitan(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
     stormHitTimer = 0;
     lavaBurn = false;
 }
@@ -103,8 +107,10 @@ void Game::nextLevel()
                   (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
+    if (moonHasTitan(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
     stormHitTimer = 0;
     lavaBurn = false;
     state = STATE_PLAYING;
@@ -138,8 +144,10 @@ void Game::startDemo()
                   (rand() % 100) < WIND_CHANCE_PERCENT;
     spawnWind();
     storm.reset(level);
+    if (moonHasTitan(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
     stormHitTimer = 0;
     lavaBurn = false;
     ship.reset(110, 150);
@@ -170,8 +178,10 @@ void Game::startDemo()
         if (lavaPick >= 0 || DEMO_LEVEL_FORCE <= 0) break;
         terrain.generate(level);
         storm.reset(level);
+        if (moonHasTitan(level)) storm.setEnabled(false);
         geysers.reset(level, terrain);
         volcanoes.reset(level, terrain);
+        atmosphere.reset(level);
     }
 
     if (lavaPick >= 0) {
@@ -565,6 +575,7 @@ void Game::update()
     if (state != STATE_WAITING) storm.update(dt, terrain);
     if (state != STATE_WAITING) geysers.update(dt);
     if (state != STATE_WAITING) volcanoes.update(dt);
+    if (state != STATE_WAITING) atmosphere.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -629,6 +640,11 @@ void Game::update()
         ship.update();
         if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
 
+        if (atmosphere.active()) {
+            ship.velX *= ATMOS_DRAG;
+            ship.velY += ATMOS_DOWN;
+        }
+
         if (ship.posX > terrain.getWidth() + 10)
             ship.posX = -10;
         else if (ship.posX < -10)
@@ -689,6 +705,7 @@ void Game::draw(Renderer &r)
     r.clear();
 
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
+    if (state != STATE_WAITING) atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
 
     int warnY = 62, fastY = 72;
 
@@ -840,7 +857,8 @@ void Game::draw(Renderer &r)
         geysers.draw(r, viewX, viewY, viewScale);
         volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
-        if (!lavaBurn) ship.draw(r, viewX, viewY, viewScale);
+        bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
+        if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
         storm.drawBolts(r, viewX, viewY, viewScale);
 
         if (lavaBurn) {

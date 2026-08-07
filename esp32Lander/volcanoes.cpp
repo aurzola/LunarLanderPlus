@@ -337,8 +337,15 @@ void Volcanoes::draw(Renderer &r, float viewX, float viewY, float viewScale) con
 {
     if (!enabled_) return;
 
-    for (int i = 0; i < (int)volc_.size(); i++) {
-        const Volcano &v = volc_[i];
+    // Show at most VOLCANO_MAX_VISIBLE volcanoes per viewport: cull the ones
+    // fully off screen (with margin for the lava arms and fireballs) and, if
+    // several remain in view, keep those nearest the screen center (the
+    // player's area of interest).
+    int shown[VOLCANO_MAX_VISIBLE];
+    int n = pickVisible(viewX, viewScale, shown);
+
+    for (int k = 0; k < n; k++) {
+        const Volcano &v = volc_[shown[k]];
 
         float pulse = 0.72f + 0.28f * sinf(t_ * 2.6f + v.phase);
 
@@ -402,4 +409,37 @@ void Volcanoes::draw(Renderer &r, float viewX, float viewY, float viewScale) con
         r.pixelShade((float)bx, (float)(by - 1), b / 2);
         r.pixelShade((float)bx, (float)(by + 1), b / 2);
     }
+}
+
+int Volcanoes::pickVisible(float viewX, float viewScale, int *out) const
+{
+    const int margin = (int)(80.0f * viewScale);
+    const int cx = (int)(SCREEN_W * 0.5f);
+    int dist[VOLCANO_MAX_VISIBLE];
+    int n = 0;
+    for (int i = 0; i < (int)volc_.size(); i++) {
+        int sx = (int)roundf(volc_[i].x * viewScale + viewX);
+        if (sx < -margin || sx > (int)SCREEN_W + margin) continue;
+        int d = sx < cx ? cx - sx : sx - cx;
+        if (n < VOLCANO_MAX_VISIBLE) {
+            out[n] = i;
+            dist[n] = d;
+            n++;
+        } else {
+            int worst = 0;
+            for (int k = 1; k < n; k++) if (dist[k] > dist[worst]) worst = k;
+            if (d < dist[worst]) {
+                out[worst] = i;
+                dist[worst] = d;
+            }
+        }
+    }
+    return n;
+}
+
+int Volcanoes::countInView(float viewX, float viewScale) const
+{
+    if (!enabled_) return 0;
+    int shown[VOLCANO_MAX_VISIBLE];
+    return pickVisible(viewX, viewScale, shown);
 }

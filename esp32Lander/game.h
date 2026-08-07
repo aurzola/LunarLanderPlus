@@ -8,6 +8,7 @@
 #include "storm.h"
 #include "geysers.h"
 #include "volcanoes.h"
+#include "atmosphere.h"
 #include "config.h"
 
 enum GameState {
@@ -58,11 +59,11 @@ public:
     Storm storm;
     Geysers geysers;
     Volcanoes volcanoes;
+    Atmosphere atmosphere;
     bool windEnabled;
     float windStrength;
     int windDir;
     float landingProximity() const;
-    // DEBUG temporary
     bool lavaBurnGet() const { return lavaBurn; }
 
 private:
