@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 
         r.clear();
         t.draw(r, viewX, viewY, viewScale, 0);
-        tw.draw(r, t, viewX, viewY, viewScale);
+        tw.draw(r, t, viewX, viewY, viewScale, false);
         if (!smashed) s.draw(r, viewX, viewY, viewScale);
         if (i % 5 == 0 || i == frames - 1) r.flush();
 

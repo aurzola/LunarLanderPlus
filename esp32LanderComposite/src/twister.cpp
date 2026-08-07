@@ -223,7 +223,8 @@ bool Twister::apply(Ship &s, const Terrain &t, float stickDeg)
 }
 
 void Twister::draw(Renderer &r, const Terrain &t,
-                   float viewX, float viewY, float viewScale) const
+                   float viewX, float viewY, float viewScale,
+                   bool zoomedIn) const
 {
     if (!enabled_) return;
 
@@ -237,60 +238,113 @@ void Twister::draw(Renderer &r, const Terrain &t,
     if (sx1 < -60.0f || sx0 > SCREEN_W + 60.0f) return;
     if (syBot < -60.0f || syTop > SCREEN_H + 60.0f) return;
 
-    float sway = sinf(t_ * TWISTER_SWAY_SPEED + phase_) * TWISTER_SWAY_AMP;
+    const int M = 220;
+    const int DIR = (swirl_ < 0) ? -1 : 1;
+    const float TAU = 6.2831853f;
 
-    // Original funnel: oscillating cone (base TWISTER_BASE_HALF -> top
-    // TWISTER_TOP_HALF), sinusoidal sway growing upward plus a micro-sway;
-    // horizontal dust bands across alternate rows give the swirling texture.
-    for (float wy = gy; wy >= topY; wy -= TWISTER_BAND_STEP) {
-        float tt = (gy - wy) / TWISTER_HEIGHT; // 0 at base, 1 at top
-        float halfW = TWISTER_BASE_HALF +
-                      (TWISTER_TOP_HALF - TWISTER_BASE_HALF) * tt;
-        float cxs = cx_ + sway * tt +
-                    sinf(t_ * TWISTER_SWIRL_SPEED * 0.7f + tt * 3.0f + phase_) *
-                    TWISTER_SWAY_AMP * 0.5f * tt;
-        float sy = wy * viewScale + viewY;
-        if (sy < -30.0f || sy > SCREEN_H + 30.0f) continue;
+    // Pseudo-random in [0,1], deterministic per frame from an integer seed and
+    // the animated phase, so the irregularity is stable but drifts over time.
+    auto prand = [&](int k) -> float {
+        float x = sinf((float)(k * 127 + 311) + phase_ * 3.0f) * 43758.5453f;
+        return x - (float)(int)x;
+    };
 
-        float cxx = cxs * viewScale + viewX;
-        int half = (int)ceilf(halfW * viewScale);
-        if (half < 1) half = 1;
+    auto axisX = [&](float tt) -> float {
+        return cx_ + sinf(t_ * TWISTER_SWAY_SPEED + phase_ + tt * 1.7f) *
+                     TWISTER_SWAY_AMP * (0.4f + 0.6f * tt);
+    };
+    float rotBase = t_ * 2.6f * (float)DIR;
 
-        // Continuous horizontal dust lines across each funnel row: no dots or
-        // bright edges on the extremes, just clean horizontal lines whose
-        // length grows with the cone (short at the ground -> long at the top).
-        // A gentle along-row shading hints the swirling spiral.
-        float rot = t_ * TWISTER_SWIRL_SPEED + tt * 4.0f + phase_;
-        for (int xx = -half; xx <= half; xx++) {
-            int b = (int)(TWISTER_BAND_BRIGHT +
-                          TWISTER_BAND_SWIRL * sinf(rot + (float)xx * 0.25f));
-            if (b > (int)TWISTER_BAND_MAX) b = (int)TWISTER_BAND_MAX;
-            r.pixelShade(cxx + (float)xx, sy, b);
+    auto shadeSeg = [&](float x0, float y0, float x1, float y1, int b) {
+        float dx = x1 - x0, dy = y1 - y0;
+        float L = sqrtf(dx * dx + dy * dy);
+        int n = (int)ceilf(L);
+        if (n < 1) n = 1;
+        for (int k = 0; k <= n; k++)
+            r.pixelShade(x0 + dx * (float)k / (float)n,
+                         y0 + dy * (float)k / (float)n, b);
+    };
+
+    int coilCount = zoomedIn ? 3 : 2;       // third spiral only in zoom-in phase
+    int turns = zoomedIn ? 5 : 7;           // fewer turns in zoom so the 3 coils separate
+
+    // Thin pig-tail / coil-spring: helical wires that coil down and taper to a
+    // point near the ground. Wide at the top, tightening toward a thin tail at
+    // the base. Spirals winding in parallel, broken at irregular gaps,
+    // brightness fades toward the back of the coil so the 3D spin reads. The
+    // third spiral (in zoom) is offset in phase for a denser, tied wind.
+    for (int w = 0; w < coilCount; w++) {
+        float aBase = rotBase + (float)w * (TAU / (float)coilCount);
+        float px = 0.0f, py = 0.0f;
+        bool open = false;
+        for (int i = 0; i <= M; i++) {
+            float tt = (float)i / (float)M;
+            float ang = aBase + (float)DIR * tt * turns * TAU;
+            float r = 4.0f + 30.0f * tt;            // thin tail -> wide top
+            if (r < 1.0f) r = 1.0f;
+            float jit = (prand(i + w * 17) - 0.5f) * 2.0f;
+            float wx = axisX(tt) + cosf(ang) * r + jit;
+            float wyy = gy - tt * TWISTER_HEIGHT;
+            float sx = wx * viewScale + viewX;
+            float sy = wyy * viewScale + viewY;
+            if (prand(i + 300 + w * 29) > 0.78f) {       // irregular gap
+                open = false;
+                continue;
+            }
+            // Spiral shading: front of the coil bright, back dim.
+            float front = 0.5f + 0.5f * cosf(ang);
+            int b = (int)(70.0f + 165.0f * front * (0.4f + 0.6f * prand(i + 400 + w * 11)));
+            if (b > 235) b = 235;
+            if (b < 40) b = 40;
+            if (open) shadeSeg(px, py, sx, sy, b);
+            // Slightly thicker stroke: one extra dim pixel beside the line.
+            if (open) shadeSeg(px + 1.0f, py, sx + 1.0f, sy, b * 2 / 3);
+            px = sx; py = sy; open = true;
         }
     }
 
-    // Swirling dust cloud at the base (thin tip).
-    for (int k = 0; k < 6; k++) {
-        float ang = t_ * TWISTER_SWIRL_SPEED + phase_ + (float)k * 1.0472f;
-        float rr = TWISTER_BASE_HALF + (float)k * 1.6f;
-        float px = cx_ + cosf(ang) * rr * 1.6f;
-        float py = gy - 1.0f + fabsf(sinf(ang)) * 2.5f;
-        float b = 120.0f + 40.0f * (float)sinf(t_ * 6.0f + (float)k);
-        if (b > 160) b = 160;
-        r.pixelShade(px * viewScale + viewX, py * viewScale + viewY, b);
+    // Sparse glow points near the top lip to hint where the coil starts.
+    {
+        float ttl = 0.96f;
+        float cyL = (gy - ttl * TWISTER_HEIGHT) * viewScale + viewY;
+        float cxL = axisX(ttl) * viewScale + viewX;
+        float rt = (4.0f + 30.0f * ttl) * viewScale;
+        for (int k = 0; k < 14; k++) {
+            if (prand(k + 700) < 0.4f) continue;
+            float a = rotBase * 0.3f + (float)k / 14.0f * TAU;
+            int b = 140 + (int)(90.0f * prand(k + 800));
+            if (b > 240) b = 240;
+            r.pixelShade(cxL + cosf(a) * rt, cyL + sinf(a) * rt * 0.4f, b);
+        }
     }
 
-    // Debris orbiting on the funnel wall: makes the circular swirl visible.
-    for (int k = 0; k < TWISTER_ORBIT_COUNT; k++) {
-        float tt = 0.1f + (float)k * (0.9f / (float)(TWISTER_ORBIT_COUNT - 1));
-        float halfW = TWISTER_BASE_HALF +
-                      (TWISTER_TOP_HALF - TWISTER_BASE_HALF) * tt;
-        float ang = t_ * TWISTER_SWIRL_SPEED * (1.0f + 0.3f * tt) +
-                    phase_ + (float)k * 0.8f;
-        float px = cx_ + cosf(ang) * (halfW + 3.0f);
-        float py = gy - tt * TWISTER_HEIGHT + sinf(ang * 1.7f) * 3.0f;
-        int b = 120 + (int)(110.0f * (0.5f + 0.5f * sinf(ang * 2.0f)));
-        if (b > 230) b = 230;
-        r.pixelShade(px * viewScale + viewX, py * viewScale + viewY, b);
+    // Rotating swirl dots at a few heights to cue the spin direction.
+    for (int z = 0; z < 3; z++) {
+        float tt = 0.15f + 0.35f * (float)z;
+        float rw = (4.0f + 30.0f * tt);
+        float syy = (gy - tt * TWISTER_HEIGHT) * viewScale + viewY;
+        for (int k = 0; k < 6; k++) {
+            if (prand(k + z * 13 + 900) < 0.3f) continue;
+            float ang = rotBase * 1.8f + (float)k * 1.0472f + phase_;
+            float wx = axisX(tt) + cosf(ang) * rw;
+            int b = 120 + (int)(110.0f * prand(k + 1000));
+            if (b > 240) b = 240;
+            r.pixelShade(wx * viewScale + viewX, syy, b);
+        }
+    }
+
+    // Small irregular dust skirt at the thin tail base.
+    {
+        float syy = (gy - 1.0f) * viewScale + viewY;
+        float cxL = axisX(0.0f) * viewScale + viewX;
+        for (int k = 0; k < 14; k++) {
+            if (prand(k + 1100) < 0.3f) continue;
+            float a = rotBase + phase_ + (float)k * 0.45f;
+            float ex = cosf(a) * 6.0f * viewScale * 1.4f;
+            float ey = sinf(a) * 2.0f * viewScale;
+            int b = 95 + (int)(105.0f * prand(k + 1200));
+            if (b > 205) b = 205;
+            r.pixelShade(cxL + ex, syy + ey, b);
+        }
     }
 }

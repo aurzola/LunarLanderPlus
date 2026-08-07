@@ -31,7 +31,8 @@ public:
     float strength() const { return strength_; }
 
     void draw(Renderer &r, const Terrain &t,
-              float viewX, float viewY, float viewScale) const;
+              float viewX, float viewY, float viewScale,
+              bool zoomedIn) const;
 
 private:
     int level_;

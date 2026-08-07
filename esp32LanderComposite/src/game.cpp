@@ -914,7 +914,7 @@ void Game::draw(Renderer &r)
         volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
         rings.draw(r, terrain, viewX, viewY, viewScale);
-        twister.draw(r, terrain, viewX, viewY, viewScale);
+        twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
         if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
         storm.drawBolts(r, viewX, viewY, viewScale);
