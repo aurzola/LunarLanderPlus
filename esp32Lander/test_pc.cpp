@@ -479,8 +479,9 @@ static int testAtmosphere()
     // At the band centers the ship is always hidden (drift < min half).
     CHECK(a.hidesShip(200.0f, a.bandCenter(0)));
     CHECK(a.hidesShip(500.0f, a.bandCenter(1)));
-    // Far from every band it is never hidden.
-    CHECK(!a.hidesShip(400.0f, a.bandCenter(0) + 250.0f));
+    // Far from every band it is never hidden (well below the lowest band and
+    // well above the highest).
+    CHECK(!a.hidesShip(400.0f, 900.0f));
     CHECK(!a.hidesShip(400.0f, 50.0f));
     // The blind zones move: sampling a grid, both hidden and clear points
     // exist, and the pattern is not the same after time has passed.
@@ -520,7 +521,7 @@ static int testAtmosphere()
         t.generate(6);
         float vs = SCREEN_H / 700.0f * 5.0f;
         float vx = 400.0f;
-        float vy = 100.0f - (FOG_BAND_START + FOG_BAND_HALF_MAX) * vs;
+        float vy = 100.0f - (FOG_BAND_START + FOG_BAND_HALF) * vs;
         RendererPC fr((int)SCREEN_W, (int)SCREEN_H, "");
         fr.clear();
         a.reset(6);

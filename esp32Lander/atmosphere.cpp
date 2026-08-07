@@ -17,12 +17,10 @@ Atmosphere::Atmosphere()
     : level_(1), enabled_(false), t_(0.0f)
 {
     for (int i = 0; i < FOG_BAND_COUNT; i++) {
-        bands_[i].cy = FOG_BAND_START + i * 120.0f;
-        bands_[i].half = FOG_BAND_HALF_MIN;
+        bands_[i].cy = FOG_BAND_START + i * (FOG_BAND_GAP_MIN + 80.0f);
+        bands_[i].half = FOG_BAND_HALF;
         bands_[i].driftSpeed = FOG_DRIFT_SPEED_MIN;
         bands_[i].driftPhase = 0.0f;
-        bands_[i].waveSpeed = FOG_WAVE_SPEED;
-        bands_[i].wavePhase = 0.0f;
     }
 }
 
@@ -44,21 +42,14 @@ void Atmosphere::reset(int level)
     level_ = level;
     enabled_ = moonHasTitan(level);
     t_ = 0.0f;
-    // Spread the fog bands along the descent corridor (ship spawns at ~y=150
-    // and descends to the pads), so every flight crosses at least one blind
-    // zone. Each band gets its own drift/undulation so the pattern is not
-    // memorizable.
     float y = FOG_BAND_START;
     for (int i = 0; i < FOG_BAND_COUNT; i++) {
-        bands_[i].half = FOG_BAND_HALF_MIN +
-                         randf01() * (FOG_BAND_HALF_MAX - FOG_BAND_HALF_MIN);
-        bands_[i].cy = y + bands_[i].half;
+        bands_[i].half = FOG_BAND_HALF;
+        bands_[i].cy = y;
         bands_[i].driftSpeed = FOG_DRIFT_SPEED_MIN +
                                randf01() * (FOG_DRIFT_SPEED_MAX - FOG_DRIFT_SPEED_MIN);
         bands_[i].driftPhase = randf01() * 6.2832f;
-        bands_[i].waveSpeed = FOG_WAVE_SPEED * (0.5f + randf01());
-        bands_[i].wavePhase = randf01() * 6.2832f;
-        y = bands_[i].cy + bands_[i].half +
+        y = bands_[i].cy + bands_[i].half + bands_[i].half +
             FOG_BAND_GAP_MIN + randf01() * 50.0f;
     }
 }
@@ -68,25 +59,26 @@ void Atmosphere::update(float dt)
     t_ += dt;
 }
 
-float Atmosphere::centerY(int i) const
+float Atmosphere::centerAt(int i, float x) const
 {
-    return bands_[i].cy +
+    // Concentric ellipse so the fog hugs the moon like a ring, plus a slow
+    // vertical drift so the blind zones can't be memorized.
+    float dx = x - FOG_ELLIPSE_CX;
+    float td = dx / FOG_ELLIPSE_RAD;
+    if (td < -1.0f) td = -1.0f;
+    if (td > 1.0f) td = 1.0f;
+    float arc = FOG_CURVE_A * sqrtf(1.0f - td * td);
+    return bands_[i].cy - arc +
            FOG_DRIFT_A * sinf(t_ * bands_[i].driftSpeed + bands_[i].driftPhase);
-}
-
-float Atmosphere::halfAt(int i, float x) const
-{
-    return bands_[i].half *
-           (1.0f + FOG_WAVE_A * sinf(x * FOG_WAVE_K + t_ * bands_[i].waveSpeed + bands_[i].wavePhase));
 }
 
 bool Atmosphere::hidesShip(float x, float y) const
 {
     if (!enabled_) return false;
     for (int i = 0; i < FOG_BAND_COUNT; i++) {
-        float d = y - centerY(i);
+        float d = y - centerAt(i, x);
         if (d < 0.0f) d = -d;
-        if (d < halfAt(i, x)) return true;
+        if (d < bands_[i].half) return true;
     }
     return false;
 }
@@ -95,8 +87,18 @@ void Atmosphere::drawSky(Renderer &r, const Terrain &t, float viewX, float viewY
 {
     if (!enabled_) return;
 
-    // Per-column terrain silhouette: the halo and the fog are only drawn in
-    // the sky (above the silhouette) so they never darken the terrain itself.
+    // Gaussian LUT (built once) replaces a per-pixel expf() for the falloff.
+    static unsigned char gauss[256];
+    static bool gaussInit = false;
+    if (!gaussInit) {
+        for (int i = 0; i < 256; i++) {
+            float u = (float)i / 255.0f * 2.0f;
+            gauss[i] = (unsigned char)(255.0f * expf(-u * u * 1.5f));
+        }
+        gaussInit = true;
+    }
+
+    // Per-column terrain silhouette: fog is only drawn above the terrain.
     float bottom[160];
     for (int x = 0; x < 320; x += 2) {
         float wx = ((float)x - viewX) / viewScale;
@@ -111,27 +113,26 @@ void Atmosphere::drawSky(Renderer &r, const Terrain &t, float viewX, float viewY
         }
     }
 
-    // Faint horizontal haze sheets whose thickness undulates along x and
-    // whose whole band drifts vertically, matching hidesShip() exactly.
+    float half = FOG_BAND_HALF * viewScale;
     for (int b = 0; b < FOG_BAND_COUNT; b++) {
-        float cy = centerY(b);
-        for (int x = 0; x < 320; x += 2) {
+        for (int x = 0; x < SCREEN_W; x++) {
             float wx = ((float)x - viewX) / viewScale;
-            float half = halfAt(b, wx);
-            int yTop = (int)roundf((cy - half) * viewScale + viewY);
-            int yBot = (int)roundf((cy + half) * viewScale + viewY);
-            if (yBot < FOG_SCREEN_TOP || yTop > 240) continue;
-            int y0 = yTop < FOG_SCREEN_TOP ? FOG_SCREEN_TOP : yTop;
-            int y1 = yBot > 240 ? 240 : yBot;
-            float span = (float)(yBot - yTop);
-            for (int y = y0; y <= y1; y += 2) {
-                if (y >= bottom[x / 2] - 1.0f) continue;
-                float ty = ((float)y - (float)yTop) / (span + 1.0f);
-                float prof = ty - 0.5f;
-                if (prof < 0.0f) prof = -prof;
-                float fade = 1.0f - prof * prof * 4.0f;
-                if (fade < 0.0f) fade = 0.0f;
-                int bv = (int)(8.0f + (FOG_BRIGHT - 8.0f) * fade);
+            float cyScaled = centerAt(b, wx) * viewScale + viewY;
+            int y0 = (int)(cyScaled - half * 2.0f);
+            int y1 = (int)(cyScaled + half * 2.0f);
+            if (y1 < 0 || y0 > SCREEN_H) continue;
+            if (y0 < FOG_SCREEN_TOP) y0 = FOG_SCREEN_TOP; // clear of the HUD
+            if (y1 > SCREEN_H) y1 = SCREEN_H;
+            float invunit = 255.0f / (2.0f * half);
+            for (int y = y0; y < y1; y++) {
+                if (y >= bottom[x / 2] - 1.0f) break; // above terrain silhouette
+                float dyf = cyScaled - (float)y;
+                if (dyf < 0.0f) dyf = -dyf;
+                int idx = (int)(dyf * invunit);
+                if (idx > 255) idx = 255;
+                unsigned char g = gauss[idx];
+                if (g == 0) continue;
+                int bv = (int)(FOG_BRIGHT * (float)g) >> 8;
                 r.pixelShade((float)x, (float)y, bv);
             }
         }

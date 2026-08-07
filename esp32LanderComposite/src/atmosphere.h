@@ -16,8 +16,6 @@ public:
 
     // True when the ship's footprint (x, y) falls inside a fog band: the ship
     // is not drawn there, so the player flies blind until leaving the band.
-    // Bands drift and undulate over time, so the blind zones can't be
-    // memorized.
     bool hidesShip(float x, float y) const;
     int bandCount() const { return FOG_BAND_COUNT; }
     float bandCenter(int i) const { return bands_[i].cy; }
@@ -25,9 +23,8 @@ public:
 private:
     struct Band {
         float cy;    // world-y center of the band at t=0
-        float half;  // world-y half height (mid value, undulated by waviness)
+        float half;  // world-y half height
         float driftSpeed, driftPhase;
-        float waveSpeed, wavePhase;
     };
 
     int level_;
@@ -35,8 +32,7 @@ private:
     float t_;
     Band bands_[FOG_BAND_COUNT];
 
-    float centerY(int i) const;
-    float halfAt(int i, float x) const;
+    float centerAt(int i, float x) const; // band center world-y (ellipse + drift)
     static float terrainYAt(const Terrain &t, float x, float fallback);
 };
 

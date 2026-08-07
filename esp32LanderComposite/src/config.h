@@ -37,7 +37,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 4;   // TEMP: demo fija nivel Ganímedes (rings; revertir a 0 tras CRT)
+const int DEMO_LEVEL_FORCE = 6;   // TEMP: demo fija nivel Titán (niebla nueva)
 const int START_LEVEL = 4; // TEMP: primer nivel = Ganímedes (anillos)
 const float DEMO_POWER_RATE = 0.4f;
 
@@ -114,20 +114,22 @@ const int VOLCANO_MAX_VISIBLE = 3;
 // downdraft per tick, plus fog bands that hide the ship while crossing them.
 const float ATMOS_DRAG = 0.9992f;
 const float ATMOS_DOWN = 0.00008f;
+// Titan fog now uses the same soft style as Ganymede: concentric elliptical
+// bands with a gentle gaussian falloff (via LUT). They still hide the ship
+// while crossing. Each band: base world-y center + concentric arc + drift.
 const int FOG_BAND_COUNT = 3;
-const float FOG_BAND_HALF_MIN = 35.0f;
-const float FOG_BAND_HALF_MAX = 50.0f;
-const float FOG_BAND_START = 185.0f;
+const float FOG_BAND_HALF = 34.0f;     // band half thickness (u)
+const float FOG_BAND_START = 205.0f;   // first band center (world-y)
 const float FOG_BAND_GAP_MIN = 70.0f;
-const float FOG_BRIGHT = 32.0f;
-// Fog is alive so the blind zones can't be memorized: each band drifts
-// vertically and its edges undulate (variable thickness across x and time).
-const float FOG_DRIFT_A = 20.0f;
+const float FOG_BRIGHT = 44.0f;        // fog luma (a bit stronger than before)
+// Concentric ellipse the fog follows (shared center with the moon, like rings).
+const float FOG_ELLIPSE_CX = 400.0f;
+const float FOG_ELLIPSE_RAD = 520.0f;
+const float FOG_CURVE_A = 45.0f;
+// Alive so the blind zones can't be memorized: each band drifts vertically.
+const float FOG_DRIFT_A = 18.0f;
 const float FOG_DRIFT_SPEED_MIN = 0.12f;
 const float FOG_DRIFT_SPEED_MAX = 0.20f;
-const float FOG_WAVE_A = 0.35f;
-const float FOG_WAVE_K = 0.02f;
-const float FOG_WAVE_SPEED = 0.15f;
 // Fog and terrain halo are never drawn above this screen row so they can't
 // reach the HUD / minimap / warnings (LOW FUEL=72, TOO FAST=82 with wind) and
 // make them flicker during the approach phase. 100 clears them all.
@@ -178,7 +180,7 @@ const float RING_CURVE_A = 55.0f;      // vertical bow amplitude at the center (
 // Denser debris fog behind the rocks so they stand out on the band (Ganymede).
 // Brightness is higher than Titan's fog (FOG_BRIGHT=32) for extra contrast.
 const float RING_FOG_HALF = 34.0f;     // band half thickness (u)
-const int RING_FOG_BRIGHT = 90;        // fog luma (Titan uses 32; denser here)
+const int RING_FOG_BRIGHT = 0; // TEMP TEST: niebla desactivada (ver solo rocas)
 
 // Triton nitrogen twister: a wandering vortex that sucks the ship toward its
 // base (on the ground). While captured the ship is held ON the funnel wall (a
