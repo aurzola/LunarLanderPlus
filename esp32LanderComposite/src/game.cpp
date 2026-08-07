@@ -37,7 +37,7 @@ Game::Game()
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0), stormHitTimer(0)
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -46,6 +46,7 @@ Game::Game()
     terrain.init();
     storm.reset(level);
     geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -70,7 +71,9 @@ void Game::newGame()
     spawnWind();
     storm.reset(level);
     geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
     stormHitTimer = 0;
+    lavaBurn = false;
 }
 
 void Game::restartLevel()
@@ -81,6 +84,7 @@ void Game::restartLevel()
     setZoom(false);
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
+    lavaBurn = false;
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
         state = STATE_WAITING;
@@ -100,7 +104,9 @@ void Game::nextLevel()
     spawnWind();
     storm.reset(level);
     geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
     stormHitTimer = 0;
+    lavaBurn = false;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -133,7 +139,9 @@ void Game::startDemo()
     spawnWind();
     storm.reset(level);
     geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
     stormHitTimer = 0;
+    lavaBurn = false;
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -141,19 +149,56 @@ void Game::startDemo()
     introTimer = LEVEL_INTRO_TIME;
 
     const std::vector<TerrainLine> &tl = terrain.getLines();
-    std::vector<float> cx, cy;
-    for (int i = 0; i < (int)tl.size(); i++) {
-        if (tl[i].labelX >= 0) {
-            cx.push_back(tl[i].labelX);
-            cy.push_back(tl[i].y1);
+
+    // TEST aim: prefer a lava-covered strip of a landing pad (Io), so the
+    // burnt-ship ending shows up while tuning it. Pick the lava zone closest
+    // to the spawn so the flight is short and cannot land short on an
+    // intervening pad. Regenerate the forced level until lava is available;
+    // otherwise fall back to any landing pad.
+    int lavaPick = -1;
+    for (int attempt = 0; attempt < 20 && lavaPick < 0; attempt++) {
+        float bestDist = 1e9f;
+        for (int i = 0; i < volcanoes.lavaRangeCount(); i++) {
+            if (volcanoes.lavaRangeX2(i) - volcanoes.lavaRangeX1(i) < 8.0f) continue;
+            float mid = (volcanoes.lavaRangeX1(i) + volcanoes.lavaRangeX2(i)) * 0.5f;
+            float d = fabsf(mid - ship.posX);
+            if (d < bestDist) {
+                bestDist = d;
+                lavaPick = i;
+            }
         }
+        if (lavaPick >= 0 || DEMO_LEVEL_FORCE <= 0) break;
+        terrain.generate(level);
+        storm.reset(level);
+        geysers.reset(level, terrain);
+        volcanoes.reset(level, terrain);
     }
-    int pick = (int)cx.size() ? rand() % (int)cx.size() : 0;
-    demoTargetX = cx[pick];
-    demoTargetY = cy[pick];
-    if (demoSkill < 0.35f) {
-        float off = ((float)(rand() % 200) / 100.0f - 1.0f) * (0.35f - demoSkill) * 110.0f;
-        demoTargetX += off;
+
+    if (lavaPick >= 0) {
+        demoTargetX = (volcanoes.lavaRangeX1(lavaPick) + volcanoes.lavaRangeX2(lavaPick)) * 0.5f;
+        demoTargetY = 500.0f;
+        for (int i = 0; i < (int)tl.size(); i++) {
+            if (demoTargetX >= tl[i].x1 && demoTargetX <= tl[i].x2) {
+                demoTargetY = tl[i].y1;
+                break;
+            }
+        }
+        demoSkill = 0.85f;
+    } else {
+        std::vector<float> cx, cy;
+        for (int i = 0; i < (int)tl.size(); i++) {
+            if (tl[i].labelX >= 0) {
+                cx.push_back(tl[i].labelX);
+                cy.push_back(tl[i].y1);
+            }
+        }
+        int pick = (int)cx.size() ? rand() % (int)cx.size() : 0;
+        demoTargetX = cx[pick];
+        demoTargetY = cy[pick];
+        if (demoSkill < 0.35f) {
+            float off = ((float)(rand() % 200) / 100.0f - 1.0f) * (0.35f - demoSkill) * 110.0f;
+            demoTargetX += off;
+        }
     }
 }
 
@@ -465,6 +510,16 @@ void Game::checkCollisions()
         ship.rotation, ship.velY, ship.velX
     );
 
+    // Touching lava burns the ship on any collision (good landing or hard
+    // crash), so a touchdown over lava always shows the burnt-ship ending.
+    if (result != 0 && volcanoes.landOnLava(ship.left, ship.right)) {
+        lavaBurn = true;
+        ship.land();
+        state = STATE_CRASHED;
+        resetTimer = CRASH_RESET_DELAY;
+        return;
+    }
+
     if (result == 2) {
         float mult = 1.0f;
         for (int i = 0; i < (int)terrain.getLines().size(); i++) {
@@ -487,7 +542,6 @@ void Game::checkCollisions()
         }
         state = STATE_LANDED;
         resetTimer = CRASH_RESET_DELAY;
-
     } else if (result == 1) {
         int lost = 200 + (rand() % 200);
         ship.crash();
@@ -510,6 +564,7 @@ void Game::update()
     ship.gravity = GRAVITY * moonGravity(level);
     if (state != STATE_WAITING) storm.update(dt, terrain);
     if (state != STATE_WAITING) geysers.update(dt);
+    if (state != STATE_WAITING) volcanoes.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -778,14 +833,77 @@ void Game::draw(Renderer &r)
 
         r.text(170, 132, "STICK: ROTATION");
         r.text(170, 144, "Z: ENGINE ON/OFF");
-        r.text(170, 156, "C: POWER STEPS");
+        r.text(170, 156, "C+STICK: POWER UP/DOWN");
         r.text(170, 168, "POT: POWER LEVEL");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         geysers.draw(r, viewX, viewY, viewScale);
+        volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
-        ship.draw(r, viewX, viewY, viewScale);
+        if (!lavaBurn) ship.draw(r, viewX, viewY, viewScale);
         storm.drawBolts(r, viewX, viewY, viewScale);
+
+        if (lavaBurn) {
+            // The ship touched down on lava: it glows white-hot and melts away
+            // from the footpads up over the crash delay.
+            float melt = 1.0f - resetTimer / CRASH_RESET_DELAY;
+            if (melt < 0.0f) melt = 0.0f;
+            if (melt > 1.0f) melt = 1.0f;
+
+            float sx = ship.posX * viewScale + viewX;
+            float sy = ship.posY * viewScale + viewY;
+            float sc = ship.scale * viewScale;
+            float pulse = 0.75f + 0.25f * sinf((float)ship.counter * 0.18f);
+            float meltWorld = ship.posY + (14.0f - melt * 19.0f) * ship.scale;
+            float meltScreen = meltWorld * viewScale + viewY;
+
+            // Pulsing radial heat glow behind the wreck, growing as it melts.
+            float gr = (7.0f + melt * 11.0f) * sc + 2.0f;
+            int gb = (int)(140.0f * (0.35f + 0.65f * melt) * pulse);
+            for (int yy = (int)(-gr); yy <= (int)gr; yy++) {
+                int halfw = (int)sqrtf(gr * gr - (float)(yy * yy));
+                for (int xx = -halfw; xx <= halfw; xx++) {
+                    float d = sqrtf((float)(xx * xx + yy * yy)) / gr;
+                    int b = (int)(gb * (1.0f - d));
+                    if (b > 0) r.pixelShade(sx + (float)xx, sy + 2.0f * sc + (float)yy, b);
+                }
+            }
+
+            // Molten edge across the hull at the melt front.
+            int edgeB = (int)(255.0f * pulse);
+            int halfw2 = (int)(11.0f * sc);
+            for (int xx = -halfw2; xx <= halfw2; xx++) {
+                int ax = xx < 0 ? -xx : xx;
+                float wob = 1.5f * sinf((float)ship.counter * 0.3f + xx * 0.5f);
+                r.pixelShade(sx + (float)xx, meltScreen + wob, edgeB - ax * 3);
+            }
+
+            // Embers rising from the glowing wreck.
+            for (int e = 0; e < 14; e++) {
+                int seed = e * 7 + ship.counter;
+                float ex = sx + (float)((seed * 37) % 41 - 20) * 0.35f * sc;
+                float ph = (float)((seed * 53) % 100) / 100.0f;
+                float life = fmodf((float)ship.counter * 0.02f + ph, 1.0f);
+                float rise = life * (9.0f + melt * 12.0f) * sc;
+                float sway = sinf((float)ship.counter * 0.3f + ph * 6.0f) * 2.5f * sc;
+                int b = (int)(230.0f * (1.0f - life));
+                if (b > 0) r.pixelShade(ex + sway, sy - rise, b);
+            }
+
+            // Molten drips falling from the melt front.
+            for (int d = 0; d < 8; d++) {
+                int seed = d * 13 + ship.counter;
+                float dx = sx + (float)((seed * 29) % 31 - 15) * 0.5f * sc;
+                float ph = (float)((seed * 71) % 100) / 100.0f;
+                float life = fmodf((float)ship.counter * 0.015f + ph, 1.0f);
+                float fall = life * (16.0f + melt * 10.0f) * sc;
+                int b = (int)(200.0f * (1.0f - life));
+                if (b > 0) r.pixelShade(dx, meltScreen + fall, b);
+            }
+
+            // The hull itself melts away from the bottom up.
+            ship.draw(r, viewX, viewY, viewScale, melt);
+        }
 
         {
             const std::vector<TerrainLine> &tl = terrain.getLines();
@@ -889,8 +1007,13 @@ void Game::draw(Renderer &r)
                 centerText(102, "HOPELESSLY MAROONED");
             }
         } else if (state == STATE_CRASHED) {
-            centerText(90, "YOU CRASHED");
-            centerText(102, "FUEL TANKS DESTROYED");
+            if (lavaBurn) {
+                centerText(90, "YOU BURNED");
+                centerText(102, "LAVA DESTROYED THE SHIP");
+            } else {
+                centerText(90, "YOU CRASHED");
+                centerText(102, "FUEL TANKS DESTROYED");
+            }
         } else if (state == STATE_GAMEOVER) {
             centerText(90, "OUT OF FUEL");
             centerText(102, "GAME OVER");

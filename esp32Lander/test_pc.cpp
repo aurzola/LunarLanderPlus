@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 #include "ship.h"
 #include "terrain.h"
@@ -8,6 +9,7 @@
 #include "config.h"
 #include "moons.h"
 #include "geysers.h"
+#include "volcanoes.h"
 
 static int checks = 0;
 
@@ -276,6 +278,178 @@ static int testGeysers()
     return 0;
 }
 
+static int testVolcanoes()
+{
+    CHECK(moonHasVolcanoes(2));
+    CHECK(moonHasVolcanoes(10));
+    CHECK(!moonHasVolcanoes(1));
+    CHECK(!moonHasVolcanoes(7));
+
+    Volcanoes v;
+    Terrain t;
+    t.generate(2);
+    v.reset(2, t);
+    CHECK(v.active());
+    CHECK(v.volcanoCount() > 0);
+    v.reset(1, t);
+    CHECK(!v.active());
+
+    v.reset(2, t);
+    int maxAlive = 0;
+    for (int i = 0; i < 3000; i++) {
+        v.update(GAME_DT);
+        if (v.particlesAlive() > maxAlive) maxAlive = v.particlesAlive();
+    }
+    CHECK(maxAlive > 0);
+    return 0;
+}
+
+static int testVolcanoLava()
+{
+    // Lava poured onto a landing pad: ranges must stay inside the pad and a
+    // free strip of at least VOLCANO_SAFE_STRIP must always remain clear.
+    bool sawLava = false;
+    for (int s = 0; s < 60; s++) {
+        srand(1000 + s);
+        Terrain t;
+        t.generate(2);
+        Volcanoes v;
+        v.reset(2, t);
+        CHECK(v.active());
+
+        const std::vector<TerrainLine> &tl = t.getLines();
+        std::vector<std::pair<float, float> > pads;
+        for (int k = 0; k < (int)tl.size(); k++) {
+            if (!tl[k].landable || tl[k].multiplier <= 1) continue;
+            float a = tl[k].x1, b = tl[k].x2;
+            int j = k;
+            while (j + 1 < (int)tl.size() && tl[j + 1].landable && tl[j + 1].multiplier > 1) {
+                j++;
+                b = tl[j].x2;
+            }
+            pads.push_back(std::make_pair(a, b));
+            k = j;
+        }
+
+        for (int i = 0; i < (int)pads.size(); i++) {
+            float pw = pads[i].second - pads[i].first;
+            float covered = 0.0f;
+            for (int q = 0; q < v.lavaRangeCount(); q++) {
+                float x1 = v.lavaRangeX1(q), x2 = v.lavaRangeX2(q);
+                float lo = x1 > pads[i].first ? x1 : pads[i].first;
+                float hi = x2 < pads[i].second ? x2 : pads[i].second;
+                if (hi > lo) {
+                    covered += hi - lo;
+                    CHECK(x1 >= pads[i].first - 0.5f);
+                    CHECK(x2 <= pads[i].second + 0.5f);
+                }
+            }
+            if (covered <= 0.0f) continue;
+            sawLava = true;
+            CHECK(pw - covered >= VOLCANO_SAFE_STRIP - 0.5f);
+
+            bool onLava = false;
+            for (int q = 0; q < v.lavaRangeCount(); q++) {
+                float lo = v.lavaRangeX1(q) > pads[i].first ? v.lavaRangeX1(q) : pads[i].first;
+                float hi = v.lavaRangeX2(q) < pads[i].second ? v.lavaRangeX2(q) : pads[i].second;
+                if (hi > lo) {
+                    float cx = (lo + hi) * 0.5f;
+                    CHECK(v.landOnLava(cx - 1.0f, cx + 1.0f));
+                    onLava = true;
+                }
+            }
+            CHECK(onLava);
+            CHECK(!v.landOnLava(pads[i].second + 30.0f, pads[i].second + 32.0f));
+        }
+    }
+    CHECK(sawLava);
+
+    // Game integration: a perfect touchdown on the covered part of a pad burns
+    // the ship (STATE_CRASHED); the same landing on the clear strip succeeds.
+    bool sawBurn = false, sawSafe = false;
+    for (int s = 0; s < 60 && !(sawBurn && sawSafe); s++) {
+        srand(9000 + s);
+        Game g;
+        g.input.startPressed = true;
+        g.update();
+        g.input.startPressed = false;
+        CHECK(g.state == STATE_PLAYING);
+        CHECK(g.level == START_LEVEL);
+        g.introTimer = 0;
+        g.demo = false;
+        // Force an Io level regardless of START_LEVEL so lava is guaranteed.
+        g.level = 2;
+        g.terrain.generate(g.level);
+        g.volcanoes.reset(g.level, g.terrain);
+
+        const std::vector<TerrainLine> &tl = g.terrain.getLines();
+        std::vector<std::pair<float, float> > pads;
+        for (int k = 0; k < (int)tl.size(); k++) {
+            if (!tl[k].landable || tl[k].multiplier <= 1) continue;
+            float a = tl[k].x1, b = tl[k].x2;
+            int j = k;
+            while (j + 1 < (int)tl.size() && tl[j + 1].landable && tl[j + 1].multiplier > 1) {
+                j++;
+                b = tl[j].x2;
+            }
+            pads.push_back(std::make_pair(a, b));
+            k = j;
+        }
+
+        for (int p = 0; p < (int)pads.size(); p++) {
+            float padX1 = pads[p].first, padX2 = pads[p].second;
+            std::vector<float> covLo, covHi;
+            for (int q = 0; q < g.volcanoes.lavaRangeCount(); q++) {
+                float lo = g.volcanoes.lavaRangeX1(q) > padX1 ? g.volcanoes.lavaRangeX1(q) : padX1;
+                float hi = g.volcanoes.lavaRangeX2(q) < padX2 ? g.volcanoes.lavaRangeX2(q) : padX2;
+                if (hi > lo) { covLo.push_back(lo); covHi.push_back(hi); }
+            }
+            if (covLo.empty()) continue;
+
+            float burnX = (covLo[0] + covHi[0]) * 0.5f;
+            float safeX = -1.0f;
+            for (float x = padX1 + 0.5f; x <= padX2 - 0.5f; x += 0.5f) {
+                bool covered = false;
+                for (int q = 0; q < (int)covLo.size(); q++) {
+                    if (x + 3.2f > covLo[q] && x - 3.2f < covHi[q]) { covered = true; break; }
+                }
+                if (!covered) { safeX = x; break; }
+            }
+            if (safeX < 0.0f) continue;
+            float padY = -1.0f;
+            for (int k = 0; k < (int)tl.size(); k++) {
+                if (burnX >= tl[k].x1 && burnX <= tl[k].x2) { padY = tl[k].y1; break; }
+            }
+            if (padY < 0.0f) continue;
+
+            auto placeShip = [&](float px) {
+                g.ship.reset(px, padY - 4.48f);
+                g.ship.scale = 0.32f;
+                g.ship.velX = 0.0f;
+                g.ship.velY = 0.0f;
+                g.ship.rotation = 0.0f;
+                g.ship.targetRotation = 0.0f;
+                g.ship.fuel = 900.0f;
+                g.input.thrust = 0.0f;
+                g.input.angle = 0.0f;
+                g.state = STATE_PLAYING;
+                g.introTimer = 0.0f;
+            };
+
+            placeShip(burnX);
+            g.update();
+            if (g.state == STATE_CRASHED) sawBurn = true;
+
+            placeShip(safeX);
+            g.update();
+            if (g.state == STATE_LANDED) sawSafe = true;
+        }
+    }
+    CHECK(sawBurn);
+    CHECK(sawSafe);
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -294,6 +468,10 @@ int main()
     r = testMoon();
     if (r) return r;
     r = testGeysers();
+    if (r) return r;
+    r = testVolcanoes();
+    if (r) return r;
+    r = testVolcanoLava();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

@@ -160,7 +160,7 @@ void Ship::update()
     if (fuel < 0) fuel = 0;
 }
 
-void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
+void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float melt)
 {
     float sx = posX * viewScale + viewX;
     float sy = posY * viewScale + viewY;
@@ -168,6 +168,13 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
     float cs = cosf(rad);
     float sn = sinf(rad);
     float sc = scale * viewScale;
+
+    // Melt front rises from the footpads (dy=+14) to the top (dy=-5).
+    float meltScreen = 0.0f;
+    if (melt > 0.0f) {
+        float meltWorld = posY + (14.0f - melt * 19.0f) * scale;
+        meltScreen = meltWorld * viewScale + viewY;
+    }
 
     for (int s = 0; s < 6; s++) {
         const ShipShape &sh = shapes[s];
@@ -181,6 +188,21 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale)
             if (!sh.closed && i == sh.count - 1) continue;
             float x2 = sx + (sh.dx[ni] * cs - sh.dy[ni] * sn) * sc + ox;
             float y2 = sy + (sh.dx[ni] * sn + sh.dy[ni] * cs) * sc + oy;
+
+            if (melt > 0.0f) {
+                float wob = 2.0f * sinf((float)((int)(x1 + x2)) * 0.37f + (float)counter * 0.35f);
+                float mline = meltScreen + wob;
+                if (y1 <= mline && y2 <= mline) {
+                    r.line(x1, y1, x2, y2);
+                } else if (y1 <= mline || y2 <= mline) {
+                    float t = (mline - y1) / (y2 - y1);
+                    float ix = x1 + t * (x2 - x1);
+                    if (y1 <= mline) r.line(x1, y1, ix, mline);
+                    else r.line(ix, mline, x2, y2);
+                }
+                continue;
+            }
+
             r.line(x1, y1, x2, y2);
         }
     }

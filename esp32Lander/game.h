@@ -7,6 +7,7 @@
 #include "renderer.h"
 #include "storm.h"
 #include "geysers.h"
+#include "volcanoes.h"
 #include "config.h"
 
 enum GameState {
@@ -56,10 +57,13 @@ public:
     Terrain terrain;
     Storm storm;
     Geysers geysers;
+    Volcanoes volcanoes;
     bool windEnabled;
     float windStrength;
     int windDir;
     float landingProximity() const;
+    // DEBUG temporary
+    bool lavaBurnGet() const { return lavaBurn; }
 
 private:
     float viewX, viewY, viewScale;
@@ -72,6 +76,7 @@ private:
     float windPhase;
     float windFlipTimer;
     float stormHitTimer;
+    bool lavaBurn;
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
     void updateView();

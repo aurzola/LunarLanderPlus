@@ -39,10 +39,9 @@ static int lastGameState = -1;
 static unsigned long lastIsrPrint = 0;
 static unsigned long lastNunchuckPrint = 0;
 
-static const float POWER_STEPS[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
-static int powerStep = -1;
+static const float PWR_STICK_RATE = 0.008f;
+static bool pwrStickActive = false;
 static int potAtCycle = 0;
-static bool lastC = false;
 static float powerLevel = 0.0f;
 
 static int lowPass(int prev, int raw, int shift)
@@ -64,17 +63,24 @@ static int stickLeftDev = 80;
 static int stickRightDev = 80;
 static int stickObsL = 80;
 static int stickObsR = 80;
+static int stickCenterY = 128;
+static int stickUpDev = 80;
+static int stickDownDev = 80;
+static int stickObsU = 80;
+static int stickObsD = 80;
 
 static void calibrateStick()
 {
-    long sum = 0;
+    long sx = 0, sy = 0;
     const int n = 40;
     for (int i = 0; i < n; i++) {
         nunchuck.read();
-        sum += nunchuck.joystickX();
+        sx += nunchuck.joystickX();
+        sy += nunchuck.joystickY();
         delay(3);
     }
-    stickCenterX = (int)(sum / n);
+    stickCenterX = (int)(sx / n);
+    stickCenterY = (int)(sy / n);
 }
 
 static float readStickAngle()
@@ -98,6 +104,31 @@ static float readStickAngle()
         if (stickRightDev < 40) stickRightDev = 40;
         if (dr < 10) return 0.0f;
         return (dr / (float)stickRightDev) * (PI / 2.0f);
+    }
+    return 0.0f;
+}
+
+static float readStickYDev()
+{
+    int jy = nunchuck.joystickY();
+    int du = jy - stickCenterY;
+    int dd = stickCenterY - jy;
+    if (du > stickObsU) stickObsU = du;
+    if (dd > stickObsD) stickObsD = dd;
+
+    if (du > 0) {
+        if (du > stickUpDev) stickUpDev = du;
+        else stickUpDev = (stickUpDev * 63 + stickObsU) / 64;
+        if (stickUpDev < 40) stickUpDev = 40;
+        if (du < 10) return 0.0f;
+        return (du / (float)stickUpDev);
+    }
+    if (dd > 0) {
+        if (dd > stickDownDev) stickDownDev = dd;
+        else stickDownDev = (stickDownDev * 63 + stickObsD) / 64;
+        if (stickDownDev < 40) stickDownDev = 40;
+        if (dd < 10) return 0.0f;
+        return -(dd / (float)stickDownDev);
     }
     return 0.0f;
 }
@@ -132,20 +163,19 @@ static void readInputs()
     potLevel = readPotLevel();
 
     bool cNow = nunchuck.buttonC();
-    if (cNow && !lastC) {
-        powerStep = (powerStep + 1) % 5;
-        potAtCycle = smoothPot;
-    }
-    lastC = cNow;
-
-    if (powerStep >= 0) {
-        if (abs(smoothPot - potAtCycle) > 120) {
-            powerStep = -1;
-        } else {
-            powerLevel = POWER_STEPS[powerStep];
+    float yDev = readStickYDev();
+    if (cNow && (yDev > 0.1f || yDev < -0.1f)) {
+        if (!pwrStickActive) {
+            pwrStickActive = true;
+            potAtCycle = smoothPot;
+            powerLevel = potLevel;
         }
+        powerLevel += yDev * PWR_STICK_RATE;
+        if (powerLevel > 1.0f) powerLevel = 1.0f;
+        if (powerLevel < 0.0f) powerLevel = 0.0f;
     }
-    if (powerStep < 0) powerLevel = potLevel;
+    if (pwrStickActive && abs(smoothPot - potAtCycle) > 120) pwrStickActive = false;
+    if (!pwrStickActive) powerLevel = potLevel;
 
 #if NUNCHUCK_TRIGGER_Z
     motorOn = nunchuck.buttonZ();
@@ -211,7 +241,10 @@ void loop()
     }
 
     if (game.state != lastGameState) {
-        if (game.state == STATE_CRASHED) Audio::playExplosion();
+        if (game.state == STATE_CRASHED) {
+            if (game.lavaBurnGet()) Audio::playBurn();
+            else Audio::playExplosion();
+        }
         lastGameState = game.state;
     }
     Audio::setThrust(game.state == STATE_PLAYING ? game.ship.thrustBuild : 0.0f);
@@ -226,10 +259,11 @@ void loop()
 
     if (millis() - lastNunchuckPrint > 500) {
         lastNunchuckPrint = millis();
-        Serial.printf("[nunchuck] x=%d y=%d c=%d z=%d err=%u pwr=%d step=%d\n",
+        Serial.printf("[nunchuck] x=%d y=%d c=%d z=%d err=%u pwr=%d stick=%d\n",
                       nunchuck.joystickX(), nunchuck.joystickY(),
                       nunchuck.buttonC(), nunchuck.buttonZ(),
-                      nunchuck.readErrors(), (int)(powerLevel * 100), powerStep);
+                      nunchuck.readErrors(), (int)(powerLevel * 100),
+                      pwrStickActive ? 1 : 0);
     }
 
     video_wait_frame();

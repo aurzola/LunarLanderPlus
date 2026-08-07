@@ -13,6 +13,8 @@ main_pc
 demo_sim
 demo_render
 storm_demo
+geyser_demo
+volcano_demo
 
 # Generated output
 frames/

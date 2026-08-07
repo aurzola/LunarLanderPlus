@@ -32,6 +32,7 @@ private:
 
     int level_;
     bool enabled_;
+    float t_;
     std::vector<Vent> vents_;
     std::vector<Particle> parts_;
 

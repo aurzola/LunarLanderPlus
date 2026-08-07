@@ -20,6 +20,15 @@
 // Max wind volume out of 256.
 #define WIND_MAX 160
 
+// Burn voice (ship melting after a lava touchdown): the crash sample played
+// quiet (~1/5 volume) with a 4 s envelope that matches CRASH_RESET_DELAY and
+// random gain jitter for a fire-crackle feel.
+#define BURN_LEN_SAMPLES (AUDIO_SAMPLE_RATE * 4)
+#define BURN_FADE_IN 3200      // 0.2 s
+#define BURN_FADE_OUT 19200    // 1.2 s
+#define BURN_CROSS 2048        // loop-seam crossfade length
+#define BURN_GAIN_MAX 50
+
 static hw_timer_t *audioTimer = NULL;
 static uint8_t *thrustBuf = NULL;
 static uint8_t *explBuf = NULL;
@@ -33,6 +42,8 @@ static volatile uint16_t windPos = 0;
 static volatile uint16_t boltPos = 0xFFFF;
 static volatile uint16_t beepPos = BEEP_LEN;
 static volatile uint16_t beepLen = 0;
+static volatile uint32_t burnPos = 0xFFFFFFFF;
+static volatile uint32_t burnNoise = 0xABCDEF01u;
 
 // Targets set from the game; current levels are eased toward them in the ISR
 // using integer math only (no FPU inside the IRAM ISR).
@@ -89,6 +100,38 @@ static void IRAM_ATTR audioIsr() {
     if (beepPos < beepLen) {
         v += (int32_t)beepBuf[beepPos] - 128;
         beepPos++;
+    }
+
+    if (burnPos < BURN_LEN_SAMPLES) {
+        uint32_t ph = burnPos;
+        int g = BURN_GAIN_MAX;
+        if (ph < BURN_FADE_IN) {
+            g = g * (int)ph / BURN_FADE_IN;
+        } else if (ph > (uint32_t)(BURN_LEN_SAMPLES - BURN_FADE_OUT)) {
+            uint32_t rem = BURN_LEN_SAMPLES - ph;
+            g = g * (int)rem / BURN_FADE_OUT;
+        }
+        // Random gain jitter -> fire crackle (integer LFSR, IRAM-safe).
+        burnNoise ^= burnNoise << 13;
+        burnNoise ^= burnNoise >> 17;
+        burnNoise ^= burnNoise << 5;
+        int jit = (int)(burnNoise & 0x7F) - 64;
+        g += jit * g / 256;
+        if (g < 0) g = 0;
+        if (g > 255) g = 255;
+
+        uint32_t k = ph % EXPLOSION_SOUND_LEN;
+        int32_t s = (int32_t)explBuf[k] - 128;
+        if (k < BURN_CROSS && ph >= EXPLOSION_SOUND_LEN) {
+            // Blend the just-played quiet tail into the loud head so the
+            // loop seam never clicks.
+            uint32_t pk = k + EXPLOSION_SOUND_LEN - BURN_CROSS;
+            int32_t ps = (int32_t)explBuf[pk] - 128;
+            int mix = (int)(k * 255 / BURN_CROSS);
+            s = (s * mix + ps * (255 - mix)) >> 8;
+        }
+        v += (s * g) >> 8;
+        burnPos++;
     }
 
     if (v < -128) v = -128;
@@ -185,6 +228,10 @@ void Audio::setWind(float level) {
 
 void Audio::playExplosion() {
     explPos = 0;
+}
+
+void Audio::playBurn() {
+    burnPos = 0;
 }
 
 void Audio::playLightning() {

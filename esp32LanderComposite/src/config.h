@@ -35,9 +35,9 @@ const float LAND_MAX_ROTATION = 5.0f;
 const float CRASH_RESET_DELAY = 4.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
-const float DEMO_START_DELAY = 13.0f;
+const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 0;
+const int DEMO_LEVEL_FORCE = 0;   // demo elige nivel al azar 1..DEMO_MAX_LEVEL
 const int START_LEVEL = 1;
 const float DEMO_POWER_RATE = 0.4f;
 
@@ -87,10 +87,26 @@ const float GEYSER_PART_SPEED = 24.0f;
 const float GEYSER_PART_GRAV = 7.0f;
 const float GEYSER_PART_SPREAD = 0.6f;
 const float GEYSER_SPOUT_H = 40.0f;
+const float GEYSER_FLASH = 0.25f;
 const int GEYSER_MAX_PARTS = 250;
 const float GEYSER_VENT_OFFSET = 14.0f;
 const float GEYSER_RADIUS = 8.0f;
 const float GEYSER_PLUME_H = 40.0f;
 const float GEYSER_PUSH = 0.00025f;
+
+const int VOLCANO_VENTS = 4;
+const float VOLCANO_BURST = 9.0f;
+const float VOLCANO_GAP_MIN = 0.5f;
+const float VOLCANO_GAP_MAX = 1.5f;
+const float VOLCANO_FLOW_LEN = 60.0f;
+const float VOLCANO_FLOW_STEP = 4.0f;
+const float VOLCANO_ERUPT_SPEED = 26.0f;
+const float VOLCANO_PART_GRAV = 10.0f;
+const float VOLCANO_PART_LIFE = 1.3f;
+const float VOLCANO_FLASH = 0.25f;
+const int VOLCANO_MAX_PARTS = 200;
+const float VOLCANO_MIN_DROP = 14.0f;
+const float VOLCANO_PEAK_R = 20.0f;
+const float VOLCANO_SAFE_STRIP = 8.0f;
 
 #endif

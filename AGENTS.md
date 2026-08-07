@@ -32,9 +32,11 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `test_pc.cpp` | Tests de validación (asserts) |
 | `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
 | `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
-| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (personalidad, dificultad, cielo, título) |
+| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026; volcanes 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)`/`moonHasVolcanoes(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (personalidad, dificultad, cielo, título) |
 | `geysers.h/cpp` | **Géiseres de Encélado (16/8/2026, rama `moon-flavor`)**: activo en niveles de Encélado (`moonHasGeysers(level)` → `moonIndex==6`, i.e. nivel 7, 15, 23…). `reset(level, terrain)` coloca `GEYSER_VENTS=5` respiraderos **en las bases de las laderas junto a las plataformas de aterrizaje** (`GEYSER_VENT_OFFSET=14 u` del borde del pad) para que estén en la trayectoria de vuelo, `update(dt)` + `draw(r,viewX,viewY,viewScale)`. Cada respiradero erupciona cíclicamente (burst `GEYSER_BURST=3 s` + pausa `GEYSER_GAP_MIN..MAX=3..9 s`, desincronizados):     emite partículas (máx `GEYSER_MAX_PARTS=250`, ~50 % de los ticks) que ascienden con `GEYSER_PART_SPEED=24` y arco por `GEYSER_PART_GRAV=7` (~38 u de altura) y se desvanecen (`pixelShade` 200→60); mientras erupciona dibuja una **columna cónica** (relleno por filas con degradado radial: brillo 215 en el centro de la base → desvanecido hacia arriba/bordes; **doblez en S** `sin(t·1.7)·1.5·t` y "puffos" lentos `sin(t·5+age·1.5)`, sin parpadeo; paso 2 px en zoom si la columna mide ≥40 px, alto `GEYSER_SPOUT_H=40 u`) + brillo de tobera en cruz/plus de 5 px (220). **Física (térmica, 16/8/2026)**: `inPlume(x,y)` detecta si la nave está en el chorro (|x−vent|≤`GEYSER_RADIUS=8`, y entre suelo y `GEYSER_PLUME_H=40`); `Game::update()` aplica `ship.velY -= GEYSER_PUSH=0.00025` por tick (~50 % de la gravedad de Encélado) → la nave recibe un pequeño empuje hacia arriba al cruzar la columna. Se añadieron `ventCount()`/`ventX(i)` para tests |
 | `geyser_demo.cpp` | Prueba de visualización en PC: terreno generado + géiseres → PPM en `frames/` (selftest `active` + `maxAlive>0`) |
+| `volcanoes.h/cpp` | **Volcanes de Ío (16/8/2026, rama `moon-flavor`; validado en CRT 17/8/2026)**: activo en niveles de Ío (`moonHasVolcanoes(level)` → `moonIndex==1`, i.e. nivel 2, 10, 18, 26…). `reset(level, terrain)` escanea el terreno (muestreo cada 6 u, desnivel `VOLCANO_MIN_DROP=14 u` sobre `VOLCANO_FLOW_LEN=60 u`, sin pisar zonas landable) y coloca `VOLCANO_VENTS=4` volcanes repartidos en laderas descendentes; `update(dt)` + `draw(r,viewX,viewY,viewScale)`. Cada volcán muestra **flujo de lava** (línea brillante `200–255` que sigue el terreno ladera abajo en pasos `VOLCANO_FLOW_STEP=4 u`, dibujada 1 px sobre la superficie para que no la tape el blanco del terreno, desvanecida 200→227 hacia el final, con pulso `0.85+0.15·sin(t·2+phase)`) + **brillo de cráter pulsante** (cruz/plus 190–230). Erupciones **casi continuas** (burst `VOLCANO_BURST=9 s` + pausa corta `VOLCANO_GAP_MIN..MAX=0.5..1.5 s`, desincronizadas; el demo de PC muestra llama visible el 100 % del tiempo): **destello radial** inicial (`VOLCANO_FLASH=0.25 s`, radio 3, 230→0) y partículas en arco (máx `VOLCANO_MAX_PARTS=200`, ~50 % de ticks, `VOLCANO_ERUPT_SPEED=26`, `VOLCANO_PART_GRAV=10`, vida `VOLCANO_PART_LIFE=1.3` s) que se desvanecen (`pixelShade` 220→40). **Mecánica de lava (16-17/8/2026)**: `computeLava()`/`clampFlows()` calculan los **rangos reales** donde el flujo cubre la plataforma de aterrizaje (`LavaRange {x1,x2}`, franja segura garantizada `VOLCANO_SAFE_STRIP=8 u` de ancho en el centro del pad, i.e. el pad nunca queda 100 % cubierto; el rango se recorta al **alcance real del flujo** — antes sobredimensionaba). `landOnLava(x1,x2)` detecta si el box de la nave pisa lava. **Cualquier colisión sobre lava quema** (`checkCollisions`: `result != 0 && landOnLava(...)` → `lavaBurn=true`, incluido hang-off-pad): aterrizar bien sobre lava no da score y muestra el final **"YOU BURNED" / "LAVA DESTROYED THE SHIP"**. API para tests: `active()`, `volcanoCount()`, `particlesAlive()`, `lavaRangeCount/X1/X2`, `landOnLava` |
+| `volcano_demo.cpp` | Prueba de visualización en PC: terreno generado + volcanes → PPM en `frames/` (selftest `active` + `maxAlive>0`; nivel por defecto 2 = Ío) |
 
 ### Mundo y pantalla
 
@@ -156,10 +158,14 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - **Pot (GPIO34) → nivel de potencia (thrust level)**: dead zone 2–98%, lineal a `0.0–1.0`.
   **Solo fija la potencia**; el motor se enciende/apaga con el botón del nunchuck
   (`Z` por defecto, configurable con `NUNCHUCK_TRIGGER_Z`): `thrust = motorOn ? powerLevel : 0`.
-- **Botón C del nunchuck → pasos de potencia (5/8/2026)**: cicla `powerLevel` por
-  `{0, 25, 50, 75, 100}%` (flanco, `powerStep` 0..4, guarda `potAtCycle`). El **pot sigue
-  funcionando**: si se mueve >120 cuentas ADC desde el valor al pulsar C, retoma el control
-  (`powerStep=-1` → `powerLevel=potLevel`). "Last-used wins".
+- **C + stick del nunchuck → pasos de potencia (5/8/2026; rediseñado 17/8/2026)**: mientras se
+  mantiene **C**, mover el stick **arriba sube / abajo baja** el `powerLevel` de forma continua
+  (no pasos discretos), con rampa `PWR_STICK_RATE=0.008`/tick (~2 s de barrido completo con el
+  stick a tope). `readStickYDev()` devuelve `+` arriba / `−` abajo (invertido: Y raw bajo =
+  arriba); calibración adaptativa del eje Y (`stickCenterY=128` inicial, idle 40, dead zone 10).
+  El **pot sigue funcionando** ("last-used wins"): al empezar el modo stick se guarda
+  `potAtCycle` y si el pot se mueve >120 cuentas ADC retoma el control (`pwrStickActive=false`,
+  `powerLevel=potLevel`). Sustituye al antiguo ciclo por pasos `{0,25,50,75,100}%` (`powerStep`).
 - **Gatillo (GPIO35) → LEGACY**: el reóstato quedó **desconectado**; el código del mapeo
   por voltaje se conserva en el `.ino` bajo `#if 0` (decisión: cambiar a pot + botón).
 - Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
@@ -277,7 +283,7 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 | Nunchuck (joystick X) | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | I2C GPIO21/GPIO22; dead zone ±10 |
 | Potenciómetro A | Nivel de potencia de motores (thrust level 0.0–1.0) | ADC con suavizado, dead zone 2–98% |
 | Nunchuck (botón Z) | Encendido/apagado del motor (thrust = botón ? powerLevel : 0) | `NUNCHUCK_TRIGGER_Z`; alternativo C |
-| Nunchuck (botón C) | Cicla `powerLevel` por `{0,25,50,75,100}%` (flanco) | `powerStep` 0..4; pot retoma si se mueve >120 ADC |
+| Nunchuck (botón C) | Mientras se mantiene C, el stick sube/baja `powerLevel` (continuo, rampa 0.008/tick) | `pwrStickActive`; pot retoma si se mueve >120 ADC |
 | Botón (GPIO13) | Inicio / reinicio de partida | Equivale a tecla "P"; **sin autostart** (espera el botón) |
 
 El motor se enciende/apaga con el botón Z del nunchuck (como el resorte del gatillo: soltado =
@@ -358,10 +364,11 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
   (resolución 8-bit = máx)**.
 - `src/audio.h/cpp`: timer gptimer a **16 kHz** con ISR (`IRAM_ATTR`) que mezcla
   `THRUST_SOUND` (loop) + `WIND_SOUND` (loop) + `EXPLOSION_SOUND` (one-shot) + `LIGHTNING_SOUND`
-  (one-shot) en RAM (copiados desde PROGMEM al arrancar) y escribe el duty directo al registro
+  (one-shot) + **voz de quemado** (17/8/2026, one-shot de 4 s) en RAM (copiados desde PROGMEM al
+  arrancar) y escribe el duty directo al registro
   `LEDC.channel_group[0].channel[0].duty.duty` (`val<<4`) + handshake `duty_start`. API:
   `Audio::begin()`, `Audio::setThrust(0..1)`, `Audio::setWind(0..1)`, `Audio::playExplosion()`,
-  `Audio::playLightning()`.
+  `Audio::playBurn()`, `Audio::playLightning()`.
 - Datos: `src/audio_data.h` generado (PROGMEM) desde `sounds/rocket_thrust.wav` (32 k, loop),
   `sounds/explosion.wav` (27.4 k, one-shot), `sounds/wind.wav` (32 k, loop) y
   `sounds/lightning.wav` (19.2 k, one-shot) — mono 8-bit / 16 kHz. Generados por
@@ -575,3 +582,32 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     sketch compila (492 KB, 37 %). **Validado en CRT** (16/8/2026): se afinó el ancho de la columna
     (pico 2.3 px de media anchura) y se añadió punta cónica; `DEMO_LEVEL_FORCE` y `START_LEVEL`
     (temporal 7) revertidos a 0/1 tras validar.
+17. **Volcanes de Ío (16/8/2026, rama `moon-flavor`)**: en niveles
+    de Ío (`moonHasVolcanoes(level)`, `moonIndex==1` → nivel 2, 10, 18, 26…) `Volcanoes::reset(level,
+    terrain)` escanea el terreno (muestreo cada 6 u, desnivel `VOLCANO_MIN_DROP=14 u` sobre
+    `VOLCANO_FLOW_LEN=60 u`, sin pisar zonas landable) y coloca `VOLCANO_VENTS=4` volcanes repartidos
+    en laderas descendentes. Cada volcán muestra **flujo de lava** que sigue el terreno ladera abajo
+    (pasos `VOLCANO_FLOW_STEP=4 u`, línea brillante `200–255` dibujada 1 px sobre la superficie para
+    que no la tape el blanco del terreno, desvanecida hacia el final, pulso lento `0.85+0.15·sin(t·2)`)
+    + **brillo de cráter pulsante** (cruz/plus). Erupciones **casi continuas** (burst
+    `VOLCANO_BURST=9 s` + pausa `VOLCANO_GAP_MIN..MAX=0.5..1.5 s`, desincronizadas): destello radial
+    (`VOLCANO_FLASH=0.25 s`) y partículas en arco (máx `VOLCANO_MAX_PARTS=200`,
+    `VOLCANO_ERUPT_SPEED=26`, `VOLCANO_PART_GRAV=10`, vida `VOLCANO_PART_LIFE=1.3 s`) que se
+    desvanecen. **Mecánica de lava (16-17/8/2026)**: `LavaRange {x1,x2}` recortado al **alcance real
+    del flujo**, franja segura garantizada `VOLCANO_SAFE_STRIP=8 u` en el centro del pad; cualquier
+    colisión sobre lava quema (`lavaBurn`, incluido hang-off-pad) → final **"YOU BURNED"**. **Final de
+    nave quemada (17/8/2026)**: en `STATE_CRASHED` con `lavaBurn` la nave se **derrite** (límite de
+    fusión que sube de las patas al techo recortando las aristas en `Ship::draw(melt)`, con borde
+    ondulado), glow radial pulsante creciente, arista fundida brillante, brasas que ascienden y gotas de
+    metal que caen, hasta deshacerse en ~4 s (CRASH_RESET_DELAY). **Sonido de quemado (17/8/2026)**:
+    `Audio::playBurn()` — el sample de explosión reproducido a ~17 % de volumen (peak 19/128 vs 79),
+    con jitter LFSR que crepita, envolvente de 4 s (fade-in 0.2 s, fade-out 1.2 s) y crossfade en el
+    loop; disparado por el `.ino` al pasar a `STATE_CRASHED` con `lavaBurn` (el choque normal sigue con
+    `playExplosion()`). Integrado en `Game` junto a `geysers`: `reset` en constructor/newGame/nextLevel/startDemo,
+    `update` tras `geysers` (excluye título), `draw` tras `geysers.draw` (antes de la nave). Validado
+    en PC: `test_pc` **738 checks ALL PASSED** (nuevos de `moonHasVolcanoes`/actividad/partículas/
+    lava), `volcano_demo 3 2`/`1 2`/`5 2` (máx 78–126 partículas), `demo_sim` 10 seeds (**40 % win,
+    0 timeouts**, niveles 1..12). **Sync completado** a `esp32LanderComposite/src/`; sketch compila
+    (500 KB, 38 %); subido a placa. **Validado en CRT (17/8/2026)**: flame casi continua, final
+    "YOU BURNED" con derretido + sonido crepitante confirmados. Temporales revertidos
+    (`DEMO_LEVEL_FORCE=0`, `START_LEVEL=1`).

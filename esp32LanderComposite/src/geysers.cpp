@@ -21,7 +21,7 @@ float clampf(float v, float lo, float hi)
 } // namespace
 
 Geysers::Geysers()
-    : level_(1), enabled_(false)
+    : level_(1), enabled_(false), t_(0.0f)
 {
 }
 
@@ -112,6 +112,7 @@ void Geysers::emit(const Vent &v)
 
 void Geysers::update(float dt)
 {
+    t_ += dt;
     if (!enabled_) {
         parts_.clear();
         return;
@@ -156,60 +157,36 @@ void Geysers::draw(Renderer &r, float viewX, float viewY, float viewScale) const
 
     for (int i = 0; i < (int)vents_.size(); i++) {
         const Vent &v = vents_[i];
-        if (!v.erupting) continue;
-
-        float fade = clampf(v.age * 4.0f, 0.0f, 1.0f);
-        if (v.age > GEYSER_BURST - 0.3f) {
-            fade = clampf((GEYSER_BURST - v.age) / 0.3f, 0.0f, 1.0f);
-        }
 
         int sx = (int)roundf(v.x * viewScale + viewX);
-        int y0 = (int)roundf(v.gy * viewScale + viewY);
-        int y1 = (int)roundf((v.gy - GEYSER_SPOUT_H) * viewScale + viewY);
-        int nh = y0 - y1;
-        if (nh < 1) continue;
+        int sy = (int)roundf(v.gy * viewScale + viewY);
 
-        int step = (nh >= 40) ? 2 : 1;
-        int H = nh + (int)(nh * 0.3f);
-        for (int k = 0; k <= H; k += step) {
-            float t = (float)k / (float)H;
-            float halfW;
-            if (t < 0.70f) {
-                halfW = 0.9f + 1.4f * powf(t / 0.70f, 1.3f);
-            } else if (t < 0.85f) {
-                halfW = 2.3f * (1.0f - (t - 0.70f) / 0.15f * 0.75f);
-            } else {
-                halfW = 0.6f * (1.0f - (t - 0.85f) / 0.15f);
-            }
-            if (halfW < 0.2f) halfW = 0.2f;
-            float bend = sinf(t * 1.7f) * 1.5f * t;
-            float mod = 0.8f + 0.2f * sinf(t * 5.0f + v.age * 1.5f);
-            float baseB = 215.0f * (1.0f - 0.5f * t) * mod * fade;
-            int cy = y0 - k;
-            int hw = (int)halfW;
-            for (int dx = -hw; dx <= hw; dx++) {
-                float d = (float)fabs(dx) / (halfW + 0.001f);
-                int b = (int)(baseB * (1.0f - 0.6f * d * d));
-                if (b < 8) continue;
-                if (b > 255) b = 255;
-                r.pixelShade((float)(sx + dx) + bend, (float)cy, b);
+        float pulse = 0.85f + 0.15f * sinf(t_ * 2.0f + (float)i);
+        int glow = (int)(190.0f * pulse + 40.0f);
+        r.pixelShade((float)sx, (float)sy - 1.0f, glow);
+        r.pixelShade((float)sx - 1.0f, (float)sy, glow / 2);
+        r.pixelShade((float)sx + 1.0f, (float)sy, glow / 2);
+        r.pixelShade((float)sx, (float)sy - 2.0f, glow / 2);
+
+        if (!v.erupting) continue;
+
+        float flash = (v.age < GEYSER_FLASH) ? (1.0f - v.age / GEYSER_FLASH) : 0.0f;
+        if (flash > 0.0f) {
+            int rad = 3;
+            for (int dy = -rad; dy <= rad; dy++) {
+                for (int dx = -rad; dx <= rad; dx++) {
+                    if (dx * dx + dy * dy > rad * rad) continue;
+                    int b = (int)(230.0f * flash * (1.0f - sqrtf((float)(dx * dx + dy * dy)) / (float)(rad + 1)));
+                    r.pixelShade((float)(sx + dx), (float)(sy + dy), b);
+                }
             }
         }
-
-        int b = (int)(220.0f * fade);
-        r.pixelShade((float)sx, (float)y0, b);
-        r.pixelShade((float)sx - 1.0f, (float)y0, b / 2);
-        r.pixelShade((float)sx + 1.0f, (float)y0, b / 2);
-        r.pixelShade((float)sx, (float)y0 - 1.0f, b / 2);
-        r.pixelShade((float)sx, (float)y0 + 1.0f, b / 3);
-        r.pixelShade((float)sx - 2.0f, (float)y0, b / 3);
-        r.pixelShade((float)sx + 2.0f, (float)y0, b / 3);
     }
 
     for (int i = 0; i < (int)parts_.size(); i++) {
         const Particle &p = parts_[i];
         float lf = clampf(p.life / p.maxLife, 0.0f, 1.0f);
-        int b = (int)(60.0f + 140.0f * lf);
+        int b = (int)(40.0f + 180.0f * lf);
         r.pixelShade(p.x * viewScale + viewX, p.y * viewScale + viewY, b);
     }
 }
