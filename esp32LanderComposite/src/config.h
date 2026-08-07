@@ -37,8 +37,8 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 6;   // TEMP: demo fija nivel Titán (revertir a 0 tras CRT)
-const int START_LEVEL = 1;
+const int DEMO_LEVEL_FORCE = 8;   // TEMP: demo fija nivel Tritón (twister; revertir a 0 tras CRT)
+const int START_LEVEL = 8; // TEMP: primer nivel = Tritón (twister)
 const float DEMO_POWER_RATE = 0.4f;
 
 const int WIND_START_LEVEL = 4;
@@ -128,9 +128,10 @@ const float FOG_DRIFT_SPEED_MAX = 0.20f;
 const float FOG_WAVE_A = 0.35f;
 const float FOG_WAVE_K = 0.02f;
 const float FOG_WAVE_SPEED = 0.15f;
-// Fog is never drawn above this screen row so it can't cover the HUD /
-// minimap / indicators and make them flicker (bad during the approach phase).
-const int FOG_SCREEN_TOP = 78;
+// Fog and terrain halo are never drawn above this screen row so they can't
+// reach the HUD / minimap / warnings (LOW FUEL=72, TOO FAST=82 with wind) and
+// make them flicker during the approach phase. 100 clears them all.
+const int FOG_SCREEN_TOP = 100;
 
 // Ganymede debris rings: two concentric rings of orbiting rock the ship must
 // weave through while descending. The inner ring turns slowly, the outer one
@@ -149,5 +150,47 @@ const float RING_SPEED_OUTER = -0.30f;  // fast ring, opposite direction
 const float RING_ROCK_RADIUS = 6.0f;    // world radius of one rock (collision)
 const float RING_SHIP_RADIUS = 12.0f;   // ship collision circle radius
 const int RING_ROCK_DRAW_MIN = 1;       // min screen radius in px
+
+// Triton nitrogen twister: a wandering vortex that sucks the ship toward its
+// base (on the ground). While captured the ship is held ON the funnel wall (a
+// cone that tapers to a thin point at the ground) and spirals down it, while
+// the nose tumbles continuously (270-360+ degrees). Touching the ground inside
+// the vortex smashes the ship. The escape is physical: if the outward radial
+// thrust overcomes the (strength-scaled) pull and the ship already moves
+// outward, it is violently flung out along the tangent and must regain heading.
+// Escape chance is inversely proportional to strength because the pull grows
+// with it.
+const float TWISTER_RADIUS = 150.0f;        // influence radius (world units)
+const float TWISTER_HEIGHT = 240.0f;        // funnel top above ground
+const float TWISTER_HOLD_GAIN = 0.06f;      // tangential grip gain while fighting (per tick)
+const float TWISTER_HOLD_RAMP = 20.0f;      // ticks to ramp the grip to full (no snap)
+const float TWISTER_ORBIT_SPEED = 0.010f;   // tangential target speed per unit radius (u/tick/u)
+const float TWISTER_ORBIT_MAX = 0.35f;      // tangential speed cap (u/tick)
+const float TWISTER_CAPTURE_RAMP = 40.0f;   // ticks to ease the ship onto the funnel wall
+const float TWISTER_SPIRAL_RATE = 90.0f;    // orbit advance while captured (deg/s)
+const float TWISTER_DESCENT = 45.0f;        // vertical descent while captured (u/s)
+const float TWISTER_TUMBLE_RATE = 110.0f;   // nose spin while captured (deg/s)
+const float TWISTER_TUMBLE_JITTER = 35.0f;  // random rocking added to the tumble (deg)
+const float TWISTER_TUMBLE_WAVE = 0.9f;     // rad/s of the tumble jitter
+const float TWISTER_ESCAPE_THRUST = 0.0011f;// radial-thrust that counts as "fighting" the grip (x strength)
+const float TWISTER_ESCAPE_VEL = 0.06f;     // sustained outward radial speed that breaks free
+const float TWISTER_ESCAPE_TICKS = 25;      // sustained ticks above escape velocity to break free
+const float TWISTER_FLING = 0.35f;          // outward velocity added on escape
+const float TWISTER_ESCAPE_MARGIN = 0.15f;  // thrust must exceed pull by this factor
+const float TWISTER_ESCAPE_COOLDOWN = 1.5f; // grace period after an escape (s)
+const float TWISTER_STRENGTH_MIN = 0.5f;    // random per level
+const float TWISTER_STRENGTH_MAX = 1.4f;
+const float TWISTER_DRIFT_SPEED = 8.0f;     // horizontal wander (world u/s)
+const float TWISTER_SPIN_KICK = 25.0f;      // deg yank on escape (x strength)
+// Funnel drawing: a tornado-like funnel, thin at the ground tip and widening
+// to a modest top half — NOT a wide pyramid. The physics cone the ship rides
+// uses the same geometry, so the captured ship always stays on the drawn wall.
+const float TWISTER_BASE_HALF = 2.5f;       // half width at the ground tip (u)
+const float TWISTER_TOP_HALF = 34.0f;       // half width at the funnel top (u)
+const float TWISTER_BAND_STEP = 4.0f;       // vertical spacing of the dust bands (u)
+const float TWISTER_SWAY_AMP = 7.0f;        // funnel sway (u)
+const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
+const float TWISTER_SWIRL_SPEED = 2.2f;     // rad/s of the swirling dust
+const int TWISTER_ORBIT_COUNT = 8;          // orbiting debris particles
 
 #endif

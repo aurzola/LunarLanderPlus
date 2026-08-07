@@ -37,6 +37,7 @@ static uint8_t *boltBuf = NULL;
 static uint8_t *beepBuf = NULL;
 
 static volatile uint16_t thrustPos = 0;
+static volatile int thrustPrev = 0;
 static volatile uint16_t explPos = 0xFFFF;
 static volatile uint16_t windPos = 0;
 static volatile uint16_t boltPos = 0xFFFF;
@@ -78,7 +79,11 @@ static void IRAM_ATTR audioIsr() {
     int16_t wlvl = (int16_t)windLevel;
 
     if (lvl > 0) {
-        v += (int32_t)(thrustBuf[thrustPos] - 128) * lvl >> 8;
+        // Running one-pole low-pass (integer, ~alpha 0.5) to soften high
+        // freqs — the samples now live in flash, so no pre-smoothed RAM copy.
+        int s = (int32_t)(thrustBuf[thrustPos] - 128);
+        thrustPrev += (s - thrustPrev) >> 1;
+        v += thrustPrev * lvl >> 8;
         thrustPos++;
         if (thrustPos >= THRUST_SOUND_LEN) thrustPos = 0;
     }
@@ -155,34 +160,23 @@ void Audio::begin() {
     Serial.printf("[audio] ledcAttachChannel: %d\n", (int)ok);
 
     bool wr = ledcWriteChannel(AUDIO_LEDC_CHANNEL, 128);
-    Serial.printf("[audio] ledcWriteChannel(128): %d (measure ~1.65V on pin 26)\n", (int)wr);
+    Serial.printf("[audio] ledcWriteChannel(128): %d\n", (int)wr);
     delay(1500);
     ledcWriteChannel(AUDIO_LEDC_CHANNEL, 0);
 
-    thrustBuf = (uint8_t *)malloc(THRUST_SOUND_LEN);
-    explBuf = (uint8_t *)malloc(EXPLOSION_SOUND_LEN);
-    windBuf = (uint8_t *)malloc(WIND_SOUND_LEN);
-    boltBuf = (uint8_t *)malloc(LIGHTNING_SOUND_LEN);
+    // Samples stay in FLASH (PROGMEM, memory-mapped) and are read straight
+    // from there by the ISR. The game never writes flash at runtime, so the
+    // data cache in the ISR is safe, and no heap is consumed for sample RAM —
+    // the 76.8 KB video frame buffer needs that memory. Only the beep (tiny)
+    // is generated into a small RAM buffer.
+    thrustBuf = (uint8_t *)THRUST_SOUND;
+    explBuf = (uint8_t *)EXPLOSION_SOUND;
+    windBuf = (uint8_t *)WIND_SOUND;
+    boltBuf = (uint8_t *)LIGHTNING_SOUND;
     beepBuf = (uint8_t *)malloc(BEEP_LEN);
-
-    memcpy_P(explBuf, EXPLOSION_SOUND, EXPLOSION_SOUND_LEN);
-    memcpy_P(windBuf, WIND_SOUND, WIND_SOUND_LEN);
-    memcpy_P(boltBuf, LIGHTNING_SOUND, LIGHTNING_SOUND_LEN);
-
-    // Smooth the engine tone: gentle one-pole low-pass to soften high freqs.
-    memcpy_P(thrustBuf, THRUST_SOUND, THRUST_SOUND_LEN);
-    {
-        const float a = 0.45f;           // kept moderately light
-        float prev = (float)(thrustBuf[0] - 128);
-        for (int i = 0; i < THRUST_SOUND_LEN; i++) {
-            float x = (float)(thrustBuf[i] - 128);
-            float y = prev + a * (x - prev);
-            prev = y;
-            int s = (int)(y + 128);
-            if (s < 0) s = 0;
-            if (s > 255) s = 255;
-            thrustBuf[i] = (uint8_t)s;
-        }
+    if (beepBuf == NULL) {
+        Serial.println("[audio] FATAL: no memory for beep buffer");
+        while (1) { }
     }
 
     for (int i = 0; i < BEEP_LEN; i++) {
@@ -190,8 +184,6 @@ void Audio::begin() {
         float s = 0.5f + 0.4f * sinf(2.0f * PI * 440.0f * t);
         beepBuf[i] = (uint8_t)(s * 255.0f);
     }
-    Serial.printf("[audio] buffers: thrust=%p expl=%p wind=%p bolt=%p beep=%p\n",
-                  (void *)thrustBuf, (void *)explBuf, (void *)windBuf, (void *)boltBuf, (void *)beepBuf);
 
     audioTimer = timerBegin(AUDIO_SAMPLE_RATE);
     timerAttachInterrupt(audioTimer, audioIsr);

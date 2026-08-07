@@ -16,6 +16,8 @@ storm_demo
 geyser_demo
 volcano_demo
 titan_demo
+rings_demo
+twister_demo
 
 # Generated output
 frames/

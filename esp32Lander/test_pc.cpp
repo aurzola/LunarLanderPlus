@@ -12,6 +12,7 @@
 #include "volcanoes.h"
 #include "atmosphere.h"
 #include "rings.h"
+#include "twister.h"
 #include "renderer_pc.h"
 
 static int checks = 0;
@@ -548,8 +549,8 @@ static int testAtmosphere()
     Game g;
     g.newGame();
     CHECK(!g.atmosphere.active());
-    for (int i = 0; i < 5; i++) g.nextLevel();
-    CHECK(g.level == 6);
+    for (int i = 0; i < 8 && !moonHasTitan(g.level); i++) g.nextLevel();
+    CHECK(moonHasTitan(g.level));
     CHECK(g.atmosphere.active());
     CHECK(!g.storm.active());
     g.atmosphere.update(GAME_DT);
@@ -595,8 +596,8 @@ static int testRings()
         }
     }
     CHECK(r.hitsShip(t, rx, ry, RING_SHIP_RADIUS));
-    // Far above everything -> never hit.
-    CHECK(!r.hitsShip(t, 400.0f, 60.0f, RING_SHIP_RADIUS));
+    // Above the highest possible rock (RING_CY-RING_RADIUS_OUTER=45) -> never hit.
+    CHECK(!r.hitsShip(t, 400.0f, 10.0f, RING_SHIP_RADIUS));
 
     // Rings move over time (positions are a function of the advancing phase).
     float p0x = 0, p0y = 0, p1x = 999, p1y = 999;
@@ -616,10 +617,84 @@ static int testRings()
     Game g;
     g.newGame();
     CHECK(!g.rings.active());
-    for (int i = 0; i < 3; i++) g.nextLevel(); // level 1->4 = GANYMEDES (idx 3)
-    CHECK(g.level == 4);
+    for (int i = 0; i < 8 && !moonHasRings(g.level); i++) g.nextLevel();
+    CHECK(moonHasRings(g.level));
     CHECK(g.rings.active());
     g.rings.update(GAME_DT);
+    return 0;
+}
+
+static int testTwister()
+{
+    // Only Triton levels (moonIndex 7 -> level 8, 16, 24...) activate it.
+    CHECK(moonHasTwister(8));
+    CHECK(moonHasTwister(16));
+    CHECK(moonHasTwister(24));
+    CHECK(!moonHasTwister(1));   // LUNA
+    CHECK(!moonHasTwister(2));   // IO
+    CHECK(!moonHasTwister(7));   // ENCELADUS
+
+    Twister tw;
+    Terrain t;
+    t.generate(8);
+    tw.reset(8, t);
+    CHECK(tw.active());
+    CHECK(tw.coreX() > 40.0f);
+    CHECK(tw.strength() >= TWISTER_STRENGTH_MIN);
+    CHECK(tw.strength() <= TWISTER_STRENGTH_MAX);
+
+    // Level with no twister stays off.
+    tw.reset(1, t);
+    CHECK(!tw.active());
+
+    // Physics: a ship parked inside the radius is dragged toward the core and
+    // downward (velocity gains a strong inward/down component) and captured.
+    tw.reset(8, t);
+    Ship s;
+    s.reset(tw.coreX() + 60.0f, tw.coreY(t) - 80.0f);
+    s.velX = 0.0f;
+    s.velY = 0.0f;
+    float y0 = s.posY;
+    for (int i = 0; i < 60; i++) {
+        s.update();       // integrate position + gravity (as in Game::update)
+        tw.update(GAME_DT);
+        tw.apply(s, t);
+    }
+    CHECK(tw.captured());
+    CHECK(s.posY > y0);        // it sank toward the ground
+    CHECK(fabsf(s.rotation) > 5.0f);   // the nose tumbled while captured
+    CHECK(sqrtf((s.posX - tw.coreX()) * (s.posX - tw.coreX()) +
+                (s.posY - tw.coreY(t)) * (s.posY - tw.coreY(t))) < TWISTER_RADIUS);
+
+    // A ship already leaving the vortex with sustained radial thrust breaks
+    // free (not sucked back): it must keep outward radial motion above the
+    // escape velocity for TWISTER_ESCAPE_TICKS ticks, then it is flung out.
+    tw.reset(8, t);
+    Ship s2;
+    s2.reset(tw.coreX() - 100.0f, tw.coreY(t) - 60.0f);
+    s2.velX = -0.6f; // already leaving
+    s2.velY = 0.0f;
+    s2.thrustBuild = 1.0f;
+    s2.rotation = -90.0f; // heading points straight outward (-x)
+    bool escaped = false;
+    for (int i = 0; i < TWISTER_ESCAPE_TICKS + 15 && !escaped; i++) {
+        tw.apply(s2, t);
+        if (tw.justEscaped()) escaped = true;
+    }
+    CHECK(escaped);
+    CHECK(!tw.captured());
+    float edx = s2.posX - tw.coreX(), edy = s2.posY - tw.coreY(t);
+    float ed = sqrtf(edx * edx + edy * edy);
+    float outVel = (s2.velX * edx + s2.velY * edy) / ed;
+    CHECK(outVel > 0.1f); // flung outward along the exit direction
+
+    // Game integration: reaching a Triton level activates the twister.
+    Game g;
+    g.newGame();
+    for (int i = 0; i < 8 && !moonHasTwister(g.level); i++) g.nextLevel();
+    CHECK(moonHasTwister(g.level));
+    CHECK(g.twister.active());
+    g.twister.update(GAME_DT);
     return 0;
 }
 
@@ -649,6 +724,8 @@ int main()
     r = testAtmosphere();
     if (r) return r;
     r = testRings();
+    if (r) return r;
+    r = testTwister();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

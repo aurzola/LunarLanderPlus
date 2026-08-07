@@ -249,3 +249,147 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
     sobre la silueta). `DEMO_LEVEL_FORCE=6` (TEMP de Titán) inalterado. Sync completado a
     `esp32LanderComposite/src/` (config/game.h/game.cpp/moons.h/rings.\*); `FOG_SCREEN_TOP=78` del
     composite conservado. **Pendiente de prueba en CRT.**
+22. **Torbellino de nitrógeno de Tritón (6/8/2026, rama `moon-flavor`)**: en niveles de Tritón
+    (`moonHasTwister(level)`, `moonIndex==7` → nivel 8, 16, 24…) el módulo `Twister`
+    (`twister.h/cpp`, PC + composite) crea un **vórtice de nitrógeno** que **deambula** por el mundo
+    (`TWISTER_DRIFT_SPEED=8 u/s`, rebota en `[40,760]`, misma cota que `Terrain`), con `strength`
+    aleatoria por nivel (`TWISTER_STRENGTH_MIN=0.5..MAX=1.4`) y sentido de giro `swirl` ±1. **Física
+    de vórtice** (`apply(ship,terrain)`, hookeado en `Game::update()` justo tras `ship.update()`, en
+    el mismo punto que el empuje de géiseres/atmósfera): si la nave está a `dist < TWISTER_RADIUS=150`
+    del eje, se le aplica **succión radial hacia la base** (`TWISTER_PULL=0.0011·strength·prox`, con
+    `prox=1−dist/radius`), **remolino tangencial** (`TWISTER_SPIN=0.9` sobre la velocidad lineal) y
+    **hundimiento** (`TWISTER_SINK=0.7`) → la nave entra en espiral hacia la base. Mientras está
+    **`captured()`**, cualquier contacto con el suelo la **destruye** → final "YOU CRASHED" /
+    **"TWISTER SMASHED THE SHIP"** (nuevo `twisterCrash`, análogo a `lavaBurn`/`ringHit`). **Escape
+    físico y sin dados**: si el **empuje radial** de la nave (componente del thrust a lo largo del
+    vector saliente) supera la succión × `TWISTER_ESCAPE_MARGIN=0.15` **y** ya hay velocidad radial
+    saliente, sale **lanzada** conservando la velocidad tangencial acumulada y recibiendo
+    `TWISTER_FLING=0.25·strength` de impulso exterior + tirón de morro `TWISTER_SPIN_KICK=25°·swirl`
+    (el jugador debe recuperar el rumbo; cooldown `TWISTER_ESCAPE_COOLDOWN=1.5 s`). La probabilidad de
+    escape es **inversamente proporcional a la fuerza** porque el pull escala con `strength`: cuanto
+    más fuerte el twister, más empuje radial se exige. **Dibujo** (pixelShade, sin fuentes extra):
+    embudo cónico oscilante (base half `TWISTER_BASE_HALF=6` → top `TWISTER_TOP_HALF=34`, sway
+    senoidal `TWISTER_SWAY_AMP=7` que crece hacia arriba + micro-oscilación), bandas horizontales de
+    polvo en espiral dentro del embudo, remolino de polvo en la base y `TWISTER_ORBIT_COUNT=8`
+    partículas orbitando la columna (hacen visible el giro). Integrado en `Game` junto a
+    geysers/volcanos/atmósfera/anillos: `reset` en constructor/newGame/restartLevel/nextLevel/startDemo
+    (y en el bucle de regeneración del demo), `update` tras `rings`, hook físico tras `ship.update()`,
+    `draw` tras `rings.draw` antes de la nave, colisión en `checkCollisions` (tras lava, antes del
+    terrain). API para tests: `active()`, `coreX()`, `coreY(terrain)`, `strength()`, `captured()`,
+    `justEscaped()`. Validado en PC: `test_pc` **886 checks ALL PASSED** (nuevos `testTwister`:
+    activación por nivel de Tritón, fuerza dentro de rango, captura y hundimiento de una nave parada
+    dentro del radio, escape con empuje exterior, `Game::nextLevel()` → nivel 8 activo),
+    `twister_demo <seed> 8` (PPM en `frames/`, selftest `active`; la nave entra en el radio y es
+    succionada → `smashed=1` en los seeds probados). El demo pasó a fijarse en Tritón
+     (`DEMO_LEVEL_FORCE=8`, TEMP de twister). Sync completado a `esp32LanderComposite/src/` (config/game.h/game.cpp/moons.h/twister.\*);
+     `FOG_SCREEN_TOP=78` del composite conservado; sketch compila 506414 B (38%), RAM 7%.
+     **Pendiente de prueba en CRT.**
+
+    **Rediseño de la física del vórtice (19/8/2026)**: en CRT la nave **pasaba a través del twister sin
+    verse afectada** (las aceleraciones `TWISTER_PULL/SPIN` eran demasiado débiles frente a la inercia).
+    Nueva física en `Twister::apply()` (v2→v3 tras pruebas en PC): **grip tangencial** inyectado en la
+    velocidad (órbita circular `TWISTER_ORBIT_SPEED=0.010 u/tick/u`, tope `TWISTER_ORBIT_MAX=0.35`,
+    ganancia `TWISTER_HOLD_GAIN=0.06` rampeada en `TWISTER_HOLD_RAMP=20` ticks con `holdT_`) + **agarre
+    radial** que reela hacia dentro (`TWISTER_RADIAL_INFLOW=0.30·strength` como deriva objetivo). La
+    nave capturada **orbita y espirala al núcleo** (validado con `/tmp/tw_escape.cpp`: cruce a
+    velocidad máxima 0.35 atrapado sin salir del radio; espiral d≈150→d≈12). **Escape por pelea**:
+    solo si el empuje radial `> TWISTER_ESCAPE_THRUST=0.0011·strength` (se desactiva la inyección
+    radial) **y** la velocidad radial saliente supera `TWISTER_ESCAPE_VEL=0.06` durante
+    `TWISTER_ESCAPE_TICKS=25` ticks → la nave sale lanzada (`TWISTER_FLING=0.35·strength` +
+    `TWISTER_SPIN_KICK=25°`) y el grip queda off hasta salir del radio (`escapeCooldown_=(dist+40)/flingV`).
+    El requisito de **velocidad radial real** (no solo apuntar y apretar, que escapaba en 0.2 s) hace
+    que el escape sea una pelea de ~2.5 s a fondo; al 40% no se escapa. **Tambaleo**: ruido en la
+    **posición** (el de velocidad se acumulaba en aceleración y dominaba la órbita), `TWISTER_WOBBLE
+    =0.15·strength·prox` + vaivén de morro `TWISTER_HEADING_KICK=2.0·strength·prox·sin`.
+    `START_LEVEL=8` (TEMP, primer nivel jugable = Tritón) + `DEMO_LEVEL_FORCE=8` (TEMP).
+    **Bug detectado en CRT**: los rayos de la tormenta (activa también en Tritón) causaban el efecto
+    estroboscópico, cortaban el thrust (`setThrust(0)` durante `stormHitTimer`) y ponían `PWR ####`
+    aleatorio en el HUD (el "POW se resetea"). Se apaga la tormenta en niveles de Tritón
+    (`if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);` en los 5 sitios),
+    igual que Titán — el torbellino es el clima propio de Tritón. `test_pc` **885 checks ALL PASSED**
+    (test de escape actualizado a `TWISTER_ESCAPE_TICKS`); sync re-hecha (config/game/twister.\*),
+    sketch compila 506766 B (38%). **Subido a placa 19/8/2026; pendiente re-probar en CRT.**
+
+    **`POT_DISABLED=1` (19/8/2026, misma sesión de CRT)**: en la prueba, al subir el PWR con C+stick
+    el nivel **se reseteaba a un valor menor o cero** de repente. Causa: el ADC del pot (GPIO34) es
+    ruidoso y, al superar las 120 cuentas respecto a `potAtCycle`, disparaba el "last-used wins"
+    (`pwrStickActive=false` → `powerLevel=potLevel`). El pot quedó **deshabilitado por flag** en el
+    `.ino` (`readPotLevel`/`lowPass`/`smoothPot`/`potAtCycle` bajo `#if !POT_DISABLED`); la potencia
+    ahora se fija **solo con C + stick** y, una vez activado `pwrStickActive`, ya no se desactiva.
+    Sketch compila 501162 B (38%). **Pendiente de prueba en CRT.**
+
+    **Twister ↔ viento excluyentes (20/8/2026)**: en CRT el usuario reportó que el minimapa, los
+    indicadores y la nave **parpadean y se borran parcialmente**, y sospechaba del dibujo del viento
+    (que además competía con el torbellino en el mismo nivel). Se añade `!moonHasTwister(level)` al
+    cálculo de `windEnabled` en los 3 sitios (`newGame()`, `nextLevel()`, `startDemo()`, líneas ~74/
+    115/156): en niveles de Tritón **no hay viento** (ni streaks ni polvo; `spawnWind`/`spawnDust`
+    ya salen antes con `windEnabled=false`). Como el twister solo existe en Tritón, la exclusión
+    queda en ambas direcciones. `test_pc` **889 checks ALL PASSED**; sync de `game.cpp` al composite;
+    sketch compila 501250 B (38%). **Subido a placa 20/8/2026; pendiente re-probar en CRT**
+    (verificar si el parpadeo/borrado persiste sin viento; si persiste, el causante es otro — el
+    viento se dibuja antes que nave/indicadores/minimapa en `Game::draw`).
+
+    **Twister física v4 + dibujo de embudo cónico (20/8/2026, misma sesión)**: en la re-proba en CRT
+    el parpadeo **persistió sin viento** → nuevo sospechoso: el **dibujo del twister** en la 2ª
+    etapa. Además se pidió (a) que la nave capturada quede **dentro de los límites del dibujo** del
+    torbellino, tambaleándose/girando 270-360° y **descendiendo en espiral** siguiendo el vórtice, y
+    (b) que el torbellino sea **más fino en la punta** que toca el suelo. Se rediseña la captura en
+    `twister.cpp` `apply()`: la nave cabalga la **pared del embudo cónico** (dist→`coneR` con ease
+    `TWISTER_CAPTURE_RAMP=40` ticks, `capOff_` = offset de captura, `dir` ±1), **weave horizontal**
+    `posX = cx + dir·amp·cos(swirlAngle_)` con `swirlAngle_` auto-acumulado a
+    `TWISTER_SPIRAL_RATE=90·strength °/s` y **descenso** `velY = TWISTER_DESCENT=45·strength u/s`
+    (positivo hacia abajo; fix del bug de signo que invertía la altura — antes `velY` negativo
+    cancelaba el hundimiento). Rotación = **`tumbleDeg_` acumulador** (`TWISTER_TUMBLE_RATE=110·strength
+    °/s` → 270-360°+ en el descenso) + jitter seno `TWISTER_TUMBLE_JITTER=35·strength·sin(t·0.9+phase)`
+    como **off-set no acumulativo** (antes el jitter se acumulaba en `rotation` → -3952°). El escape
+    físico (pelear `>TWISTER_ESCAPE_THRUST·strength` + velocidad radial `>TWISTER_ESCAPE_VEL` durante
+    `TWISTER_ESCAPE_TICKS` → fling + cooldown) no cambia. `draw()` reescrito: **embudo cónico de
+    `TWISTER_TIP_HALF=2` (punta fina) en el suelo hasta `TWISTER_RADIUS` arriba**, bandas de polvo en
+    espiral (`TWISTER_BAND_STEP=4`), bordes de pared brillantes (`pixelShade 210`), nube base y
+    debris orbitando en la pared. Constantes viejas eliminadas de `config.h` (`TWISTER_RADIAL_INFLOW`,
+    `TWISTER_SINK`, `TWISTER_WOBBLE/WOBBLE_FREQ`, `TWISTER_HEADING_KICK`, `TWISTER_BASE_HALF`,
+    `TWISTER_TOP_HALF`). Validado con harness `/tmp/tw_spiral.cpp`: 3 trials → xoff ondea entre las
+    paredes, h desciende 120→36/4, rotación acumula 204°/-275°/-451°, `captured=1` (el "ascenso" del
+    trial 2 es el embudo siguiendo el terreno ascendente por el que deriva — la nave sigue dentro del
+    cono dibujado). `test_pc` **889 checks ALL PASSED** (el check del tumble ahora usa 60 ticks: en 30
+    el jitter de ±35° cancela el tumble aún pequeño; a 60 el acumulador domina). Sync composite
+    (config/twister.\*); sketch compila 501582 B (38%). **PWR inicial al 50%** (`powerLevel=0.5f` en
+    el `.ino`, antes 0). **Subido a placa 20/8/2026; pendiente re-probar en CRT** (parpadeo del
+    twister, nave dentro del vórtice en espiral con tumble 270-360°, punta fina, PWR 50%).
+
+    **Twister: vuelta al embudo tornado (20/8/2026)**: en CRT el embudo cónico v4 (punta 2 → radio
+    150) se veía **como una pirámide**, "horrible e irreal". Se restaura la forma de tornado
+    (`TWISTER_BASE_HALF=2.5` en la punta que toca el suelo → `TWISTER_TOP_HALF=34` arriba, sustituyen
+    a `TWISTER_TIP_HALF`), con **la misma geometría en la física y el dibujo**: `coneR` de
+    `apply()` usa `BASE_HALF→TOP_HALF` (no `→TWISTER_RADIUS`), así la nave capturada cabalga la
+    pared del tornado y queda dentro del dibujo. `test_pc` 889 OK.
+
+    **Parpadeo: causa raíz encontrada = tearing de framebuffer único (20/8/2026)**: el parpadeo/
+    borrado parcial de minimapa, indicadores y nave **persistía sin viento y con cualquier dibujo
+    del twister**, sobre todo en la 2ª etapa (zoom). Diagnóstico: la librería aquaticus usa **un
+    único framebuffer** leído por DMA mientras `draw()` escribe; `video_wait_frame()` espera el fin
+    del campo visible y `game.draw()` corre en la ventana de blanking (~2 ms). En zoom (×5) con
+    efectos pesados el dibujo excede esa ventana y el DMA escanea contenido **a medio dibujar** →
+    tear/flicker. **Fix (doble buffer)**: `fbShadow[76800]` en el `.ino`; `RendererESP32` pinta en
+    el shadow y, justo tras `video_wait_frame()`, `memcpy(shadow → videoFB)` durante el blanking;
+    el siguiente `game.draw()` pinta en el shadow durante el campo completo (~16 ms). El DMA solo
+    ve frames completos → sin tearing en ninguna luna. RAM 101908 B (31%). **Subido a placa
+    20/8/2026; pendiente re-probar en CRT.**
+
+    **RAM: muestras de audio pasan a flash (20/8/2026) — el doble buffer ya arranca en placa**:
+    el `fbShadow[76800]` estático (76.8 KB) dejó el heap tan partido que el FB de video de 76.8 KB
+    ya **no cabía** (crash `StoreProhibited` en `memcpy_P` con destino NULL / `assert
+    setup_video_signal video.c:253` "Failed to allocate 76800 bytes"; `largest_free_block` ~59 KB).
+    Un pool único de audio de 118589 B tampoco entraba tras el FB de video. **Solución final**:
+    `Audio::begin()` ya no copia las muestras a RAM — `thrustBuf/explBuf/windBuf/boltBuf` apuntan
+    directo a los arrays PROGMEM (flash mapeado, `0x3f4xxxxx`) y el ISR (IRAM) las lee desde ahí
+    (el juego no escribe flash en runtime → la caché de datos en el ISR es segura). Solo el beep
+    (8 KB) se genera en RAM. El suavizado del tono del motor (antes low-pass de una pasada sobre la
+    copia en RAM) ahora es un **one-pole IIR entero por muestra en el ISR** (`thrustPrev += (s-
+    thrustPrev)>>1`, alpha ~0.5). Orden de inicio: `Audio::begin()` (8 KB) → `video_graphics()`
+    (FB 76.8 KB cabe en la región grande del heap, free 227736→147744). **Verificado en placa por
+    serial**: arranque limpio (sin FATAL/assert/reset), `VIDEO[dac] tx_start ok`, ISR de audio a
+    ~16 kHz leyendo de flash (delta ~33042 cuentas / 2 s), nunchuck OK, `pwr=50`. Se quitaron los
+    prints de debug temporales (`[audio] mem`, `[audio] flash buffers`, `[audio] buffers`,
+    `[mem] after video`). Sketch 501422 B (38%), RAM globales 101908 B (31%). **Pendiente re-probar
+    en CRT** (parpadeo con el doble buffer, forma de tornado del twister, PWR 50%).

@@ -56,4 +56,9 @@ static inline bool moonHasRings(int level)
     return moonIndex(level) == 3; // GANYMEDES (debris rings)
 }
 
+static inline bool moonHasTwister(int level)
+{
+    return moonIndex(level) == 7; // TRITON (nitrogen twister)
+}
+
 #endif

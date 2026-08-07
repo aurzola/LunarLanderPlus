@@ -32,7 +32,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `test_pc.cpp` | Tests de validación (asserts) |
 | `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
 | `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
-| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026; volcanes 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)`/`moonHasVolcanoes(level)` (índice `(level-1) % 8`). **PENDIENTE (19/8/2026)**: personalidad/efectos propios por luna (dificultad, cielo, título). Hoy cada luna solo aporta su gravedad y, según índice, sus efectos ambientales ya integrados: géiseres (Encélado), volcanes (Ío), niebla (Titán), anillos de roca (Ganímedes). Faltan efectos propios para LUNA, EUROPA, CALLISTO y TRITON, y queda por definir la dificultad y el cielo/título por luna. Se ampliará en ramas posteriores |
+| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026; volcanes 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)`/`moonHasVolcanoes(level)`/`moonHasRings(level)`/`moonHasTwister(level)` (índice `(level-1) % 8`). **PENDIENTE (19/8/2026)**: personalidad/efectos propios por luna (dificultad, cielo, título). Hoy cada luna solo aporta su gravedad y, según índice, sus efectos ambientales ya integrados: géiseres (Encélado), volcanes (Ío), niebla (Titán), anillos de roca (Ganímedes), torbellino (Tritón). Faltan efectos propios para LUNA, EUROPA y CALLISTO, y queda por definir la dificultad y el cielo/título por luna. Se ampliará en ramas posteriores |
 | `geysers.h/cpp` | **Géiseres de Encélado (16/8/2026, rama `moon-flavor`)**: activos en niveles de Encélado (`moonHasGeysers(level)` → `moonIndex==6`, i.e. nivel 7, 15, 23…). `reset(level, terrain)` coloca `GEYSER_VENTS=5` respiraderos en las bases de las laderas junto a los pads (`GEYSER_VENT_OFFSET=14 u`); erupcionan cíclicamente (burst `GEYSER_BURST=3 s` + pausa `GEYSER_GAP_MIN..MAX=3..9 s`, desincronizados) emitiendo partículas en arco y una **columna cónica** con doblez en S (alto `GEYSER_SPOUT_H=40 u`). **Física térmica**: `inPlume(x,y)` detecta el chorro (distancia horizontal ≤ `GEYSER_RADIUS=8`, entre suelo y `GEYSER_PLUME_H=40`); `Game::update()` aplica `ship.velY -= GEYSER_PUSH=0.00025` (~50 % de la gravedad de Encélado). API tests: `ventCount()`/`ventX(i)` |
 | `geyser_demo.cpp` | Prueba de visualización en PC: terreno generado + géiseres → PPM en `frames/` (selftest `active` + `maxAlive>0`) |
 | `volcanoes.h/cpp` | **Volcanes de Ío (16/8/2026, rama `moon-flavor`; validado en CRT 17/8/2026)**: activos en niveles de Ío (`moonHasVolcanoes(level)` → `moonIndex==1`, i.e. nivel 2, 10, 18, 26…). `reset(level, terrain)` escanea el terreno (muestreo cada 6 u, desnivel `VOLCANO_MIN_DROP=14 u` sobre `VOLCANO_FLOW_LEN=60 u`, sin pisar zonas landable) y coloca `VOLCANO_VENTS=4` volcanes en laderas descendentes. Flujo de lava (línea brillante 1 px sobre la superficie, pulso `0.85+0.15·sin(t·2+phase)`) + erupciones casi continuas (destello radial + partículas en arco, desvanecidas 220→40). **Mecánica de lava**: `computeLava()`/`clampFlows()` calculan los **rangos reales** que cubren la plataforma (`LavaRange {x1,x2}`, franja segura `VOLCANO_SAFE_STRIP=8 u` central; el pad nunca queda 100 % cubierto); `landOnLava(x1,x2)`. **Cualquier colisión sobre lava quema** → final `"YOU BURNED" / "LAVA DESTROYED THE SHIP"`. API tests: `active()`, `volcanoCount()`, `particlesAlive()`, `lavaRangeCount/X1/X2`, `landOnLava` |
@@ -41,6 +41,8 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `titan_demo.cpp` | Prueba de visualización en PC: terreno generado + atmósfera → PPM en `frames/` (nivel por defecto 6 = Titán) |
 | `rings.h/cpp` | **Anillos de roca de Ganímedes (6/8/2026, rama `moon-flavor`)**: activos en niveles de Ganímedes (`moonHasRings(level)`, `moonIndex==3`, i.e. nivel 4, 12, 20, 28…). `reset(level)` + `update(dt)` + `draw(r,terrain,viewX,viewY,viewScale)` + `hitsShip(t,sx,sy,shipR)`. Dos anillos concéntricos de rocas orbitando `(RING_CX=400, RING_CY=260)`: interior lento (22 rocas, radio 130) y exterior rápido en sentido contrario (32 rocas, radio 215) → los huecos nunca son estáticos. Una roca **solo existe/dibuja/colisiona sobre la silueta** (`rockVisible` filtra `y < terrainYAt(x)`): la cara lejana queda oculta por la luna. Colisión círculo-círculo (`RING_ROCK_RADIUS=6` + `RING_SHIP_RADIUS=12`): golpear una roca **destruye la nave** → final `"STRUCK BY ORBITAL DEBRIS"`. API tests: `rocksInRing(i)`/`rockVisible(t,i,k,x,y)`/`hitsShip(...)`. Integrado en `Game` (reset/update/draw/checkCollisions) junto a geysers/volcanos/atmósfera. Ver WORKLOG #21 |
 | `rings_demo.cpp` | Prueba de visualización en PC: terreno generado + anillos → PPM en `frames/` (selftest `active` + `rocksVisible>0`; nivel por defecto 4 = Ganímedes) |
+| `twister.h/cpp` | **Torbellino de nitrógeno de Tritón (6/8/2026, rama `moon-flavor`; física v4 + dibujo de embudo tornado 20/8/2026)**: activo en niveles de Tritón (`moonHasTwister(level)`, `moonIndex==7`, i.e. nivel 8, 16, 24…). `reset(level, terrain)` coloca un vórtice que **deambula** por el mundo (`TWISTER_DRIFT_SPEED=8 u/s`, rebota en `[40,760]`) con `strength` aleatoria (`TWISTER_STRENGTH_MIN=0.5..MAX=1.4`) y giro `swirl` ±1. **Física de vórtice (v4)** (`apply(ship,terrain)`, hookeado en `Game::update()` tras `ship.update()`): al cruzar `TWISTER_RADIUS=150` la nave **cabalga la pared del embudo cónico** — `capOff_` = offset de captura, `dir` ±1, `posX = cx + dir·amp·cos(swirlAngle_)` con `amp = capOff + (coneR−capOff)·ease` (`TWISTER_CAPTURE_RAMP=40` ticks) y `coneR` = radio del cono a la altura actual (`TWISTER_BASE_HALF=2.5` en el suelo → `TWISTER_TOP_HALF=34` arriba) → la nave queda **dentro de los límites del dibujo** (la física usa la misma geometría que el dibujo). **Weave en espiral**: `swirlAngle_` avanza a `TWISTER_SPIRAL_RATE=90·strength °/s`, oscilando entre las paredes mientras **desciende** `velY = TWISTER_DESCENT=45·strength u/s` (positivo = abajo; fix del bug de signo que invertía la altura). **Giro continuo**: `rotation = tumbleDeg_` (acumulador `TWISTER_TUMBLE_RATE=110·strength °/s` → 270-360°+ en el descenso) `+` jitter seno `TWISTER_TUMBLE_JITTER=35·strength·sin(t·0.9+phase)` como off-set **no acumulativo** (antes se acumulaba → -3952°). **Escape físico**: solo si se **pelea** (empuje radial `> TWISTER_ESCAPE_THRUST=0.0011·strength`) y la velocidad radial saliente supera `TWISTER_ESCAPE_VEL=0.06` durante `TWISTER_ESCAPE_TICKS=25` ticks → la nave sale **lanzada** (`TWISTER_FLING=0.35·strength` + `TWISTER_SPIN_KICK=25°`) y el grip queda off hasta salir del radio (`escapeCooldown_ = (dist+40)/flingV`). **Cualquier contacto con el suelo estando `captured()`** → final `"YOU CRASHED" / "TWISTER SMASHED THE SHIP"`. **La tormenta se apaga en niveles de Tritón** (`moonHasTwister` igual que Titán; también se apaga el viento — ver sección Viento). Dibujo: **embudo tornado de punta fina** (`TWISTER_BASE_HALF=2.5` en el suelo → `TWISTER_TOP_HALF=34` arriba; NO pirámide — el intento punta 2→150 se vio horrible en CRT), sway senoidal `TWISTER_SWAY_AMP=7`, bandas de polvo en espiral (`TWISTER_BAND_STEP=4`), bordes de pared brillantes (`pixelShade 210`), remolino de polvo en la base y `TWISTER_ORBIT_COUNT=8` partículas orbitando la columna. API tests: `active()`/`coreX()`/`coreY(terrain)`/`strength()`/`captured()`/`justEscaped()`. Integrado en `Game` (reset/update/hook físico/checkCollisions/draw). Validado con harness `/tmp/tw_spiral.cpp` (3 trials: xoff ondea entre paredes, h 120→36/4, tumble 204°/-275°/-451°, `captured=1`). Ver WORKLOG #22 |
+| `twister_demo.cpp` | Prueba de visualización en PC: terreno generado + torbellino → PPM en `frames/` (selftest `active`; la nave entra en el radio y es succionada; nivel por defecto 8 = Tritón) |
 
 ### Mundo y pantalla
 
@@ -69,7 +71,10 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
 - **Viento (física desde 9/8/2026)**: se activa desde `WIND_START_LEVEL` (**4**) y **aleatoriamente
   por nivel** (50 % de probabilidad por nivel ≥ 4, `WIND_CHANCE_PERCENT`); ráfagas y dirección
-  aleatorias. Ráfagas: `windStrength = WIND_MIN(0.35) + (1-WIND_MIN)*gust`,
+  aleatorias. **Twister ↔ viento excluyentes (20/8/2026)**: `windEnabled` lleva además
+  `&& !moonHasTwister(level)` en los 3 sitios (`newGame`/`nextLevel`/`startDemo`) → en niveles de
+  Tritón **no hay viento** (ni streaks ni polvo; `spawnWind`/`spawnDust` salen antes con
+  `windEnabled=false`). Ráfagas: `windStrength = WIND_MIN(0.35) + (1-WIND_MIN)*gust`,
   `gust = 0.5+0.5*sin(windPhase*0.6)`; `windDir` (+1/-1) cambia cada 8–20 s. **Física**:
   `Ship::update()` aplica `velX += windDir·windStrength·WIND_ACCEL` por tick (sin `GAME_DT`);
   `WIND_ACCEL=0.0004` ≈ 80 % de la gravedad a ráfaga máxima → mantener rumbo contra el viento cuesta
@@ -130,14 +135,18 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - **Pot (GPIO34) → nivel de potencia (thrust level)**: dead zone 2–98%, lineal a `0.0–1.0`.
   **Solo fija la potencia**; el motor se enciende/apaga con el botón del nunchuck
   (`Z` por defecto, configurable con `NUNCHUCK_TRIGGER_Z`): `thrust = motorOn ? powerLevel : 0`.
+  **DESHABILITADO (19/8/2026, `POT_DISABLED=1` en el `.ino`)**: el ADC del pot era ruidoso y al
+  moverse >120 cuentas retomaba el control mientras subías con C+stick (el PWR "se reseteaba" a un
+  valor menor o cero). Con el flag, la potencia se fija **solo con C + stick**; el pot no se lee
+  (`readPotLevel`/`lowPass`/`potAtCycle` quedan bajo `#if !POT_DISABLED`).
 - **C + stick del nunchuck → pasos de potencia (5/8/2026; rediseñado 17/8/2026)**: mientras se
   mantiene **C**, mover el stick **arriba sube / abajo baja** el `powerLevel` de forma continua
   (no pasos discretos), con rampa `PWR_STICK_RATE=0.008`/tick (~2 s de barrido completo con el
   stick a tope). `readStickYDev()` devuelve `+` arriba / `−` abajo (invertido: Y raw bajo =
   arriba); calibración adaptativa del eje Y (`stickCenterY=128` inicial, idle 40, dead zone 10).
-  El **pot sigue funcionando** ("last-used wins"): al empezar el modo stick se guarda
-  `potAtCycle` y si el pot se mueve >120 cuentas ADC retoma el control (`pwrStickActive=false`,
-  `powerLevel=potLevel`). Sustituye al antiguo ciclo por pasos `{0,25,50,75,100}%` (`powerStep`).
+  Con `POT_DISABLED` una vez activado (`pwrStickActive=true`) **ya no se desactiva** (sin pot que
+  retome), así que ajustes sucesivos continúan desde el valor actual. Sustituye al antiguo ciclo
+  por pasos `{0,25,50,75,100}%` (`powerStep`).
 - **Gatillo (GPIO35) → LEGACY**: el reóstato quedó **desconectado**; el código del mapeo
   por voltaje se conserva en el `.ino` bajo `#if 0` (decisión: cambiar a pot + botón).
 - Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
@@ -239,14 +248,15 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 | Control | Mapeo del juego | Notas |
 |---------|-----------------|-------|
 | Nunchuck (joystick X) | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | I2C GPIO21/GPIO22; dead zone ±10 |
-| Potenciómetro A | Nivel de potencia de motores (thrust level 0.0–1.0) | ADC con suavizado, dead zone 2–98% |
+| Potenciómetro A | Nivel de potencia de motores (thrust level 0.0–1.0) | **DESHABILITADO** (`POT_DISABLED=1`); ver "Entrada" |
 | Nunchuck (botón Z) | Encendido/apagado del motor (thrust = botón ? powerLevel : 0) | `NUNCHUCK_TRIGGER_Z`; alternativo C |
-| Nunchuck (botón C) | Mientras se mantiene C, el stick sube/baja `powerLevel` (continuo, rampa 0.008/tick) | `pwrStickActive`; pot retoma si se mueve >120 ADC |
+| Nunchuck (botón C) | Mientras se mantiene C, el stick sube/baja `powerLevel` (continuo, rampa 0.008/tick) | único fijador de PWR con `POT_DISABLED` |
 | Botón (GPIO13) | Inicio / reinicio de partida | Equivale a tecla "P"; **sin autostart** (espera el botón) |
 
 El motor se enciende/apaga con el botón Z del nunchuck (como el resorte del gatillo: soltado =
-motor apagado). La potencia se fija con el pot (continuo) o el botón C (pasos de 25 %); "last-used
-wins": al mover el pot >120 cuentas ADC, vuelve a mandar el pot.
+motor apagado). La potencia se fija **solo con C + stick** (desde 19/8/2026, `POT_DISABLED=1`):
+el pot quedó deshabilitado porque su ADC ruidoso reseteaba el PWR a un valor menor o cero mientras
+subías con C+stick.
 
 ## Hardware eléctrico / pinado
 
@@ -281,8 +291,7 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   (resolución 8-bit = máx)**.
 - `src/audio.h/cpp`: timer gptimer a **16 kHz** con ISR (`IRAM_ATTR`) que mezcla
   `THRUST_SOUND` (loop) + `WIND_SOUND` (loop) + `EXPLOSION_SOUND` (one-shot) + `LIGHTNING_SOUND`
-  (one-shot) + **voz de quemado** (17/8/2026, one-shot de 4 s) en RAM (copiados desde PROGMEM al
-  arrancar) y escribe el duty directo al registro
+  (one-shot) + **voz de quemado** (17/8/2026, one-shot de 4 s) y escribe el duty directo al registro
   `LEDC.channel_group[0].channel[0].duty.duty` (`val<<4`) + handshake `duty_start`. API:
   `Audio::begin()`, `Audio::setThrust(0..1)`, `Audio::setWind(0..1)`, `Audio::playExplosion()`,
   `Audio::playBurn()`, `Audio::playLightning()`.
@@ -296,7 +305,13 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   (extrae el segmento 2 s más estable del mp3, hace **loop sin clic** cruzando la continuación
   natural hacia la cabeza, sube ganancia con `tanh`, convierte a 8-bit). Los mp3 se convierten
   primero a PCM16 16 kHz con ffmpeg (`/tmp/opencode/rocket16.wav`).
-- RAM: los sonidos se copian a RAM al arrancar (~116 KB incl. beep) para lectura segura desde el ISR.
+- RAM: **las muestras se leen desde flash (PROGMEM mapeado) directamente en el ISR** (desde
+  20/8/2026). Motivo: el doble buffer de video (`fbShadow` 76.8 KB estático) dejaba el heap tan
+  partido que el FB de video de 76.8 KB no cabía junto a ~116 KB de audio en RAM (crash
+  `StoreProhibited`/assert de video). Como el juego **no escribe flash en runtime**, la caché de
+  datos en el ISR es segura; solo el beep (8 KB) se genera en RAM. El suavizado del tono del motor
+  (antes low-pass de una pasada sobre la copia) ahora es un **one-pole IIR entero por muestra en
+  el ISR** (`thrustPrev += (s-thrustPrev)>>1`, alpha ~0.5).
 - Disparo en el `.ino`: transición a `STATE_CRASHED` → explosión; `thrustBuild` durante
   `STATE_PLAYING` → motor; `game.windEnabled` (viento activo en el nivel y jugando) → viento;
   `game.storm.takeNewBolt()` → rayo.
@@ -351,7 +366,9 @@ Resumen: ESP32 Dev Module flash 4 MB (QIO 80 MHz), core 3.3.10, esquema de parti
 Historial completo por ítem (changelog): **`docs/WORKLOG.md`**. Aquí solo quedan los
 pendientes y bugs activos:
 
-- **Pendiente de prueba en CRT (gráficos/efectos)**: nunchuck (#8), atmósfera de Titán (#20), anillos de Ganímedes (#21).
+- **Pendiente de prueba en CRT (gráficos/efectos)**: nunchuck (#8), atmósfera de Titán (#20), anillos de Ganímedes (#21), torbellino de Tritón (#22).
 - **PENDIENTE (feature)**: boca de volcán con patrón "U" aserrado (#18, ver `volcanoes.cpp` `Volcanoes::draw()`).
-- **BUG PENDIENTE**: los controles del HUD pestañean/se pierden en la fase de aproximación con zoom en Titán (#20, `Game::draw()` orden clear → storm.drawSky → atmosphere.drawSky → terreno → nave → minimapa → HUD).
-- **TEMP**: `DEMO_LEVEL_FORCE=6` (fija el demo en Titán) en `config.h` — revertir a 0 tras probar en CRT.
+- **BUG PENDIENTE**: ~~los controles del HUD pestañean/se pierden en la fase de aproximación con zoom en Titán (#20)~~ → **RESUELTO (20/8/2026)**: el parpadeo/borrado parcial de minimapa, indicadores y nave en la 2ª etapa (zoom) era **tearing de framebuffer único** (el DMA de la librería aquaticus escanea el FB mientras `draw()` escribe; en zoom el frame excede la ventana de blanking). Fix: **doble buffer** en el `.ino` — `fbShadow[76800]`, `RendererESP32` pinta en el shadow, y tras `video_wait_frame()` se `memcpy(shadow→videoFB)` durante el blanking; el siguiente `draw()` pinta en el shadow durante el campo completo. El DMA solo ve frames completos (  afectaba a cualquier luna con efectos en zoom, no solo Tritón). El doble buffer rompía la RAM
+  (el FB de video ya no cabía); se resolvió pasando las muestras de audio a flash (ver Sonido).
+  RAM 101908 B (31%), arranque limpio verificado por serial. Pendiente re-probar en CRT.
+- **TEMP**: `DEMO_LEVEL_FORCE=8` (fija el demo en Tritón/twister) y `START_LEVEL=8` (primer nivel jugable = Tritón/twister) en `config.h` — revertir a 0 / 1 tras probar en CRT.

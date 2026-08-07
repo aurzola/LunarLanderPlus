@@ -21,18 +21,32 @@ const int PIN_POT = 34;
 const int PIN_TRIGGER = 35;
 const int PIN_START = 13;
 
-const float POT_DEAD_MIN = 0.02f;
-const float POT_DEAD_MAX = 0.98f;
-
 #define CONTROLS_WIRED 1
 #define NUNCHUCK_TRIGGER_Z 1
+#define POT_DISABLED 1 // pot del PWR deshabilitado (ADC ruidoso reseteaba el nivel);
+                       // la potencia se fija solo con C + stick
+
+#if !POT_DISABLED
+const float POT_DEAD_MIN = 0.02f;
+const float POT_DEAD_MAX = 0.98f;
+#endif
 
 static Game game;
 static RendererESP32 *renderer = NULL;
 
+// Double buffer: game.draw() paints into fbShadow; right after
+// video_wait_frame() (visible field ended, blanking window) the completed
+// frame is copied to the DMA framebuffer. The video DMA therefore only ever
+// scans complete frames — no tearing/flicker even when a frame is expensive
+// to draw (zoom, twister, atmosphere).
+static uint8_t fbShadow[XRES * YRES];
+
 static Nunchuck nunchuck;
+#if !POT_DISABLED
 static int smoothPot = 0;
 static float potLevel = 0.0f;
+static int potAtCycle = 0;
+#endif
 static bool motorOn = false;
 static int lastButton = HIGH;
 static int lastGameState = -1;
@@ -41,9 +55,9 @@ static unsigned long lastNunchuckPrint = 0;
 
 static const float PWR_STICK_RATE = 0.008f;
 static bool pwrStickActive = false;
-static int potAtCycle = 0;
-static float powerLevel = 0.0f;
+static float powerLevel = 0.5f;
 
+#if !POT_DISABLED
 static int lowPass(int prev, int raw, int shift)
 {
     return (prev * ((1 << shift) - 1) + raw) >> shift;
@@ -57,6 +71,7 @@ static float readPotLevel()
     else if (t > POT_DEAD_MAX) t = POT_DEAD_MAX;
     return (t - POT_DEAD_MIN) / (POT_DEAD_MAX - POT_DEAD_MIN);
 }
+#endif
 
 static int stickCenterX = 128;
 static int stickLeftDev = 80;
@@ -160,22 +175,28 @@ static void readInputs()
     nunchuck.read();
 
     game.input.angle = readStickAngle();
+#if !POT_DISABLED
     potLevel = readPotLevel();
+#endif
 
     bool cNow = nunchuck.buttonC();
     float yDev = readStickYDev();
     if (cNow && (yDev > 0.1f || yDev < -0.1f)) {
         if (!pwrStickActive) {
             pwrStickActive = true;
+#if !POT_DISABLED
             potAtCycle = smoothPot;
             powerLevel = potLevel;
+#endif
         }
         powerLevel += yDev * PWR_STICK_RATE;
         if (powerLevel > 1.0f) powerLevel = 1.0f;
         if (powerLevel < 0.0f) powerLevel = 0.0f;
     }
+#if !POT_DISABLED
     if (pwrStickActive && abs(smoothPot - potAtCycle) > 120) pwrStickActive = false;
     if (!pwrStickActive) powerLevel = potLevel;
+#endif
 
 #if NUNCHUCK_TRIGGER_Z
     motorOn = nunchuck.buttonZ();
@@ -216,10 +237,13 @@ void setup()
     calibrateStick();
     Serial.printf("[nunchuck] center=%d\n", stickCenterX);
 
-    video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP);
-    renderer = new RendererESP32(video_get_frame_buffer_address(), XRES, YRES);
-
+    // Audio samples live in flash (PROGMEM) and are read straight from there
+    // by the ISR, so Audio::begin() only needs a small beep buffer — the
+    // 76.8 KB video frame buffer still gets the large contiguous heap block.
     Audio::begin();
+
+    video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP);
+    renderer = new RendererESP32(fbShadow, XRES, YRES);
 }
 
 void loop()
@@ -267,5 +291,6 @@ void loop()
     }
 
     video_wait_frame();
+    memcpy(video_get_frame_buffer_address(), fbShadow, (size_t)XRES * (size_t)YRES);
     game.draw(*renderer);
 }

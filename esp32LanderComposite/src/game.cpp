@@ -37,7 +37,8 @@ Game::Game()
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false), ringHit(false)
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false), ringHit(false),
+      twisterCrash(false)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -45,11 +46,12 @@ Game::Game()
     input.powerLevel = 0;
     terrain.init();
     storm.reset(level);
-    if (moonHasTitan(level)) storm.setEnabled(false);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
     rings.reset(level);
+    twister.reset(level, terrain);
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -70,14 +72,16 @@ void Game::newGame()
     if (level <= 1) terrain.init();
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
-                  (rand() % 100) < WIND_CHANCE_PERCENT;
+                  (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTwister(level);
     spawnWind();
     storm.reset(level);
-    if (moonHasTitan(level)) storm.setEnabled(false);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
     rings.reset(level);
+    twister.reset(level, terrain);
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
@@ -93,6 +97,7 @@ void Game::restartLevel()
     introTimer = LEVEL_INTRO_TIME;
     lavaBurn = false;
     ringHit = false;
+    twisterCrash = false;
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
         state = STATE_WAITING;
@@ -108,14 +113,16 @@ void Game::nextLevel()
     float f = ship.fuel;
     terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
-                  (rand() % 100) < WIND_CHANCE_PERCENT;
+                  (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTwister(level);
     spawnWind();
     storm.reset(level);
-    if (moonHasTitan(level)) storm.setEnabled(false);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
     rings.reset(level);
+    twister.reset(level, terrain);
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
@@ -147,14 +154,16 @@ void Game::startDemo()
     if (level <= 1) terrain.init();
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
-                  (rand() % 100) < WIND_CHANCE_PERCENT;
+                  (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTwister(level);
     spawnWind();
     storm.reset(level);
-    if (moonHasTitan(level)) storm.setEnabled(false);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
     rings.reset(level);
+    twister.reset(level, terrain);
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
@@ -186,11 +195,12 @@ void Game::startDemo()
         if (lavaPick >= 0 || DEMO_LEVEL_FORCE <= 0) break;
         terrain.generate(level);
         storm.reset(level);
-        if (moonHasTitan(level)) storm.setEnabled(false);
+        if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
         geysers.reset(level, terrain);
         volcanoes.reset(level, terrain);
         atmosphere.reset(level);
         rings.reset(level);
+        twister.reset(level, terrain);
     }
 
     if (lavaPick >= 0) {
@@ -554,6 +564,22 @@ void Game::checkCollisions()
         return;
     }
 
+    // Touching the ground while the twister is dragging the ship smashes it
+    // against the ground near the vortex base.
+    if (result != 0 && twister.captured()) {
+        twisterCrash = true;
+        ship.crash();
+        int lost = 200 + (rand() % 200);
+        fuel -= lost;
+        ship.fuel -= lost;
+        if (ship.fuel < 0) ship.fuel = 0;
+        if (fuel < 0) fuel = 0;
+        score += 5;
+        state = STATE_CRASHED;
+        resetTimer = CRASH_RESET_DELAY;
+        return;
+    }
+
     if (result == 2) {
         float mult = 1.0f;
         for (int i = 0; i < (int)terrain.getLines().size(); i++) {
@@ -601,6 +627,7 @@ void Game::update()
     if (state != STATE_WAITING) volcanoes.update(dt);
     if (state != STATE_WAITING) atmosphere.update(dt);
     if (state != STATE_WAITING) rings.update(dt);
+    if (state != STATE_WAITING) twister.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -664,6 +691,8 @@ void Game::update()
         }
         ship.update();
         if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
+
+        if (twister.active()) twister.apply(ship, terrain);
 
         if (atmosphere.active()) {
             ship.velX *= ATMOS_DRAG;
@@ -883,6 +912,7 @@ void Game::draw(Renderer &r)
         volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
         rings.draw(r, terrain, viewX, viewY, viewScale);
+        twister.draw(r, terrain, viewX, viewY, viewScale);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
         if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
         storm.drawBolts(r, viewX, viewY, viewScale);
@@ -1054,6 +1084,9 @@ void Game::draw(Renderer &r)
             if (lavaBurn) {
                 centerText(90, "YOU BURNED");
                 centerText(102, "LAVA DESTROYED THE SHIP");
+            } else if (twisterCrash) {
+                centerText(90, "YOU CRASHED");
+                centerText(102, "TWISTER SMASHED THE SHIP");
             } else if (ringHit) {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "STRUCK BY ORBITAL DEBRIS");
