@@ -655,27 +655,32 @@ static int testTwister()
     s.velX = 0.0f;
     s.velY = 0.0f;
     float y0 = s.posY;
+    float maxRot = 0.0f;
     for (int i = 0; i < 60; i++) {
         s.update();       // integrate position + gravity (as in Game::update)
         tw.update(GAME_DT);
         tw.apply(s, t);
+        if (fabsf(s.rotation) > maxRot) maxRot = fabsf(s.rotation);
     }
     CHECK(tw.captured());
     CHECK(s.posY > y0);        // it sank toward the ground
-    CHECK(fabsf(s.rotation) > 5.0f);   // the nose tumbled while captured
+    CHECK(maxRot > 5.0f);      // the nose rocked while captured
+    CHECK(maxRot < 85.0f);     // never reached full +/-90 authority
     CHECK(sqrtf((s.posX - tw.coreX()) * (s.posX - tw.coreX()) +
                 (s.posY - tw.coreY(t)) * (s.posY - tw.coreY(t))) < TWISTER_RADIUS);
 
-    // A ship already leaving the vortex with sustained radial thrust breaks
+    // A ship high in the funnel with sustained outward radial thrust breaks
     // free (not sucked back): it must keep outward radial motion above the
     // escape velocity for TWISTER_ESCAPE_TICKS ticks, then it is flung out.
+    // Shallow enough that full power can still fight the depth-scaled grip.
     tw.reset(8, t);
     Ship s2;
-    s2.reset(tw.coreX() - 100.0f, tw.coreY(t) - 60.0f);
-    s2.velX = -0.6f; // already leaving
+    s2.reset(tw.coreX() - 80.0f, tw.coreY(t) - 120.0f);
+    s2.velX = -0.25f; // already leaving
     s2.velY = 0.0f;
     s2.thrustBuild = 1.0f;
-    s2.rotation = -90.0f; // heading points straight outward (-x)
+    float dx = s2.posX - tw.coreX(), dy = s2.posY - tw.coreY(t);
+    s2.rotation = atan2f(dx, -dy) * 180.0f / PI; // head straight outward
     bool escaped = false;
     for (int i = 0; i < TWISTER_ESCAPE_TICKS + 15 && !escaped; i++) {
         tw.apply(s2, t);

@@ -21,7 +21,7 @@ public:
     void reset(int level, const Terrain &t);
     bool active() const { return enabled_; }
     void update(float dt);
-    bool apply(Ship &s, const Terrain &t);
+    bool apply(Ship &s, const Terrain &t, float stickDeg = 0.0f);
     bool captured() const { return captured_; }
     bool justEscaped() const { return escaped_; }
 
@@ -45,9 +45,9 @@ private:
     float escapeCooldown_;
     float holdT_;
     int escapeTicks_;
-    float tumbleDeg_;
     float capOff_;
     float swirlAngle_;
+    float weavePrevX_;
     bool captured_;
     bool escaped_;
 

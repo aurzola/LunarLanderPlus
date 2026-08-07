@@ -6,8 +6,8 @@
 Twister::Twister()
     : level_(1), enabled_(false), t_(0), cx_(400), drift_(1),
       strength_(1.0f), swirl_(1), phase_(0),
-      escapeCooldown_(0), holdT_(0), escapeTicks_(0), tumbleDeg_(0),
-      capOff_(0), swirlAngle_(0),
+      escapeCooldown_(0), holdT_(0), escapeTicks_(0),
+      capOff_(0), swirlAngle_(0), weavePrevX_(0),
       captured_(false), escaped_(false)
 {
 }
@@ -25,6 +25,18 @@ float Twister::terrainYAt(const Terrain &t, float x, float fallback)
     return fallback;
 }
 
+// Triangle wave in [-1,1] starting at +1 (the entry side): it sweeps down to -1
+// over one half period, back up to +1 over the next, etc. Used to make the
+// captured ship zig-zag between the two walls of the funnel cone.
+static float triWave(float u)
+{
+    float p = 2.0f * PI;
+    float x = fmodf(u, p);
+    if (x < 0.0f) x += p;
+    if (x < PI) return 1.0f - 2.0f * x / PI;
+    return -1.0f + 2.0f * (x - PI) / PI;
+}
+
 void Twister::reset(int level, const Terrain &t)
 {
     (void)t;
@@ -34,9 +46,9 @@ void Twister::reset(int level, const Terrain &t)
     escapeCooldown_ = 0;
     holdT_ = 0;
     escapeTicks_ = 0;
-    tumbleDeg_ = 0;
     capOff_ = 0;
     swirlAngle_ = 0;
+    weavePrevX_ = 0;
     captured_ = false;
     escaped_ = false;
     if (!enabled_) return;
@@ -61,7 +73,7 @@ void Twister::update(float dt)
     if (cx_ > 760.0f) { cx_ = 760.0f; drift_ = -drift_; }
 }
 
-bool Twister::apply(Ship &s, const Terrain &t)
+bool Twister::apply(Ship &s, const Terrain &t, float stickDeg)
 {
     if (!enabled_) return false;
 
@@ -90,19 +102,33 @@ bool Twister::apply(Ship &s, const Terrain &t)
     float ux = dx / dist, uy = dy / dist;    // outward unit from the core
     float tx = -uy * (float)swirl_, ty = ux * (float)swirl_; // tangent unit
 
+    // Height above the ground base: 0 at the ground, TWISTER_HEIGHT at the
+    // top. depth goes 0 at the top -> 1 at the ground and is what makes the
+    // vortex progressively harder to escape the deeper the ship is.
+    float h = cy - s.posY;
+    if (h < 0.0f) h = 0.0f;
+    if (h > TWISTER_HEIGHT) h = TWISTER_HEIGHT;
+    float depth = 1.0f - h / TWISTER_HEIGHT;
+
     // Escape: the player must actually break the grip — sustained outward
-    // radial motion while pushing with enough outward thrust. While the ship
-    // "fights" (radial thrust above the threshold) the funnel hold below is
-    // switched off, so the burn really moves it outward; once it climbs past
-    // the escape velocity for enough ticks it is flung out and the grip stays
-    // off until it physically leaves the vortex radius.
+    // radial motion while pushing with enough outward thrust. Both the radial
+    // thrust that counts as "fighting" and the outward speed needed scale with
+    // depth: near the top a burst of power breaks it, near the ground the
+    // funnel holds the ship until it smashes. While the ship "fights" the
+    // funnel hold below is switched off, so the burn really moves it outward;
+    // once it climbs past the escape velocity for enough ticks it is flung out
+    // and the grip stays off until it physically leaves the vortex radius.
     float rad = s.rotation * PI / 180.0f;
     float hx = sinf(rad), hy = -cosf(rad);
     float thrustOut = THRUST_ACCEL * s.thrustBuild * (hx * ux + hy * uy);
     if (thrustOut < 0.0f) thrustOut = 0.0f;
     float rv = s.velX * ux + s.velY * uy;          // + outward
-    bool fighting = thrustOut > TWISTER_ESCAPE_THRUST * strength_;
-    if (fighting && rv > TWISTER_ESCAPE_VEL) escapeTicks_++;
+    float escThr = TWISTER_ESCAPE_THRUST *
+                   (1.0f + TWISTER_ESCAPE_DEPTH_THRUST * depth);
+    float escVel = TWISTER_ESCAPE_VEL *
+                   (1.0f + TWISTER_ESCAPE_DEPTH_VEL * depth);
+    bool fighting = thrustOut > escThr;
+    if (fighting && rv > escVel) escapeTicks_++;
     else escapeTicks_ = 0;
     if (escapeTicks_ >= TWISTER_ESCAPE_TICKS) {
         s.velX += ux * TWISTER_FLING * strength_;
@@ -140,7 +166,7 @@ bool Twister::apply(Ship &s, const Terrain &t)
     // to a thin point on the ground; the ship is eased onto the wall, then
     // weaves between the walls (horizontal spiral around the core) while it is
     // sunk, so it descends in a spiral that follows the funnel exactly and
-    // always stays inside the drawn vortex.
+    // always stays inside the drawn vortex, barely poking outside it.
     bool firstCapture = (holdT_ <= 0.0f);
     holdT_ += 1.0f;
     float ease = (holdT_ < TWISTER_CAPTURE_RAMP)
@@ -149,36 +175,47 @@ bool Twister::apply(Ship &s, const Terrain &t)
         capOff_ = s.posX - cx_;
         if (fabsf(capOff_) < 1.0f) capOff_ = (capOff_ < 0.0f) ? -1.0f : 1.0f;
         swirlAngle_ = 0.0f;
+        weavePrevX_ = s.posX;
     }
 
-    float h = cy - s.posY;                     // height above the ground base
-    if (h < 0.0f) h = 0.0f;
-    if (h > TWISTER_HEIGHT) h = TWISTER_HEIGHT;
     float coneR = TWISTER_BASE_HALF +
                   (TWISTER_TOP_HALF - TWISTER_BASE_HALF) * (h / TWISTER_HEIGHT);
 
     float omega = TWISTER_SPIRAL_RATE * (PI / 180.0f) * strength_;
     swirlAngle_ += (float)swirl_ * omega * GAME_DT;
 
-    float amp = fabsf(capOff_) + (coneR - fabsf(capOff_)) * ease;
-    if (amp > TWISTER_RADIUS) amp = TWISTER_RADIUS;
-    if (amp < TWISTER_BASE_HALF) amp = TWISTER_BASE_HALF;
+    // Zig-zag across the funnel: a triangle wave sends the ship back and forth
+    // between the two cone walls, and because the cone tapers toward the ground
+    // the zig-zag closes as the ship descends. A small overshoot lets it barely
+    // poke outside the wall (never out of the vortex radius).
+    float poke = 1.0f + TWISTER_EDGE_POKE *
+                        sinf(swirlAngle_ * 2.0f + phase_);
+    float target = coneR * poke;
+    if (target > TWISTER_RADIUS) target = TWISTER_RADIUS;
+    if (target < TWISTER_BASE_HALF) target = TWISTER_BASE_HALF;
+    float amp = fabsf(capOff_) + (target - fabsf(capOff_)) * ease;
     float dir = (capOff_ < 0.0f) ? -1.0f : 1.0f;
 
-    s.posX = cx_ + dir * amp * cosf(swirlAngle_);
+    s.posX = cx_ + dir * amp * triWave(swirlAngle_);
     s.posY = cy - h;
 
-    // Velocity matching the weave (keeps the HUD alive and carries momentum
-    // into an escape). Positive velY is downward.
-    s.velX = -dir * amp * omega * sinf(swirlAngle_) * GAME_DT;
+    // Per-tick sweep velocity (same convention as the descent velY).
+    float sweep = s.posX - weavePrevX_;
+    if (sweep > TWISTER_ORBIT_MAX) sweep = TWISTER_ORBIT_MAX;
+    if (sweep < -TWISTER_ORBIT_MAX) sweep = -TWISTER_ORBIT_MAX;
+    s.velX = sweep;
+    weavePrevX_ = s.posX;
     s.velY = TWISTER_DESCENT * strength_ * GAME_DT;
 
-    // Nose tumbles continuously with a wandering jitter (270-360+ degrees).
-    tumbleDeg_ += (float)swirl_ * TWISTER_TUMBLE_RATE * strength_ * GAME_DT;
-    float jitter = TWISTER_TUMBLE_JITTER * strength_ *
-                   sinf(t_ * TWISTER_TUMBLE_WAVE + phase_);
-    s.rotation = tumbleDeg_ + jitter;
-    s.targetRotation = s.rotation;
+    // The nose rocks between +/-60 degrees; the joystick tilts it further but
+    // never reaches the full +/-90 authority (hard-capped well below).
+    float wobble = TWISTER_WOBBLE_RANGE *
+                   sinf(t_ * TWISTER_WOBBLE_RATE * strength_ + phase_);
+    float rot = wobble + stickDeg * TWISTER_STICK_GAIN;
+    if (rot > TWISTER_WOBBLE_MAX) rot = TWISTER_WOBBLE_MAX;
+    if (rot < -TWISTER_WOBBLE_MAX) rot = -TWISTER_WOBBLE_MAX;
+    s.rotation = rot;
+    s.targetRotation = rot;
 
     captured_ = true;
     escaped_ = false;
@@ -219,15 +256,16 @@ void Twister::draw(Renderer &r, const Terrain &t,
         int half = (int)ceilf(halfW * viewScale);
         if (half < 1) half = 1;
 
-        // Swirling dust bands across alternate rows.
-        if (((int)(wy / (TWISTER_BAND_STEP * 2.0f)) & 1) == 0) {
-            float rot = t_ * TWISTER_SWIRL_SPEED + tt * 4.0f + phase_;
-            for (int xx = -half; xx <= half; xx++) {
-                float depth = (float)fabs(xx) / (float)half;
-                int b = (int)(45.0f + 165.0f * depth);
-                float yoff = sinf(rot + (float)xx * 0.5f) * 0.5f;
-                r.pixelShade(cxx + (float)xx, sy + yoff, b);
-            }
+        // Continuous horizontal dust lines across each funnel row: no dots or
+        // bright edges on the extremes, just clean horizontal lines whose
+        // length grows with the cone (short at the ground -> long at the top).
+        // A gentle along-row shading hints the swirling spiral.
+        float rot = t_ * TWISTER_SWIRL_SPEED + tt * 4.0f + phase_;
+        for (int xx = -half; xx <= half; xx++) {
+            int b = (int)(TWISTER_BAND_BRIGHT +
+                          TWISTER_BAND_SWIRL * sinf(rot + (float)xx * 0.25f));
+            if (b > (int)TWISTER_BAND_MAX) b = (int)TWISTER_BAND_MAX;
+            r.pixelShade(cxx + (float)xx, sy, b);
         }
     }
 

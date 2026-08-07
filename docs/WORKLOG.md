@@ -393,3 +393,66 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
     prints de debug temporales (`[audio] mem`, `[audio] flash buffers`, `[audio] buffers`,
     `[mem] after video`). Sketch 501422 B (38%), RAM globales 101908 B (31%). **Pendiente re-probar
     en CRT** (parpadeo con el doble buffer, forma de tornado del twister, PWR 50%).
+
+    **Rama `twister-circ` + física v5 del twister (20/8/2026)**: el usuario comparó en CRT las dos
+    versiones (`moon-flavor` tornado con bordes brillantes 210 vs `twister-circ` sin `pixelShade`) y
+    **ambas se veían idénticas** y ninguna como la original (que no tenía bordes brillantes). Causa
+    raíz: el borde brillante lo pintaba el **gradiente de las bandas** `b = 45+165·depth` (210 en la
+    pared), no los `pixelShade`; y `TWISTER_BASE_HALF` 2.5 vs 6 son ~1 px vs 3 px en pantalla. Los
+    PPM del 6/8 en `esp32Lander/frames/` resultaron ser del demo base (estrellas+terreno+nave), no
+    del twister, así que el visual original no se pudo recuperar exacto. Se reconstruye en
+    `twister-circ` — ver más abajo el **dibujo de líneas horizontales continuas** (el "embudo en V
+    con densidad 118 interior `65+45·depth`/contorno 118" se descartó en CRT porque en los extremos
+    se veían "lineitas o puntos" y el original "jugaba solo con líneas horizontales continuas").
+    Además **física v5** pedida por el usuario:
+    - **Rotación tambaleante ±60°** (`TWISTER_WOBBLE_RANGE=60`, oscilación seno, no más giro
+      acumulado 270-360°): `rotation = wobble + stickDeg·TWISTER_STICK_GAIN(0.5)`, **hard cap
+      `TWISTER_WOBBLE_MAX=80`** → el joystick nunca llega a ±90° dentro del vórtice. `apply()`
+      recibe `stickDeg` (nuevo parámetro con default 0; `game.cpp` pasa `input.angle·180/π`).
+    - **Espiral hacia abajo con escape justo fuera del cono**: `target = coneR·(1+TWISTER_EDGE_POKE
+      (0.12)·sin(swirlAngle·2+phase))` → la nave asoma ~12 % fuera de la pared y vuelve, siempre
+      dentro de `TWISTER_RADIUS`. **Zig-zag que cierra al caer**: el barrido pasa de `cos` a
+      **onda triangular** `triWave(swirlAngle_)` (`posX = cx + dir·amp·tri`), `TWISTER_SPIRAL_RATE` de
+      90 → **200 °/s** (varias reversiones) y, como el cono se estrecha al bajar, el zig-zag se cierra
+      (span ~±60 → ~±12, `/tmp/tw_zz.cpp`). `s.velX = posX − weavePrevX_` (nuevo miembro, clamp
+      `±TWISTER_ORBIT_MAX`).
+    - **Escape por POW con dificultad por profundidad**: el umbral de "pelea" y la velocidad radial
+      ahora escalan con `depth = 1 − h/TWISTER_HEIGHT` (0 arriba → 1 en el suelo):
+      `escThr = 0.0011·(1+1.0·depth)`, `escVel = 0.06·(1+1.5·depth)`. Arriba escapa con ~60-85 %
+      de potencia bien alineada; abajo (h≲85 u) es imposible. Se quitó `strength_` del umbral de
+      escape (antes lo multiplicaba → dependía del azar). Validado con harness `/tmp/tw_v5.cpp`:
+      wobble en [−60, 60] exacto, `rotAt90=0`, `poked=1`, escape arriba 5/5 trials (cualquier
+      strength), escape abajo 0/5. `test_pc` **890 checks ALL PASSED** (test de escape movido a
+      poca profundidad con rumbo radial calculado `atan2(dx,−dy)`; el check del tumble ahora mide
+      el máximo durante el vuelo y verifica `<85`). Sync composite OK; sketch 501662 B (38%), RAM
+      101908 B (31%). **Subido a placa 20/8/2026; pendiente re-probar en CRT** (embudo densidad
+      118, wobble ±60 con joystick limitado, escape por POW).
+
+    **Twister: líneas horizontales continuas (20/8/2026)**: en CRT el vaso de la "densidad 118"
+    (interior `65+45·depth` + contorno 118) se veía con **"lineitas o puntos en los extremos"** y no
+    como el original, que "jugaba solo con líneas horizontales continuas". La causa: los dos
+    `pixelShade(cxx±half, sy, 118)` de contorno (formaban líneas de puntos en cada borde) y el
+    `yoff = sin(...)·0.5` vertical que punteaba cada banda. Fix en `twister.cpp` `draw()`: se quitan
+    los dos `pixelShade` de contorno y el `yoff`; cada fila es ahora una **línea horizontal continua**
+    en `−half..half` con brillo `TWISTER_BAND_BRIGHT=120 + TWISTER_BAND_SWIRL=30·sin(rot+xx·0.25)`
+    tope `TWISTER_BAND_MAX=160`, **sin ningún punto/borde en los extremos** (el largo de la línea,
+    `2·half`, crece con el cono: corta abajo → larga arriba). `TWISTER_BAND_STEP=4→2.5` (más denso).
+    Verificado en render ASCII: cono limpio de líneas contiguas sin puntos aislados. `test_pc` 890.
+    Sync composite; sketch 511334 B (39%), RAM 101940 B (31%). Subido a placa.
+
+    **Calibración de joystick en el juego (20/8/2026, `.ino`)**: el usuario reportó que el stick "no
+    responde bien" — la calibración adaptativa fija el centro con 40 lecturas al boot (si no lo tenías
+    al centro al encender, todo queda torcido) y las desviaciones derivan con EMA. Se añade un **modo
+    de calibración visual**: manteniendo **C+Z a la vez en el título ~0.5 s** se entra en un overlay
+    (`drawCalibration`) con instrucciones, una **caja sin relleno** (4 `line`) que mapea el rango del
+    stick 0–255 y un **cursor** (rect 5×5) que muestra la posición en vivo. Se mueve el stick por
+    todos los extremos (se captura `calMinX/MaxX/MinY/MaxY`); **C = guardar, START = cancelar**.
+    `confirmCalibration()` deriva centro `(min+max)/2` y desviaciones por eje (mín 40), activa
+    `useFixedCal=true` y persiste en **NVS** (`Preferences` `jsCal`: set/cx/cy/ld/rd/ud/dd);
+    `loadCalibration()` en `setup()` los restaura al boot (imprime `[jsCal] loaded ...`). Con
+    `useFixedCal` las desviaciones dejaron de adaptarse por EMA en `readStickAngle`/`readStickYDev`.
+    Mientras se calibra, `loop()` no llama a `game.update()` (congela el fondo). Bug inicial: el
+    overlay usaba `r.rect(0,0,320,240)` que **rellenaba** la pantalla de blanco (texto blanco sobre
+    blanco → "pantalla en blanco"); se cambió a `r.clear()` (fondo negro) y la caja a solo borde.
+    Sketch 511398 B (39%), RAM 101940 B (31%). Subido a placa; pendiente probar en CRT la
+    calibración y el zig-zag del twister.

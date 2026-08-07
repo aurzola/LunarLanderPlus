@@ -692,7 +692,9 @@ void Game::update()
         ship.update();
         if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
 
-        if (twister.active()) twister.apply(ship, terrain);
+        if (twister.active()) {
+            twister.apply(ship, terrain, input.angle * 180.0f / PI);
+        }
 
         if (atmosphere.active()) {
             ship.velX *= ATMOS_DRAG;
