@@ -303,6 +303,52 @@ void Twister::draw(Renderer &r, const Terrain &t,
         }
     }
 
+    // Particles: bright dust specks that travel down the coil wires, wrapping
+    // around as they descend, giving each spiral a sense of moving flow. In the
+    // zoom phase the vortex is scaled up x5 so the specks are drawn as small
+    // blobs with a dim motion trail behind them to stay clearly visible.
+    {
+        const int PARTS = zoomedIn ? 30 : 12;
+        float partSpeed = zoomedIn ? 0.55f : 0.35f;  // down the coil (tt/s)
+        for (int p = 0; p < PARTS; p++) {
+            int nw = zoomedIn ? 3 : 2;
+            int wire = p % nw;
+            // Start phase spread over wires and time so they are not aligned.
+            float speed = partSpeed * (0.9f + 0.3f * prand(p + 1300));
+            float tt = fmodf(p * (0.17f / (float)nw) + t_ * speed, 1.0f);
+            if (tt < 0.0f) tt += 1.0f;
+            float aBase = rotBase + (float)wire * (TAU / (float)nw);
+            float ang = aBase + (float)DIR * tt * turns * TAU;
+            float rr = 4.0f + 30.0f * tt;
+            if (rr < 1.0f) rr = 1.0f;
+            float wx = axisX(tt) + cosf(ang) * rr * 0.95f;
+            float wyy = gy - tt * TWISTER_HEIGHT;
+            float sx = wx * viewScale + viewX;
+            float sy = wyy * viewScale + viewY;
+            int b = 150 + (int)(100.0f * prand(p + 1400));
+            if (b > 250) b = 250;
+            if (zoomedIn) {
+                // Blob: bright core plus dimmer neighbours, and a short trail
+                // behind it (upward along the coil) to show direction.
+                r.pixelShade(sx, sy, b);
+                r.pixelShade(sx + 1.0f, sy, b * 2 / 3);
+                r.pixelShade(sx - 1.0f, sy, b * 2 / 3);
+                r.pixelShade(sx, sy + 1.0f, b * 2 / 3);
+                float tta = fmodf(tt - 0.03f, 1.0f);
+                if (tta < 0.0f) tta += 1.0f;
+                float angA = aBase + (float)DIR * tta * turns * TAU;
+                float rrA = 4.0f + 30.0f * tta;
+                if (rrA < 1.0f) rrA = 1.0f;
+                float wxA = axisX(tta) + cosf(angA) * rrA * 0.95f;
+                float wyA = gy - tta * TWISTER_HEIGHT;
+                r.pixelShade(wxA * viewScale + viewX, wyA * viewScale + viewY,
+                             b * 2 / 5);
+            } else {
+                r.pixelShade(sx, sy, b);
+            }
+        }
+    }
+
     // Sparse glow points near the top lip to hint where the coil starts.
     {
         float ttl = 0.96f;

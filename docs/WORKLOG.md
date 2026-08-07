@@ -456,3 +456,25 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
     blanco → "pantalla en blanco"); se cambió a `r.clear()` (fondo negro) y la caja a solo borde.
     Sketch 511398 B (39%), RAM 101940 B (31%). Subido a placa; pendiente probar en CRT la
     calibración y el zig-zag del twister.
+
+    **Rediseño del dibujo del twister como resorte/cola de cerdo (21/8/2026)**: el usuario no
+    quedó conforme con el embudo tornado previo y pidió "olvidar toda indicación anterior sobre la
+    forma" e implementar a partir de cero un **resorte helicoidal fino que se estrecha hacia el
+    suelo** (cola de cerdo), **discontinuo** (líneas rotas/gaps) e **irregular** (jitter radial +
+    brillos variables). **Física intacta**: solo se reescribió `Twister::draw()` (`apply()` y el
+    resto del módulo no se tocaron). Iteraciones: (1) columna de hebras helicoidales hueca cerró
+    como "no me gusta"; (2) resorte con 4 hilos rotos quedó "al revés" (ancho en el suelo, no en
+    arriba); (3) corregir el volteo + **2 espirales en paralelo** → "mucho mejor". Se añadió luego
+    una **tercera espiral solo en zoom-in** (cambio de firmas: `Twister::draw(...)` gana el
+    parámetro `bool zoomedIn`; `game.cpp` pasa `zoomedIn`) — en PC el demo no la muestra porque
+    dibuja con `zoomedIn=false`, solo se ve en CRT. Fix de visibilidad en zoom (el torbellino se
+    escala ×5 y los puntos de 1px no se notaban): en zoom las partículas pasan a **blobs de 3–4 px
+    con estela** (30, más rápidas `0.55` vs `0.35`) vs puntos finos en normal (12). Para que las 3
+    espirales se distingan en zoom se reduce el nº de **vueltas a 5** (vs 7 en normal) y el trazo
+    gana una línea tenue al lado (2/3 de brillo). Detalle del dibujo final: resorte que **arranca
+    fino en el suelo y se ensancha hacia arriba** (`r = 4+30·tt`), cada espiral es una hélice
+    discontinua con gaps pseudo-aleatorios deterministas por frame (`prand(seed+phase_)`), jitter
+    radial, y brillo que desvanece con `front = 0.5+0.5·cos(ang)` (fondo de la bobina más tenue);
+    labio superior tenue, motas de giro y falda de polvo en la base. Validado: `make && ./test_pc`
+    **890 ALL CHECKS PASSED**; `./twister_demo 1 8` OK. Sync a `esp32LanderComposite/src/`.
+    Sketch 511398 → 512802 B (39%), RAM 101940 B (31%). Subido a placa; aprobado en CRT.

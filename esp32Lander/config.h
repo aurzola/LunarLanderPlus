@@ -185,19 +185,11 @@ const float TWISTER_STRENGTH_MIN = 0.5f;    // random per level
 const float TWISTER_STRENGTH_MAX = 1.4f;
 const float TWISTER_DRIFT_SPEED = 8.0f;     // horizontal wander (world u/s)
 const float TWISTER_SPIN_KICK = 25.0f;      // deg yank on escape (x strength)
-// Funnel drawing: a tornado-like funnel, thin at the ground tip and widening
-// to a modest top half — NOT a wide pyramid. The physics cone the ship rides
-// uses the same geometry, so the captured ship always stays on the drawn wall.
+// Twister cone geometry (physics + visual tapering to a thin ground tip).
 const float TWISTER_BASE_HALF = 6.0f;        // half width at the ground tip (u) [ORIGINAL]
 const float TWISTER_TOP_HALF = 34.0f;        // half width at the funnel top (u)
-const float TWISTER_BAND_STEP = 2.5f;       // vertical spacing of the continuous dust lines (u)
-const float TWISTER_BAND_BRIGHT = 120.0f;   // base luma of each dust line
-const float TWISTER_BAND_SWIRL = 30.0f;     // swirling modulation along each line
-const float TWISTER_BAND_MAX = 160.0f;      // luma cap for the dust lines
 const float TWISTER_EDGE_POKE = 0.12f;      // max overshoot beyond the cone wall while captured
 const float TWISTER_SWAY_AMP = 7.0f;        // funnel sway (u)
 const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
-const float TWISTER_SWIRL_SPEED = 2.2f;     // rad/s of the swirling dust
-const int TWISTER_ORBIT_COUNT = 8;          // orbiting debris particles
 
 #endif
