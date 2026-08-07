@@ -185,8 +185,8 @@ const float TWISTER_SPIN_KICK = 25.0f;      // deg yank on escape (x strength)
 // Funnel drawing: a tornado-like funnel, thin at the ground tip and widening
 // to a modest top half — NOT a wide pyramid. The physics cone the ship rides
 // uses the same geometry, so the captured ship always stays on the drawn wall.
-const float TWISTER_BASE_HALF = 2.5f;       // half width at the ground tip (u)
-const float TWISTER_TOP_HALF = 34.0f;       // half width at the funnel top (u)
+const float TWISTER_BASE_HALF = 6.0f;        // half width at the ground tip (u) [ORIGINAL]
+const float TWISTER_TOP_HALF = 34.0f;        // half width at the funnel top (u)
 const float TWISTER_BAND_STEP = 4.0f;       // vertical spacing of the dust bands (u)
 const float TWISTER_SWAY_AMP = 7.0f;        // funnel sway (u)
 const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s

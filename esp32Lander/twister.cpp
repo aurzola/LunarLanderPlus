@@ -202,9 +202,9 @@ void Twister::draw(Renderer &r, const Terrain &t,
 
     float sway = sinf(t_ * TWISTER_SWAY_SPEED + phase_) * TWISTER_SWAY_AMP;
 
-    // Tapered tornado funnel: a thin tip at the ground widening to a modest
-    // top half (not a pyramid). Bright walls outline it; horizontal dust bands
-    // across alternate rows give the swirling texture (darker toward center).
+    // Original funnel: oscillating cone (base TWISTER_BASE_HALF -> top
+    // TWISTER_TOP_HALF), sinusoidal sway growing upward plus a micro-sway;
+    // horizontal dust bands across alternate rows give the swirling texture.
     for (float wy = gy; wy >= topY; wy -= TWISTER_BAND_STEP) {
         float tt = (gy - wy) / TWISTER_HEIGHT; // 0 at base, 1 at top
         float halfW = TWISTER_BASE_HALF +
@@ -218,10 +218,6 @@ void Twister::draw(Renderer &r, const Terrain &t,
         float cxx = cxs * viewScale + viewX;
         int half = (int)ceilf(halfW * viewScale);
         if (half < 1) half = 1;
-
-        // Bright funnel wall edges (the captured ship rides on these).
-        r.pixelShade(cxx - (float)half, sy, 210);
-        r.pixelShade(cxx + (float)half, sy, 210);
 
         // Swirling dust bands across alternate rows.
         if (((int)(wy / (TWISTER_BAND_STEP * 2.0f)) & 1) == 0) {
