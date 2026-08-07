@@ -133,7 +133,7 @@ const float FOG_DRIFT_SPEED_MAX = 0.20f;
 // Fog and terrain halo are never drawn above this screen row so they can't
 // reach the HUD / minimap / warnings (LOW FUEL=72, TOO FAST=82 with wind) and
 // make them flicker during the approach phase. 100 clears them all.
-const int FOG_SCREEN_TOP = 100;
+const int FOG_SCREEN_TOP = 68;
 
 // Ganymede debris bands (franjas de roca): the moon's debris is rendered as
 // two layers of rock floating above the terrain silhouette, like Jupiter's

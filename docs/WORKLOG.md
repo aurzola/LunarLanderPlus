@@ -223,32 +223,36 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
     glitch de rayo / intro), o el oscilador de niebla aún alcanza la franja HUD en algún estado de
     cámara. Referencia: `Game::draw()` en `esp32Lander/game.cpp` (orden: clear → storm.drawSky →
     atmosphere.drawSky → terreno → nave → minimapa → HUD).
-21. **Anillos de roca de Ganímedes (6/8/2026, rama `moon-flavor`)**: en niveles
-    de Ganímedes (`moonHasRings(level)`, `moonIndex==3` → nivel 4, 12, 20, 28…) el módulo `Rings`
-    (`rings.h/cpp`, PC + composite) dibuja **dos anillos concéntricos de rocas** orbitando el centro
-    `(RING_CX=400, RING_CY=260)`: el anillo **interior lento** (`RING_SPEED_INNER=0.06 rad/s`,
-    `RING_ROCKS_INNER=22`, radio `RING_RADIUS_INNER=130`) y el **exterior rápido en sentido contrario**
-    (`RING_SPEED_OUTER=-0.30`, `RING_ROCKS_OUTER=32`, radio `RING_RADIUS_OUTER=215`) → **los huecos
-    nunca son estáticos**, esa es la dificultad: esquivar las rocas para que no te golpeen durante el
-    descenso. **Solo la cara visible del anillo existe**: cada roca se dibuja/colisiona únicamente si
-    queda **por encima de la silueta del terreno** (`rockVisible` filtra `y < terrainYAt(x)`), de modo
-    que la cara lejana queda oculta por la propia luna (las rocas nunca aparecen "flotando" sobre la
-    superficie). Dibujo: disco relleno (`pixelShade` 255 centro / 160 borde), radio de pantalla
-    `RING_ROCK_RADIUS·viewScale` (mín 1 px). **Colisión** círculo-círculo
-    (`RING_ROCK_RADIUS=6` + `RING_SHIP_RADIUS=12`) en `checkCollisions()`: golpear una roca en vuelo
-    **destruye la nave** → final "YOU CRASHED" / **"STRUCK BY ORBITAL DEBRIS"** (nuevo `ringHit`,
-    análogo a `lavaBurn`). Integrado en `Game` junto a geysers/volcanos/atmósfera: `reset` en
-    constructor/newGame/nextLevel/startDemo (y en el bucle de regeneración del demo), `update` tras
-    `atmosphere`, `draw` tras `drawWind` antes de la nave, colisión en `checkCollisions` (antes del
-    terrain). API para tests: `active()`, `ringCount()`, `rocksInRing(i)`, `rockVisible(t,i,k,x,y)`,
-    `hitsShip(t,sx,sy,shipR)`. Validado en PC: `test_pc` **865 checks ALL PASSED** (nuevos
-    `testRings`: activación por nivel de Ganímedes, geometría de radios/anillos, colisión al
-    posicionar la nave sobre una roca, no-colisón lejos, las posiciones cambian con el tiempo,
-    `Game::nextLevel()` → nivel 4 activo), `rings_demo 1 4` (PPM en `frames/`, selftest `active` +
-    `rocksVisible>0`; análisis del framebuffer confirma dos arcos concéntricos a radio 130 y 215 solo
-    sobre la silueta). `DEMO_LEVEL_FORCE=6` (TEMP de Titán) inalterado. Sync completado a
-    `esp32LanderComposite/src/` (config/game.h/game.cpp/moons.h/rings.\*); `FOG_SCREEN_TOP=78` del
-    composite conservado. **Pendiente de prueba en CRT.**
+     **Rediseño niebla (22/8/2026, rama twister-circ)**: la niebla adopta el mismo estilo de las
+     bandas de Ganímedes — bandas elípticas concéntricas (`centerAt(i,x)` = arco `sqrt(1-t²)` con
+     centro compartido `FOG_ELLIPSE_CX/RAD` + deriva vertical viva `FOG_DRIFT_A`) con degradado
+     gaussiano por LUT de 256 entradas y `FOG_BRIGHT=44`; se quitan `FOG_WAVE_*`/`centerY`/`halfAt`.
+     `FOG_SCREEN_TOP` baja de 100 a **68** (a la altura de la etiqueta MEM) para que el cuadro de
+     limpieza del HUD sea más corto y no borre efectos; ok que DEMO quede tocada. `hidesShip()` usa el
+     mismo `centerAt`. Validado en PC (`test_pc` ALL PASSED + `titan_demo`, nave oculta ~266 frames).
+ 21. **Anillos de roca de Ganímedes (6/8/2026; rediseño mayor 22/8/2026, rama `twister-circ`)**: en
+     niveles de Ganímedes (`moonHasRings(level)`, `moonIndex==3` → nivel 4, 12, 20, 28…) el módulo
+     `Rings` (`rings.h/cpp`, PC + composite) dibuja **2 bandas elípticas concéntricas** de rocas que
+     siguen la curvatura de la luna (ya no son anillos orbitando un centro). `bandY` usa el arco
+     `sqrt(1-t²)` con centro compartido `RING_ELLIPSE_CX/RAD` → forma suave, sin sinusoides ni bordes
+     afilados. Banda alta `RING_CY_HIGH=360` (se cruza en la primera aproximación zoom-out) y banda
+     baja `RING_CY_LOW=560` (se cruza en zoom-in). Cada banda mezcla:
+     - Rocas pequeñas decorativas (`RING_SMALL_LOW/HIGH`, radio `RING_SMALL_MIN_R..MAX_R=1.2..3`),
+       huecas (solo contorno), con dispersión vertical `RING_Y_JITTER=45` → NO colisionan.
+     - Rocas grandes peligrosas (`RING_DANGER_MIN_R..MAX_R=7..13`, huecas + relleno suave `fillDanger`
+       con dithering `pixelShade 170`), colisionan con `RING_ROCK_HIT·size + RING_SHIP_RADIUS` en
+       `hitsShip` (solo iterando las danger).
+     Los huecos se garantizan con `RING_GAP_MIN` (agrupan las danger apretadas pero pasables).
+     `update` deriva en x con wrap y rota los polígonos. Golpear una roca grande → final "YOU CRASHED" /
+     "STRUCK BY ORBITAL DEBRIS" (texto: centrado en zoom-out, debajo de la banda en zoom-in).
+     NIEBLA de las bandas descartada (`RING_FOG_BRIGHT=0`) tras pruebas — Ganímedes queda sin niebla,
+     solo rocas. Rendimiento (22/8/2026): el `drawFog` usaba `expf()` por píxel (~2 bandas × 320 col ×
+     ~116 px ≈ 74k/frame en zoom) → reemplazado por una LUT gaussiana de 256 entradas creada una sola
+     vez (indexación, sin expf por píxel). Fue el lag de este nivel. API tests: `active()`,
+     `ringCount()`, `rocksInRing(i)`, `rockVisible(t,i,k,x,y)`, `rockDanger(i,k)`,
+     `hitsShip(t,sx,sy,shipR)`, `lowerBandY(t,x)`. Validado en PC: `test_pc` ALL PASSED + `rings_demo`
+     (PPM en `frames/`, dos bandas verticales separadas). TEMP al final: `DEMO_LEVEL_FORCE=6` (Titán),
+     `START_LEVEL=4` (Ganímedes). Sync a `esp32LanderComposite/src/`. **Pendiente de prueba en CRT.**
 22. **Torbellino de nitrógeno de Tritón (6/8/2026, rama `moon-flavor`)**: en niveles de Tritón
     (`moonHasTwister(level)`, `moonIndex==7` → nivel 8, 16, 24…) el módulo `Twister`
     (`twister.h/cpp`, PC + composite) crea un **vórtice de nitrógeno** que **deambula** por el mundo
