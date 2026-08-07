@@ -51,4 +51,9 @@ static inline bool moonHasTitan(int level)
     return moonIndex(level) == 5; // TITAN
 }
 
+static inline bool moonHasRings(int level)
+{
+    return moonIndex(level) == 3; // GANYMEDES (debris rings)
+}
+
 #endif

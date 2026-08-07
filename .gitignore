@@ -38,3 +38,4 @@ frames/
 
 # opencode runtime deps
 .opencode/node_modules/
+rings_demo

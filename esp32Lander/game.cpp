@@ -37,7 +37,7 @@ Game::Game()
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false)
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false), ringHit(false)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -49,6 +49,7 @@ Game::Game()
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
+    rings.reset(level);
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -76,8 +77,10 @@ void Game::newGame()
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
+    rings.reset(level);
     stormHitTimer = 0;
     lavaBurn = false;
+    ringHit = false;
 }
 
 void Game::restartLevel()
@@ -89,6 +92,7 @@ void Game::restartLevel()
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
     lavaBurn = false;
+    ringHit = false;
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
         state = STATE_WAITING;
@@ -111,8 +115,10 @@ void Game::nextLevel()
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
+    rings.reset(level);
     stormHitTimer = 0;
     lavaBurn = false;
+    ringHit = false;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -148,8 +154,10 @@ void Game::startDemo()
     geysers.reset(level, terrain);
     volcanoes.reset(level, terrain);
     atmosphere.reset(level);
+    rings.reset(level);
     stormHitTimer = 0;
     lavaBurn = false;
+    ringHit = false;
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -182,6 +190,7 @@ void Game::startDemo()
         geysers.reset(level, terrain);
         volcanoes.reset(level, terrain);
         atmosphere.reset(level);
+        rings.reset(level);
     }
 
     if (lavaPick >= 0) {
@@ -515,6 +524,21 @@ void Game::updateView()
 
 void Game::checkCollisions()
 {
+    // A rock from the debris rings shatters the ship if it hits it mid-flight.
+    if (rings.hitsShip(terrain, ship.posX, ship.posY, RING_SHIP_RADIUS)) {
+        ringHit = true;
+        ship.crash();
+        int lost = 200 + (rand() % 200);
+        fuel -= lost;
+        ship.fuel -= lost;
+        if (ship.fuel < 0) ship.fuel = 0;
+        if (fuel < 0) fuel = 0;
+        score += 5;
+        state = STATE_CRASHED;
+        resetTimer = CRASH_RESET_DELAY;
+        return;
+    }
+
     int result = terrain.checkLanding(
         ship.left, ship.right, ship.bottom,
         ship.rotation, ship.velY, ship.velX
@@ -576,6 +600,7 @@ void Game::update()
     if (state != STATE_WAITING) geysers.update(dt);
     if (state != STATE_WAITING) volcanoes.update(dt);
     if (state != STATE_WAITING) atmosphere.update(dt);
+    if (state != STATE_WAITING) rings.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -857,6 +882,7 @@ void Game::draw(Renderer &r)
         geysers.draw(r, viewX, viewY, viewScale);
         volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
+        rings.draw(r, terrain, viewX, viewY, viewScale);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
         if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
         storm.drawBolts(r, viewX, viewY, viewScale);
@@ -1028,6 +1054,9 @@ void Game::draw(Renderer &r)
             if (lavaBurn) {
                 centerText(90, "YOU BURNED");
                 centerText(102, "LAVA DESTROYED THE SHIP");
+            } else if (ringHit) {
+                centerText(90, "YOU CRASHED");
+                centerText(102, "STRUCK BY ORBITAL DEBRIS");
             } else {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "FUEL TANKS DESTROYED");

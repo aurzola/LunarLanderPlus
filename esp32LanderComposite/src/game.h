@@ -9,6 +9,7 @@
 #include "geysers.h"
 #include "volcanoes.h"
 #include "atmosphere.h"
+#include "rings.h"
 #include "config.h"
 
 enum GameState {
@@ -60,11 +61,13 @@ public:
     Geysers geysers;
     Volcanoes volcanoes;
     Atmosphere atmosphere;
+    Rings rings;
     bool windEnabled;
     float windStrength;
     int windDir;
     float landingProximity() const;
     bool lavaBurnGet() const { return lavaBurn; }
+    bool ringHitGet() const { return ringHit; }
 
 private:
     float viewX, viewY, viewScale;
@@ -78,6 +81,7 @@ private:
     float windFlipTimer;
     float stormHitTimer;
     bool lavaBurn;
+    bool ringHit;
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
     void updateView();

@@ -10,6 +10,8 @@
 #include "moons.h"
 #include "geysers.h"
 #include "volcanoes.h"
+#include "atmosphere.h"
+#include "rings.h"
 #include "renderer_pc.h"
 
 static int checks = 0;
@@ -82,7 +84,7 @@ static int testTerrain()
     int result = t.checkLanding(100, 110, 500, 0, 0.05f, 0.01f);
     CHECK(result == 0);
 
-    t.generate(3);
+    t.generate(4);
     const std::vector<TerrainLine> &gl = t.getLines();
     CHECK(gl.size() > 50);
     CHECK(t.getWidth() > 0);
@@ -554,6 +556,73 @@ static int testAtmosphere()
     return 0;
 }
 
+static int testRings()
+{
+    CHECK(moonHasRings(4));    // GANYMEDES (moonIndex 3 -> level 4)
+    CHECK(moonHasRings(12));
+    CHECK(moonHasRings(20));
+    CHECK(!moonHasRings(1));   // LUNA
+    CHECK(!moonHasRings(3));   // EUROPA
+    CHECK(!moonHasRings(6));   // TITAN
+
+    Rings r;
+    Terrain t;
+    t.generate(4);
+    r.reset(4);
+    CHECK(r.active());
+    CHECK(r.ringCount() == RING_COUNT);
+    CHECK(r.rocksInRing(0) == RING_ROCKS_INNER);
+    CHECK(r.rocksInRing(1) == RING_ROCKS_OUTER);
+    r.reset(1);
+    CHECK(!r.active());
+
+    r.reset(4);
+    // Some rock must be visible above the terrain and another reachable to hit.
+    float wx = 0, wy = 0;
+    bool sawVisible = false;
+    for (int k = 0; k < RING_COUNT; k++) {
+        for (int i = 0; i < r.rocksInRing(k); i++) {
+            if (r.rockVisible(t, k, i, wx, wy)) { sawVisible = true; break; }
+        }
+        if (sawVisible) break;
+    }
+    CHECK(sawVisible);
+    // Park the ship exactly on that rock -> guaranteed hit.
+    float rx = 0, ry = 0;
+    for (int k = 0; k < RING_COUNT; k++) {
+        for (int i = 0; i < r.rocksInRing(k); i++) {
+            if (r.rockVisible(t, k, i, rx, ry)) break;
+        }
+    }
+    CHECK(r.hitsShip(t, rx, ry, RING_SHIP_RADIUS));
+    // Far above everything -> never hit.
+    CHECK(!r.hitsShip(t, 400.0f, 60.0f, RING_SHIP_RADIUS));
+
+    // Rings move over time (positions are a function of the advancing phase).
+    float p0x = 0, p0y = 0, p1x = 999, p1y = 999;
+    bool vis0 = false, vis1 = false;
+    for (int k = 0; k < RING_COUNT && !vis0; k++)
+        for (int i = 0; i < r.rocksInRing(k); i++)
+            if (r.rockVisible(t, k, i, p0x, p0y)) { vis0 = true; break; }
+    CHECK(vis0);
+    for (int i = 0; i < 2000; i++) r.update(GAME_DT);
+    for (int k = 0; k < RING_COUNT && !vis1; k++)
+        for (int i = 0; i < r.rocksInRing(k); i++)
+            if (r.rockVisible(t, k, i, p1x, p1y)) { vis1 = true; break; }
+    CHECK(vis1);
+    CHECK(p0x != p1x || p0y != p1y);
+
+    // Game integration: advancing to a Ganymede level activates the rings.
+    Game g;
+    g.newGame();
+    CHECK(!g.rings.active());
+    for (int i = 0; i < 3; i++) g.nextLevel(); // level 1->4 = GANYMEDES (idx 3)
+    CHECK(g.level == 4);
+    CHECK(g.rings.active());
+    g.rings.update(GAME_DT);
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -578,6 +647,8 @@ int main()
     r = testVolcanoLava();
     if (r) return r;
     r = testAtmosphere();
+    if (r) return r;
+    r = testRings();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

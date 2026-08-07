@@ -133,4 +133,22 @@ const float FOG_WAVE_SPEED = 0.15f;
 // make them flicker during the approach phase. 100 clears them all.
 const int FOG_SCREEN_TOP = 100;
 
+// Ganymede debris rings: two concentric rings of orbiting rock the ship must
+// weave through while descending. The inner ring turns slowly, the outer one
+// fast (opposite direction), so the gaps are never static. Rocks only exist
+// (and collide) above the terrain silhouette - the far side is hidden by the
+// moon itself.
+const int RING_COUNT = 2;
+const float RING_CX = 400.0f;
+const float RING_CY = 260.0f;
+const float RING_RADIUS_INNER = 130.0f;
+const float RING_RADIUS_OUTER = 215.0f;
+const int RING_ROCKS_INNER = 22;
+const int RING_ROCKS_OUTER = 32;
+const float RING_SPEED_INNER = 0.06f;   // slow ring (rad/s)
+const float RING_SPEED_OUTER = -0.30f;  // fast ring, opposite direction
+const float RING_ROCK_RADIUS = 6.0f;    // world radius of one rock (collision)
+const float RING_SHIP_RADIUS = 12.0f;   // ship collision circle radius
+const int RING_ROCK_DRAW_MIN = 1;       // min screen radius in px
+
 #endif
