@@ -32,11 +32,13 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `test_pc.cpp` | Tests de validación (asserts) |
 | `storm.h/cpp` | **Tormenta eléctrica (solo visual, 11/8/2026)**: rayos (polilínea con jitter + glow `pixelShade`) de brillo moderado y breves, destello único con `fade`. Sin nubes ni flash/lavado de pantalla (se quitaron el 12/8/2026 por efecto estroboscópico en CRT). `reset(level)`, `update(dt, terrain)`, `drawSky` (no-op)/`drawBolts`. Sin física todavía |
 | `storm_demo.cpp` | Prueba de visualización en PC: terreno + nave estática (sin física) + tormenta → PPM en `frames/` |
-| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026; volcanes 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)`/`moonHasVolcanoes(level)` (índice `(level-1) % 8`). Se ampliará en ramas posteriores (personalidad, dificultad, cielo, título) |
+| `moons.h` | **Lunares de nivel (14/8/2026; gravedad 15/8/2026; géiseres 16/8/2026; volcanes 16/8/2026)**: tabla `MoonInfo {name, gravity}` con 8 lunas (LUNA, IO, EUROPA, GANYMEDES, CALLISTO, TITAN, ENCELADUS, TRITON) y `moonIndex(level)`/`moonName(level)`/`moonGravity(level)`/`moonHasGeysers(level)`/`moonHasVolcanoes(level)` (índice `(level-1) % 8`). **PENDIENTE (19/8/2026)**: personalidad/efectos propios por luna (dificultad, cielo, título). Hoy cada luna solo aporta su gravedad y, según índice, sus efectos ambientales ya integrados: géiseres (Encélado), volcanes (Ío), niebla (Titán). Faltan efectos propios para LUNA, EUROPA, GANYMEDES, CALLISTO y TRITON, y queda por definir la dificultad y el cielo/título por luna. Se ampliará en ramas posteriores |
 | `geysers.h/cpp` | **Géiseres de Encélado (16/8/2026, rama `moon-flavor`)**: activo en niveles de Encélado (`moonHasGeysers(level)` → `moonIndex==6`, i.e. nivel 7, 15, 23…). `reset(level, terrain)` coloca `GEYSER_VENTS=5` respiraderos **en las bases de las laderas junto a las plataformas de aterrizaje** (`GEYSER_VENT_OFFSET=14 u` del borde del pad) para que estén en la trayectoria de vuelo, `update(dt)` + `draw(r,viewX,viewY,viewScale)`. Cada respiradero erupciona cíclicamente (burst `GEYSER_BURST=3 s` + pausa `GEYSER_GAP_MIN..MAX=3..9 s`, desincronizados):     emite partículas (máx `GEYSER_MAX_PARTS=250`, ~50 % de los ticks) que ascienden con `GEYSER_PART_SPEED=24` y arco por `GEYSER_PART_GRAV=7` (~38 u de altura) y se desvanecen (`pixelShade` 200→60); mientras erupciona dibuja una **columna cónica** (relleno por filas con degradado radial: brillo 215 en el centro de la base → desvanecido hacia arriba/bordes; **doblez en S** `sin(t·1.7)·1.5·t` y "puffos" lentos `sin(t·5+age·1.5)`, sin parpadeo; paso 2 px en zoom si la columna mide ≥40 px, alto `GEYSER_SPOUT_H=40 u`) + brillo de tobera en cruz/plus de 5 px (220). **Física (térmica, 16/8/2026)**: `inPlume(x,y)` detecta si la nave está en el chorro (|x−vent|≤`GEYSER_RADIUS=8`, y entre suelo y `GEYSER_PLUME_H=40`); `Game::update()` aplica `ship.velY -= GEYSER_PUSH=0.00025` por tick (~50 % de la gravedad de Encélado) → la nave recibe un pequeño empuje hacia arriba al cruzar la columna. Se añadieron `ventCount()`/`ventX(i)` para tests |
 | `geyser_demo.cpp` | Prueba de visualización en PC: terreno generado + géiseres → PPM en `frames/` (selftest `active` + `maxAlive>0`) |
 | `volcanoes.h/cpp` | **Volcanes de Ío (16/8/2026, rama `moon-flavor`; validado en CRT 17/8/2026)**: activo en niveles de Ío (`moonHasVolcanoes(level)` → `moonIndex==1`, i.e. nivel 2, 10, 18, 26…). `reset(level, terrain)` escanea el terreno (muestreo cada 6 u, desnivel `VOLCANO_MIN_DROP=14 u` sobre `VOLCANO_FLOW_LEN=60 u`, sin pisar zonas landable) y coloca `VOLCANO_VENTS=4` volcanes repartidos en laderas descendentes; `update(dt)` + `draw(r,viewX,viewY,viewScale)`. Cada volcán muestra **flujo de lava** (línea brillante `200–255` que sigue el terreno ladera abajo en pasos `VOLCANO_FLOW_STEP=4 u`, dibujada 1 px sobre la superficie para que no la tape el blanco del terreno, desvanecida 200→227 hacia el final, con pulso `0.85+0.15·sin(t·2+phase)`) + **brillo de cráter pulsante** (cruz/plus 190–230). Erupciones **casi continuas** (burst `VOLCANO_BURST=9 s` + pausa corta `VOLCANO_GAP_MIN..MAX=0.5..1.5 s`, desincronizadas; el demo de PC muestra llama visible el 100 % del tiempo): **destello radial** inicial (`VOLCANO_FLASH=0.25 s`, radio 3, 230→0) y partículas en arco (máx `VOLCANO_MAX_PARTS=200`, ~50 % de ticks, `VOLCANO_ERUPT_SPEED=26`, `VOLCANO_PART_GRAV=10`, vida `VOLCANO_PART_LIFE=1.3` s) que se desvanecen (`pixelShade` 220→40). **Mecánica de lava (16-17/8/2026)**: `computeLava()`/`clampFlows()` calculan los **rangos reales** donde el flujo cubre la plataforma de aterrizaje (`LavaRange {x1,x2}`, franja segura garantizada `VOLCANO_SAFE_STRIP=8 u` de ancho en el centro del pad, i.e. el pad nunca queda 100 % cubierto; el rango se recorta al **alcance real del flujo** — antes sobredimensionaba). `landOnLava(x1,x2)` detecta si el box de la nave pisa lava. **Cualquier colisión sobre lava quema** (`checkCollisions`: `result != 0 && landOnLava(...)` → `lavaBurn=true`, incluido hang-off-pad): aterrizar bien sobre lava no da score y muestra el final **"YOU BURNED" / "LAVA DESTROYED THE SHIP"**. API para tests: `active()`, `volcanoCount()`, `particlesAlive()`, `lavaRangeCount/X1/X2`, `landOnLava` |
 | `volcano_demo.cpp` | Prueba de visualización en PC: terreno generado + volcanes → PPM en `frames/` (selftest `active` + `maxAlive>0`; nivel por defecto 2 = Ío) |
+| `atmosphere.h/cpp` | **Atmósfera de Titán (19/8/2026; bandas de niebla 19/8/2026)**: activa en niveles de Titán (`moonHasTitan(level)`, `moonIndex==5`, i.e. nivel 6, 14, 22, 30…). `reset(level)` + `update(dt)` + `drawSky` (halo tenue ~20/9 luma de 2 px sobre la silueta del terreno + **bandas de niebla vivas**: `FOG_BAND_COUNT=3` franjas horizontales... ). **Niebla dinámica**: `centerY()`/`halfAt()` fuente única; **`hidesShip(x,y)`** oculta la nave. **Física**: arrastre `velX *= ATMOS_DRAG=0.9992` y corriente descendente `velY += ATMOS_DOWN=0.00008`. **Viento reactivado en Titán**; tormenta apagada (`storm.setEnabled(false)`). Ver detalle en "Proceso de trabajo" #20 |
+| `titan_demo.cpp` | Prueba de visualización en PC: terreno generado + atmósfera → PPM en `frames/` (nivel por defecto 6 = Titán) |
 
 ### Mundo y pantalla
 
@@ -290,70 +292,29 @@ El motor se enciende/apaga con el botón Z del nunchuck (como el resorte del gat
 motor apagado). La potencia se fija con el pot (continuo) o el botón C (pasos de 25 %); "last-used
 wins": al mover el pot >120 cuentas ADC, vuelve a mandar el pot.
 
-## Medición del reóstato (COMPLETADA 2/8/2026)
+## Hardware eléctrico / pinado
 
-Contexto: el gatillo de pista de autos es un reóstato de **resistencia baja** (unos pocos Ω,
-porque pasaba corriente al motor del auto). **No se puede leer directo con el ADC del ESP32**
-(drena demasiada corriente y la lectura sería mala). Por eso se usa divisor de voltaje.
+Las conexiones eléctricas, esquemas, mediciones y el detalle de flash/memoria están en
+**`docs/hardware.md`** (lo consulta el `hardware` agent). Resumen de pines:
 
-### RESULTADO DE LA MEDICIÓN (2/8/2026)
+| Señal | GPIO |
+|-------|------|
+| I2C nunchuck SDA / SCL | GPIO21 / GPIO22 |
+| Pot (nivel de potencia) | GPIO34 |
+| Gatillo (LEGACY, desconectado) | GPIO35 |
+| Botón start | GPIO13 |
+| Video compuesto (DAC) | GPIO25 |
+| Audio (LEDC PWM) | GPIO26 |
 
-- **Gatillo suelto (reposo):** circuito abierto (sin lectura) → motor apagado (thrust 0).
-- **Primer contacto al apretar:** ~**500 Ω** → ~2.5 V en el ADC.
-- **Gatillo apretado al máximo:** **30 Ω** → ~2.9 V (potencia máxima).
-- **Barrido 500 → 30 Ω es continuo/suave** (sin escalones discretos). Las lecturas
-  "brincan" por **ruido de contacto** del cursor sobre el bobinado: se mitiga en software
-  (suavizado) y con un condensador.
-- Conclusión: es interruptor + reóstato con rango útil 500–30 Ω. El arranque (abierto→500)
-  es un salto de "apagado a encendido" con dead zone natural.
-- **La ventana útil es muy angosta (2.5→2.9 V = 0.4 V).** En software se mapea esa ventana
-  completa al rango de thrust (ver "Entrada"). Si el gatillo se siente "todo o nada", opciones:
-  bajar la resistencia de carga a ~47–56 Ω para estirar la ventana a ~0.6 V, o cambiar de mecanismo.
-
-#### Circuito del divisor (gatillo → ADC)
-
-```
-3.3 V ──[reóstato 1.8M→30Ω]──┬──[120 Ω]── GND
-                            └──┬──[0.1 µF]── GND
-                               └── ADC (GPIO35)
-```
-
-- Reposo (abierto) → V ≈ 0.0 V (apagado, thrust 0). Verificado con el multímetro.
-- Medición final con 120 Ω (punto medio → GND): primer contacto **2.5 V**, a fondo **2.9 V**.
-- El condensador de 0.1 µF forma un paso bajo RC (~10 µs) que filtra el ruido de contacto.
-- En circuito el reóstato va de ~38 Ω (primer contacto) a ~17 Ω (a fondo): control tipo
-  "on + acelerador" con salto natural de apagado a encendido. Se mapea en software.
-
-#### Conexión del potenciómetro (ángulo → ADC)
-
-```
-3.3 V ──┬──[extremo 1]
-        │
-   [pot 10 kΩ]
-        │
-      [cursor] ──► ADC (GPIO34)
-        │
-   [extremo 2]
-        │
- GND ───┴───
-```
-
-- Pin 1 (extremo) → 3.3 V; pin 2 (extremo) → GND; pin 3 (cursor/medio) → ADC.
-- Reversible: si el ángulo sale invertido, se invierte en software o se cambian los extremos.
-- **GPIO34 y 35 son solo-entrada** (sin pull-up/pull-down): ideales para ADC.
-  Asignación: GPIO34 = ángulo (pot), GPIO35 = potencia (gatillo).
-- Condensador opcional de 0.1 µF del cursor a GND para limpiar ruido.
+La **lógica de lectura/mapeo** de estos pines (dead zone, calibración del stick, botones
+Z/C, "last-used wins" del pot) es código de juego y se documenta en la sección "Entrada".
 
 ## Salida de video (compuesta a CRT B/N)
 
-- **Librería: `aquaticus/esp32_composite_video_lib`** (GPL, C), embebida como `src/video.h/c`.
-  DAC interno **GPIO25** → RCA del TV. NTSC `NTSC_320x240`, `FB_FORMAT_GREY_8BPP`.
-  B/N usa luma alta (255) en el framebuffer.
-- `video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)` en `setup()`; el renderer escribe en
-  `video_get_frame_buffer_address()` y `video_wait_frame()` sincroniza el draw.
-- El framebuffer (320×240 × 1 byte ≈ 76 KB) se aloja en el heap de la librería.
-- Alternativa bitluni (documentada antes) NO se usa: se migró a aquaticus porque integra
-  `video_wait_frame()` y doble buffer por hardware.
+Librería aquaticus `esp32_composite_video_lib` (GPL) embebida como `src/video.h/c`:
+`video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)`, DAC GPIO25 → RCA, B/N luma 255.
+El renderer escribe en `video_get_frame_buffer_address()`; `video_wait_frame()` sincroniza.
+Cableado y detalle del framebuffer: `docs/hardware.md`.
 
 ## Sonido (COMPLETADA 4/8/2026)
 
@@ -432,24 +393,13 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 
 ## Flash / memoria
 
-- Placa: ESP32 Dev Module, flash **4 MB** (QIO 80 MHz), core 3.3.10.
-- **Esquema de partición `no_ota`** ("No OTA (2MB APP/2MB SPIFFS)", `tools/partitions/no_ota.csv`),
-  usado para aprovechar todo el flash de programa al máximo (no se hace OTA). Layout leído de la
-  flash: `nvs 20K` (`0x9000`), `otadata 8K` (`0xe000`), **`app0 2 MB`** (`0x10000`),
-  `spiffs 1.9 MB` (`0x210000`), `coredump 64K` (`0x3f0000`).
-- Sketch ≈ **425 KB → 20% del app slot (2 MB)**; RAM: 24.8 KB estáticos (**7%**) y quedan 302.9 KB
-  (92.4%) para stack/heap. En cualquier caso no hay presión de memoria.
-- Para volver a flashear manteniendo el esquema `no_ota` (el `arduino-cli upload` simple usa el
-  esquema `default` de 1.25 MB, que también es suficiente), se puede forzar el particionado en la
-  compilación con:
-  `arduino-cli compile --config-file …/arduino-cli.yaml --fqbn esp32:esp32:esp32 --build-property build.partitions=no_ota --build-property upload.maximum_size=2097152 esp32LanderComposite/esp32LanderComposite.ino`
-  y luego flashear el binario resultante (`…ino.merged.bin`/`…ino.bin`) con `esptool.py`. Si se
-  reflashea con el comando simple de `arduino-cli upload`, se revierte al esquema `default`
-  (1.25 MB app), que sigue con abundante margen.
+Resumen: ESP32 Dev Module flash 4 MB (QIO 80 MHz), core 3.3.10, esquema de partición `no_ota`
+(2 MB app). Sketch ≈ 425 KB (20% del app slot), RAM 7%. Layout de particiones y cómo forzar
+`no_ota` al flashear (vs `arduino-cli upload` que revierte a `default`): `docs/hardware.md`.
 
 ## Proceso de trabajo
 
-1. ~~Medir el reóstato y documentar resultado~~ **COMPLETADA (2/8/2026)** — ver sección de medición.
+1. ~~Medir el reóstato y documentar resultado~~ **COMPLETADA (2/8/2026)** — ver docs/hardware.md.
 2. ~~Portar moonlander.seb.ly y validar en PC~~ **COMPLETADA (4/8/2026)**
    — `esp32Lander/`, `make && ./test_pc` OK (21 checks).
 3. ~~Integrar video compuesto (aquaticus) → CRT~~ **COMPLETADA (4/8/2026)** — imagen verificada en CRT.
@@ -611,3 +561,56 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
     (500 KB, 38 %); subido a placa. **Validado en CRT (17/8/2026)**: flame casi continua, final
     "YOU BURNED" con derretido + sonido crepitante confirmados. Temporales revertidos
     (`DEMO_LEVEL_FORCE=0`, `START_LEVEL=1`).
+18. **PENDIENTE — Boca de volcán con patrón "U" aserrado (19/8/2026, sugerido por el usuario)**: al
+    dibujar el volcán, la boca del cráter debería dibujarse siguiendo un patrón de **"U" aserrado**
+    (convexa hacia abajo), en vez del labio elíptico irregular actual
+    (`volcanoes.cpp` ~línea 352: bucle de 14 puntos con `rr = 2.6 + 0.9·sin(ang·3+phase)`, dibujado
+    como anillo alrededor del vent). Referencia para retomar: el dibujo de la boca está en
+    `Volcanoes::draw()` en `esp32Lander/volcanoes.cpp` (y su copia en
+    `esp32LanderComposite/src/volcanoes.cpp`). No implementado todavía.
+19. **Máximo 3 volcanes por viewport (19/8/2026, rama `moon-flavor`)**: `Volcanoes::draw()` ya no
+    dibuja los `VOLCANO_VENTS=4` sin filtrar: `pickVisible(viewX, viewScale, out)` (helper testeable)
+    cierra los volcanes fuera de pantalla (margen `80·viewScale` px para alcanzar flujos y fireballs)
+    y, si quedan más de `VOLCANO_MAX_VISIBLE=3` en vista, conserva los 3 más cercanos al centro de
+    pantalla. `countInView(viewX, viewScale)` expone el conteo (cap ≤ 3 verificado en `test_pc` por
+    barrido de cámaras en vista normal y zoom; zoom centrado en un volcán → ≥ 1). Config en
+    `config.h`. Sync completado a `esp32LanderComposite/src/`.
+20. **Atmósfera de Titán (19/8/2026, rama `moon-flavor`)**: módulo `Atmosphere`
+    (`atmosphere.h/cpp`, PC + composite) activo en niveles de Titán (`moonHasTitan(level)`,
+    `moonIndex==5` → nivel 6, 14, 22, 30…). **Visual**: halo tenue sobre la silueta del terreno
+    (`drawSky`, luma ~20/9, muestreo por columna cada 2 px) + **bandas de niebla vivas**
+    (`FOG_BAND_COUNT=3` franjas horizontales en el corredor de descenso, desde `FOG_BAND_START=185`,
+    media altura `FOG_BAND_HALF_MIN..MAX=35..50 u`, hueco `FOG_BAND_GAP_MIN=70+ u`, velo a luma
+    `FOG_BRIGHT=32` con gradiente pico-en-el-centro, muestreado cada 2 px, **solo en el cielo**).
+    **Niebla dinámica (19/8/2026)**: cada banda **deriva verticalmente** (`FOG_DRIFT_A=20 u`,
+    velocidad 0.12–0.20 rad/s) y su **espesor ondula** en x y en el tiempo (`FOG_WAVE_A=0.35·half`,
+    `FOG_WAVE_K=0.02`, `FOG_WAVE_SPEED=0.15`, fases por banda) → las zonas ciegas **no se pueden
+    memorizar**; `centerY()`/`halfAt(x)` son la fuente única (visual y lógica idénticas).
+    **`hidesShip(x,y)`**: si la nave cae dentro de una banda, `Game::draw()` **no la dibuja** en
+    `STATE_PLAYING` → vuelas "a ciegas" por el HUD (ALT/VX/VY/ANG) hasta salir. **La niebla no
+    cubre el HUD (19/8/2026)**: `FOG_SCREEN_TOP=100` px — `drawSky` recorta la franja superior
+    (deja libres `LOW FUEL`=72 y `TOO FAST`=82 con viento) y **recorta también el halo del terreno**
+    (`sy ≥ FOG_SCREEN_TOP+2`); test pixel que verifica 0 píxeles de niebla/halo sobre el HUD.
+    **Física**: arrastre
+    lateral `velX *= ATMOS_DRAG=0.9992` por tick (~7.7 %/s) y corriente descendente
+    `velY += ATMOS_DOWN=0.00008` por tick (~23 % de la gravedad de Titán). **Viento reactivado en
+    Titán (19/8/2026)**: el gate `windEnabled` vuelve a ser aleatorio por nivel (ya no excluye
+    Titán) → mientras vas ciego no sabes hacia dónde te empuja y sales de la niebla en un sitio
+    inesperado; **la tormenta sigue apagada** en Titán (`storm.setEnabled(false)` tras cada
+    `storm.reset`, nuevo API público en `Storm`). Integrado en `Game` (reset en
+    constructor/newGame/nextLevel/startDemo, update excluye título, drawSky tras storm, ocultado de
+    nave en draw). Validado en PC: `test_pc` **848 checks ALL PASSED** (nuevos `testAtmosphere`:
+    `moonHasTitan`, activación por nivel, `hidesShip` dentro/fuera de banda, el patrón de ocultación
+    **cambia con el tiempo**, `Game::nextLevel()` → nivel 6 activo con `storm` inactiva),
+    `titan_demo 3/5/9 6` (la nave queda oculta 239–379 frames del descenso, variable por seed),
+    `demo_sim` 10 seeds en nivel 6 (**40 % win, 0 timeouts**, el autopilot aguanta niebla+viento).
+    Sync completado; sketch compila (502 KB, 38 %); subido a placa con `DEMO_LEVEL_FORCE=6` (TEMP)
+    para probar en CRT. **Pendiente de prueba en CRT y de afinar deriva/ondulación.**
+    **BUG PENDIENTE — los controles pestañean/se pierden en la fase de aproximación con zoom en
+    Titán (19/8/2026)**: con `FOG_SCREEN_TOP=100` y el halo recortado, todavía hay momentos en la
+    segunda fase (zoom-in) donde los indicadores del HUD **pestañean y hasta desaparecen por
+    completo**. Se deja como bug pendiente (la parte es perfectamente jugable aun así). Hipótesis a
+    investigar: algo se dibuja **después** del HUD y lo pisa (minimapa / indicadores de aterrizaje /
+    glitch de rayo / intro), o el oscilador de niebla aún alcanza la franja HUD en algún estado de
+    cámara. Referencia: `Game::draw()` en `esp32Lander/game.cpp` (orden: clear → storm.drawSky →
+    atmosphere.drawSky → terreno → nave → minimapa → HUD).
