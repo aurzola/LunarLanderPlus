@@ -20,7 +20,7 @@ public:
     void update();
     void setTargetRotation(float deg);
     void setThrust(float power);
-    void draw(Renderer &r, float viewX, float viewY, float viewScale);
+    void draw(Renderer &r, float viewX, float viewY, float viewScale, float melt = 0.0f);
     void crash();
     void land();
 
@@ -37,6 +37,9 @@ public:
     int counter;
 
     float left, right, bottom, top;
+    float windStrength;
+    int windDir;
+    float gravity;
 
 private:
     ShipShape shapes[6];

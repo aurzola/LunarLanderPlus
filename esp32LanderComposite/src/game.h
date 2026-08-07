@@ -5,6 +5,12 @@
 #include "ship.h"
 #include "terrain.h"
 #include "renderer.h"
+#include "storm.h"
+#include "geysers.h"
+#include "volcanoes.h"
+#include "atmosphere.h"
+#include "rings.h"
+#include "twister.h"
 #include "config.h"
 
 enum GameState {
@@ -20,6 +26,15 @@ struct Input {
     float angle;
     float thrust;
     float powerLevel;
+};
+
+struct WindStreak {
+    float x, y, vy;
+    float f1, f2;
+};
+
+struct DustParticle {
+    float x, y, vy, life;
 };
 
 class Game {
@@ -43,6 +58,19 @@ public:
 
     Ship ship;
     Terrain terrain;
+    Storm storm;
+    Geysers geysers;
+    Volcanoes volcanoes;
+    Atmosphere atmosphere;
+    Rings rings;
+    Twister twister;
+    bool windEnabled;
+    float windStrength;
+    int windDir;
+    float landingProximity() const;
+    bool lavaBurnGet() const { return lavaBurn; }
+    bool ringHitGet() const { return ringHit; }
+    bool twisterCrashGet() const { return twisterCrash; }
 
 private:
     float viewX, viewY, viewScale;
@@ -52,6 +80,14 @@ private:
     float demoSkill;
     float demoTargetX;
     float demoTargetY;
+    float windPhase;
+    float windFlipTimer;
+    float stormHitTimer;
+    bool lavaBurn;
+    bool ringHit;
+    bool twisterCrash;
+    std::vector<WindStreak> windStreaks;
+    std::vector<DustParticle> dust;
     void updateView();
     void setZoom(bool zoom);
     void checkCollisions();
@@ -60,6 +96,10 @@ private:
     void endDemoToTitle();
     void setupTitleShip();
     void runDemoAI();
+    void spawnWind();
+    void spawnDust();
+    void updateWind(float dt);
+    void drawWind(Renderer &r);
 };
 
 #endif

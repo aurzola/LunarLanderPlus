@@ -18,6 +18,8 @@ Controles físicos arcade:
 | `sounds/` | Pipeline de generación de los sonidos (real_sounds.py) + WAV fuente. |
 
 Ver `AGENTS.md` para la documentación técnica completa (física, terreno, audio, decisiones).
+Para el detalle eléctrico (esquemas, medidas, divisor de voltaje, flash/particiones) y el
+agente especializado de hardware, ver **`docs/hardware.md`**.
 
 ## Pinout completo
 

@@ -2,6 +2,11 @@
 #include <cstdio>
 #include <cstring>
 #include "game.h"
+#include "moons.h"
+
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
 
 static const int TITLE_STAR_COUNT = 32;
 static const int titleStars[][2] = {
@@ -20,25 +25,45 @@ static float clampf(float v, float lo, float hi)
     return v;
 }
 
+// Fill `n` chars with random display garbage (digits + letters, occasionally a
+// dash) to simulate a scrambled instrument readout after a lightning hit.
+static void glitchChars(char *out, int n)
+{
+    static const char CH[] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ-";
+    for (int i = 0; i < n; i++) out[i] = CH[rand() % (sizeof(CH) - 1)];
+    out[n] = 0;
+}
+
 Game::Game()
     : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX), introTimer(0),
       demo(false), demoTimer(DEMO_START_DELAY),
+      windEnabled(false), windStrength(0), windDir(1),
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
-      demoSkill(1.0f), demoTargetX(0), demoTargetY(0)
+      demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false), ringHit(false),
+      twisterCrash(false)
 {
     input.startPressed = false;
     input.angle = 0;
     input.thrust = 0;
     input.powerLevel = 0;
     terrain.init();
+    storm.reset(level);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
+    geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
+    rings.reset(level, terrain);
+    twister.reset(level, terrain);
+    stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
 }
 
 void Game::newGame()
 {
-    level = 1;
+    level = START_LEVEL;
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
@@ -48,7 +73,23 @@ void Game::newGame()
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
     ship.velX = 0.415f;
-    terrain.init();
+    if (level <= 1) terrain.init();
+    else terrain.generate(level);
+    windEnabled = (level >= WIND_START_LEVEL) &&
+                  (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTwister(level) &&
+                  !moonHasRings(level);
+    spawnWind();
+    storm.reset(level);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
+    geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
+    rings.reset(level, terrain);
+    twister.reset(level, terrain);
+    stormHitTimer = 0;
+    lavaBurn = false;
+    ringHit = false;
 }
 
 void Game::restartLevel()
@@ -59,6 +100,9 @@ void Game::restartLevel()
     setZoom(false);
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
+    lavaBurn = false;
+    ringHit = false;
+    twisterCrash = false;
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
         state = STATE_WAITING;
@@ -73,6 +117,21 @@ void Game::nextLevel()
     level++;
     float f = ship.fuel;
     terrain.generate(level);
+    windEnabled = (level >= WIND_START_LEVEL) &&
+                  (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTwister(level) &&
+                  !moonHasRings(level);
+    spawnWind();
+    storm.reset(level);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
+    geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
+    rings.reset(level, terrain);
+    twister.reset(level, terrain);
+    stormHitTimer = 0;
+    lavaBurn = false;
+    ringHit = false;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -93,13 +152,28 @@ void Game::startDemo()
     demo = true;
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
-    level = 1 + rand() % DEMO_MAX_LEVEL;
+    level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
+    windEnabled = (level >= WIND_START_LEVEL) &&
+                  (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTwister(level) &&
+                  !moonHasRings(level);
+    spawnWind();
+    storm.reset(level);
+    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
+    geysers.reset(level, terrain);
+    volcanoes.reset(level, terrain);
+    atmosphere.reset(level);
+    rings.reset(level, terrain);
+    twister.reset(level, terrain);
+    stormHitTimer = 0;
+    lavaBurn = false;
+    ringHit = false;
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -107,19 +181,60 @@ void Game::startDemo()
     introTimer = LEVEL_INTRO_TIME;
 
     const std::vector<TerrainLine> &tl = terrain.getLines();
-    std::vector<float> cx, cy;
-    for (int i = 0; i < (int)tl.size(); i++) {
-        if (tl[i].labelX >= 0) {
-            cx.push_back(tl[i].labelX);
-            cy.push_back(tl[i].y1);
+
+    // TEST aim: prefer a lava-covered strip of a landing pad (Io), so the
+    // burnt-ship ending shows up while tuning it. Pick the lava zone closest
+    // to the spawn so the flight is short and cannot land short on an
+    // intervening pad. Regenerate the forced level until lava is available;
+    // otherwise fall back to any landing pad.
+    int lavaPick = -1;
+    for (int attempt = 0; attempt < 20 && lavaPick < 0; attempt++) {
+        float bestDist = 1e9f;
+        for (int i = 0; i < volcanoes.lavaRangeCount(); i++) {
+            if (volcanoes.lavaRangeX2(i) - volcanoes.lavaRangeX1(i) < 8.0f) continue;
+            float mid = (volcanoes.lavaRangeX1(i) + volcanoes.lavaRangeX2(i)) * 0.5f;
+            float d = fabsf(mid - ship.posX);
+            if (d < bestDist) {
+                bestDist = d;
+                lavaPick = i;
+            }
         }
+        if (lavaPick >= 0 || DEMO_LEVEL_FORCE <= 0) break;
+        terrain.generate(level);
+        storm.reset(level);
+        if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
+        geysers.reset(level, terrain);
+        volcanoes.reset(level, terrain);
+        atmosphere.reset(level);
+        rings.reset(level, terrain);
+        twister.reset(level, terrain);
     }
-    int pick = (int)cx.size() ? rand() % (int)cx.size() : 0;
-    demoTargetX = cx[pick];
-    demoTargetY = cy[pick];
-    if (demoSkill < 0.35f) {
-        float off = ((float)(rand() % 200) / 100.0f - 1.0f) * (0.35f - demoSkill) * 110.0f;
-        demoTargetX += off;
+
+    if (lavaPick >= 0) {
+        demoTargetX = (volcanoes.lavaRangeX1(lavaPick) + volcanoes.lavaRangeX2(lavaPick)) * 0.5f;
+        demoTargetY = 500.0f;
+        for (int i = 0; i < (int)tl.size(); i++) {
+            if (demoTargetX >= tl[i].x1 && demoTargetX <= tl[i].x2) {
+                demoTargetY = tl[i].y1;
+                break;
+            }
+        }
+        demoSkill = 0.85f;
+    } else {
+        std::vector<float> cx, cy;
+        for (int i = 0; i < (int)tl.size(); i++) {
+            if (tl[i].labelX >= 0) {
+                cx.push_back(tl[i].labelX);
+                cy.push_back(tl[i].y1);
+            }
+        }
+        int pick = (int)cx.size() ? rand() % (int)cx.size() : 0;
+        demoTargetX = cx[pick];
+        demoTargetY = cy[pick];
+        if (demoSkill < 0.35f) {
+            float off = ((float)(rand() % 200) / 100.0f - 1.0f) * (0.35f - demoSkill) * 110.0f;
+            demoTargetX += off;
+        }
     }
 }
 
@@ -147,27 +262,21 @@ void Game::runDemoAI()
 
     float desVX = clampf(errX * 0.003f, -0.10f, 0.10f);
     if (distX < 40.0f) desVX = clampf(errX * 0.002f, -0.04f, 0.04f);
-    float want = clampf((desVX - ship.velX) / THRUST_ACCEL, -1.0f, 1.0f);
-    float angle = asinf(want) * 180.0f / PI;
-    float thrust = fabsf(want) * 0.8f;
+    float windPush = ship.windStrength * WIND_ACCEL;
+    float aX = clampf((desVX - ship.velX) * 0.02f - (float)ship.windDir * windPush,
+                      -0.002f, 0.002f);
 
-    if (distX > 50.0f) {
-        float maxVY = (alt < 100.0f) ? 0.04f : 0.12f;
-        if (ship.velY > maxVY) {
-            angle *= 0.4f;
-            thrust = 1.0f;
-        }
-        if (alt < 60.0f) {
-            angle *= 0.2f;
-            thrust = 1.0f;
-        }
-    } else {
-        if (ship.velY > 0.075f) {
-            angle *= 0.3f;
-            thrust = 1.0f;
-        }
-        if (alt < 12.0f) angle *= 0.4f;
-    }
+    float desVY = (distX > 50.0f) ? ((alt < 100.0f) ? 0.04f : 0.12f) : 0.03f;
+    float aY = clampf((ship.velY - desVY) * 0.03f, 0.0f, 0.00075f);
+
+    if (alt < 12.0f) aX *= 0.6f;
+    if (alt < 2.5f) aX *= 0.05f;
+
+    float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
+    float angle = atan2f(aX, aY) * 180.0f / PI;
+    if (thrust > 1.0f) thrust = 1.0f;
+
+    if (ship.velY < -0.01f) thrust = 0.0f;
 
     float imp = 1.0f - demoSkill;
     float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
@@ -181,6 +290,215 @@ void Game::runDemoAI()
     if (thrust > pw) pw = fminf(thrust, pw + step);
     else pw = fmaxf(thrust, pw - step);
     input.powerLevel = pw;
+}
+
+static float terrainYAt(const std::vector<TerrainLine> &tl, float x, float fallback)
+{
+    for (int i = 0; i < (int)tl.size(); i++) {
+        const TerrainLine &l = tl[i];
+        if (x >= l.x1 && x <= l.x2 && l.x2 != l.x1) {
+            float t = (x - l.x1) / (l.x2 - l.x1);
+            return l.y1 + (l.y2 - l.y1) * t;
+        }
+    }
+    return fallback;
+}
+
+void Game::spawnWind()
+{
+    windStreaks.clear();
+    if (!windEnabled) return;
+
+    float w = terrain.getWidth();
+    float top = 9999;
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].y1 < top) top = tl[i].y1;
+    }
+
+    for (int i = 0; i < (int)WIND_STREAK_COUNT; i++) {
+        WindStreak s;
+        s.x = (float)(rand() % (int)(w * 10.0f)) / 10.0f;
+        s.y = (float)(rand() % (int)(top - 60.0f)) + 20.0f;
+        s.vy = ((float)(rand() % 1201) / 100.0f - 6.0f);
+        s.f1 = 0.55f + (float)(rand() % 45) / 100.0f;
+        s.f2 = 0.55f + (float)(rand() % 45) / 100.0f;
+        windStreaks.push_back(s);
+    }
+}
+
+void Game::spawnDust()
+{
+    dust.clear();
+    if (!windEnabled) return;
+
+    float w = terrain.getWidth();
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    for (int i = 0; i < DUST_COUNT; i++) {
+        DustParticle d;
+        d.x = ship.posX + ((float)(rand() % (int)(2.0f * DUST_RANGE * 10.0f)) / 10.0f - DUST_RANGE);
+        while (d.x < 0) d.x += w;
+        while (d.x > w) d.x -= w;
+        d.y = terrainYAt(tl, d.x, 480.0f) - ((float)(rand() % 350) / 10.0f + 3.0f);
+        d.vy = (float)(rand() % 401) / 100.0f - 2.0f;
+        d.life = DUST_LIFE * (0.5f + (float)(rand() % 50) / 100.0f);
+        dust.push_back(d);
+    }
+}
+
+void Game::updateWind(float dt)
+{
+    if (!windEnabled) {
+        windStreaks.clear();
+        dust.clear();
+        return;
+    }
+    if (windStreaks.empty()) spawnWind();
+    if (dust.empty()) spawnDust();
+
+    windPhase += dt;
+    windFlipTimer -= dt;
+    if (windFlipTimer <= 0) {
+        windFlipTimer = 8.0f + (float)(rand() % 120) / 10.0f;
+        if (rand() % 2) windDir = -windDir;
+    }
+
+    float gust = 0.5f + 0.5f * sinf(windPhase * 0.6f);
+    windStrength = WIND_MIN + (1.0f - WIND_MIN) * gust;
+
+    float top = 9999;
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].y1 < top) top = tl[i].y1;
+    }
+
+    float speed = (float)windDir * windStrength * WIND_STREAK_SPEED * dt;
+    float w = terrain.getWidth() + 40.0f;
+    float skyTop = (0.0f - viewY) / viewScale;
+    float skyBot = (SCREEN_H * 0.55f - viewY) / viewScale;
+    if (skyTop < 0.0f) skyTop = 0.0f;
+    if (skyBot <= skyTop) skyBot = skyTop + 1.0f;
+    for (int i = 0; i < (int)windStreaks.size(); i++) {
+        WindStreak &s = windStreaks[i];
+        s.x += speed;
+        s.y += s.vy * dt;
+        if (s.x > w) s.x -= w;
+        else if (s.x < 0) s.x += w;
+        float sBot = skyBot;
+        float gy = terrainYAt(tl, s.x, 480.0f);
+        if (gy - 4.0f < sBot) sBot = gy - 4.0f;
+        if (sBot <= skyTop) sBot = skyTop + 1.0f;
+        if (s.y < skyTop || s.y > sBot) {
+            s.y = skyTop + ((float)(rand() % 1000) / 1000.0f) * (sBot - skyTop);
+            s.vy = (float)(rand() % 1201) / 100.0f - 6.0f;
+        }
+    }
+
+    float dustSpeed = speed * DUST_SPEED;
+    float gw = terrain.getWidth();
+    float nearF = landingProximity();
+    for (int i = 0; i < (int)dust.size(); i++) {
+        DustParticle &d = dust[i];
+        d.life -= dt;
+        d.x += dustSpeed + d.vy * dt * 0.2f;
+        d.y += d.vy * dt;
+        if (d.x > gw) d.x -= gw;
+        else if (d.x < 0) d.x += gw;
+        float gy = terrainYAt(tl, d.x, 480.0f);
+        if (d.y > gy - 2.0f) d.y = gy - 2.0f;
+        if (d.life <= 0) {
+            d.x = ship.posX + ((float)(rand() % (int)(2.0f * DUST_RANGE * 10.0f)) / 10.0f - DUST_RANGE);
+            while (d.x < 0) d.x += gw;
+            while (d.x > gw) d.x -= gw;
+            d.y = terrainYAt(tl, d.x, 480.0f) - ((float)(rand() % 350) / 10.0f + 3.0f);
+            d.vy = (float)(rand() % 401) / 100.0f - 2.0f;
+            if (nearF > 0.6f) d.vy -= nearF * 2.5f;
+            d.life = DUST_LIFE * (0.5f + (float)(rand() % 50) / 100.0f);
+        }
+    }
+}
+
+static void shadedHLine(Renderer &r, float x0, float x1, float y, int brightness)
+{
+    int a = (int)roundf(x0), b = (int)roundf(x1);
+    if (a > b) { int t = a; a = b; b = t; }
+    for (int x = a; x <= b; x++) r.pixelShade((float)x, y, brightness);
+}
+
+float Game::landingProximity() const
+{
+    float w = terrain.getWidth();
+    const std::vector<TerrainLine> &tl = terrain.getLines();
+    float best = 1e9f;
+    for (int i = 0; i < (int)tl.size(); i++) {
+        if (tl[i].labelX < 0) continue;
+        float d = fabsf(ship.posX - tl[i].x1);
+        if (d > w * 0.5f) d = w - d;
+        if (d < best) best = d;
+    }
+    if (best >= 1e9f) return 0.0f;
+    return 1.0f - fminf(best / DUST_NEAR_RANGE, 1.0f);
+}
+
+void Game::drawWind(Renderer &r)
+{
+    if (!windEnabled) return;
+
+    float altFactor = 1.0f - fminf(ship.altitude / WIND_ALT_MAX, 1.0f);
+
+    if (!windStreaks.empty()) {
+        int visible = (int)(windStreaks.size() * altFactor);
+        if (visible < WIND_STREAK_MIN_VISIBLE) visible = WIND_STREAK_MIN_VISIBLE;
+        if (visible > (int)windStreaks.size()) visible = (int)windStreaks.size();
+        if (zoomedIn && visible > 8) visible = 8;
+        float dir = (float)windDir;
+        for (int i = 0; i < visible; i++) {
+            float sx = windStreaks[i].x * viewScale + viewX;
+            float sy = windStreaks[i].y * viewScale + viewY;
+            if (sy < -30.0f || sy > SCREEN_H + 30.0f) continue;
+
+            float base = (WIND_STREAK_MIN +
+                          (WIND_STREAK_MAX - WIND_STREAK_MIN) * windStrength) * viewScale;
+            float lenA = base * windStreaks[i].f1;
+            float lenB = base * windStreaks[i].f2;
+            shadedHLine(r, sx, sx + dir * lenA, sy, 180);
+            float forkIn = clampf((altFactor - WIND_FORK_ALT) / (1.0f - WIND_FORK_ALT),
+                                  0.0f, 1.0f);
+            if (forkIn > 0.0f) {
+                shadedHLine(r, sx, sx + dir * lenB, sy + 1, (int)(180.0f * forkIn));
+            }
+            float lenW = (forkIn > 0.0f) ? fmaxf(lenA, lenB) : lenA;
+            shadedHLine(r, sx - dir * lenW * 0.5f, sx - dir * lenW * 0.5f + dir * lenW * 0.45f, sy, 90);
+            shadedHLine(r, sx - dir * lenW * 0.9f, sx - dir * lenW * 0.9f + dir * lenW * 0.3f, sy, 45);
+        }
+    }
+
+    float nearF = landingProximity();
+
+    for (int i = 0; i < (int)dust.size(); i++) {
+        float sx = dust[i].x * viewScale + viewX;
+        float sy = dust[i].y * viewScale + viewY;
+        if (sy < -20.0f || sy > SCREEN_H + 20.0f) continue;
+        if (sx < -20.0f || sx > SCREEN_W + 20.0f) continue;
+
+        if (nearF < 0.15f) {
+            if ((i & 1) == 0) continue;
+            r.pixelShade(sx, sy, 45);
+        } else {
+            float flick = 0.8f + 0.2f * sinf(windPhase * 2.0f + i * 1.7f);
+            float t = (nearF - 0.15f) / 0.85f;
+            int b = (int)(45.0f + 205.0f * t * t * windStrength * flick);
+            if (b > 250) b = 250;
+            r.pixelShade(sx, sy, b);
+            if (nearF > 0.7f && b > 120) {
+                int hb = b / 2;
+                r.pixelShade(sx - 1.0f, sy, hb);
+                r.pixelShade(sx + 1.0f, sy, hb);
+                r.pixelShade(sx, sy - 1.0f, hb);
+                r.pixelShade(sx, sy + 1.0f, hb);
+            }
+        }
+    }
 }
 
 void Game::setZoom(bool zoom)
@@ -223,10 +541,51 @@ void Game::updateView()
 
 void Game::checkCollisions()
 {
+    // A rock from the debris rings shatters the ship if it hits it mid-flight.
+    if (rings.hitsShip(terrain, ship.posX, ship.posY, RING_SHIP_RADIUS)) {
+        ringHit = true;
+        ship.crash();
+        int lost = 200 + (rand() % 200);
+        fuel -= lost;
+        ship.fuel -= lost;
+        if (ship.fuel < 0) ship.fuel = 0;
+        if (fuel < 0) fuel = 0;
+        score += 5;
+        state = STATE_CRASHED;
+        resetTimer = CRASH_RESET_DELAY;
+        return;
+    }
+
     int result = terrain.checkLanding(
         ship.left, ship.right, ship.bottom,
         ship.rotation, ship.velY, ship.velX
     );
+
+    // Touching lava burns the ship on any collision (good landing or hard
+    // crash), so a touchdown over lava always shows the burnt-ship ending.
+    if (result != 0 && volcanoes.landOnLava(ship.left, ship.right)) {
+        lavaBurn = true;
+        ship.land();
+        state = STATE_CRASHED;
+        resetTimer = CRASH_RESET_DELAY;
+        return;
+    }
+
+    // Touching the ground while the twister is dragging the ship smashes it
+    // against the ground near the vortex base.
+    if (result != 0 && twister.captured()) {
+        twisterCrash = true;
+        ship.crash();
+        int lost = 200 + (rand() % 200);
+        fuel -= lost;
+        ship.fuel -= lost;
+        if (ship.fuel < 0) ship.fuel = 0;
+        if (fuel < 0) fuel = 0;
+        score += 5;
+        state = STATE_CRASHED;
+        resetTimer = CRASH_RESET_DELAY;
+        return;
+    }
 
     if (result == 2) {
         float mult = 1.0f;
@@ -250,7 +609,6 @@ void Game::checkCollisions()
         }
         state = STATE_LANDED;
         resetTimer = CRASH_RESET_DELAY;
-
     } else if (result == 1) {
         int lost = 200 + (rand() % 200);
         ship.crash();
@@ -267,6 +625,16 @@ void Game::checkCollisions()
 void Game::update()
 {
     float dt = GAME_DT;
+    updateWind(dt);
+    ship.windStrength = windEnabled ? windStrength : 0.0f;
+    ship.windDir = windDir;
+    ship.gravity = GRAVITY * moonGravity(level);
+    if (state != STATE_WAITING) storm.update(dt, terrain);
+    if (state != STATE_WAITING) geysers.update(dt);
+    if (state != STATE_WAITING) volcanoes.update(dt);
+    if (state != STATE_WAITING) atmosphere.update(dt);
+    if (state != STATE_WAITING) rings.update(dt);
+    if (state != STATE_WAITING) twister.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -288,6 +656,20 @@ void Game::update()
 
     if (state == STATE_PLAYING) {
         if (introTimer > 0) {
+            ship.left = ship.posX - 10.0f * ship.scale;
+            ship.right = ship.posX + 10.0f * ship.scale;
+            ship.bottom = ship.posY + 14.0f * ship.scale;
+            ship.top = ship.posY - 5.0f * ship.scale;
+            float minAlt = 9999;
+            for (int i = 0; i < (int)terrain.getLines().size(); i++) {
+                const TerrainLine &l = terrain.getLines()[i];
+                if (ship.posX >= l.x1 && ship.posX <= l.x2) {
+                    float alt = l.y1 - ship.bottom;
+                    if (alt < minAlt) minAlt = alt;
+                }
+            }
+            if (minAlt >= 9999) minAlt = 300.0f;
+            ship.altitude = minAlt;
             introTimer -= dt;
             if (introTimer < 0) introTimer = 0;
             return;
@@ -296,9 +678,35 @@ void Game::update()
         if (demo) runDemoAI();
 
         float deg = input.angle * 180.0f / PI;
-        ship.setTargetRotation(deg);
-        ship.setThrust(input.thrust);
+        if (stormHitTimer > 0.0f) {
+            stormHitTimer -= dt;
+            if (stormHitTimer < 0.0f) stormHitTimer = 0.0f;
+            deg += ((float)(rand() % 2001) / 1000.0f - 1.0f) * 0.5f * 180.0f / PI;
+            ship.setTargetRotation(deg);
+            ship.setThrust(0.0f);
+        } else {
+            ship.setTargetRotation(deg);
+            ship.setThrust(input.thrust);
+            if (storm.strikes(ship.posX, ship.posY, STORM_HIT_RADIUS)) {
+                float lost = STORM_HIT_FUEL;
+                fuel -= lost;
+                ship.fuel -= lost;
+                if (fuel < 0) fuel = 0;
+                if (ship.fuel < 0) ship.fuel = 0;
+                stormHitTimer = STORM_CONTROL_LOSS;
+            }
+        }
         ship.update();
+        if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
+
+        if (twister.active()) {
+            twister.apply(ship, terrain, input.angle * 180.0f / PI);
+        }
+
+        if (atmosphere.active()) {
+            ship.velX *= ATMOS_DRAG;
+            ship.velY += ATMOS_DOWN;
+        }
 
         if (ship.posX > terrain.getWidth() + 10)
             ship.posX = -10;
@@ -358,6 +766,11 @@ void Game::update()
 void Game::draw(Renderer &r)
 {
     r.clear();
+
+    if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
+    if (state != STATE_WAITING) atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
+
+    int warnY = 62, fastY = 72;
 
     if (state == STATE_WAITING) {
         for (int i = 0; i < TITLE_STAR_COUNT; i++) {
@@ -500,11 +913,80 @@ void Game::draw(Renderer &r)
 
         r.text(170, 132, "STICK: ROTATION");
         r.text(170, 144, "Z: ENGINE ON/OFF");
-        r.text(170, 156, "C: POWER STEPS");
+        r.text(170, 156, "C+STICK: POWER UP/DOWN");
         r.text(170, 168, "POT: POWER LEVEL");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
-        ship.draw(r, viewX, viewY, viewScale);
+        geysers.draw(r, viewX, viewY, viewScale);
+        volcanoes.draw(r, viewX, viewY, viewScale);
+        drawWind(r);
+        rings.draw(r, terrain, viewX, viewY, viewScale);
+        twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
+        bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
+        if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
+        storm.drawBolts(r, viewX, viewY, viewScale);
+
+        if (lavaBurn) {
+            // The ship touched down on lava: it glows white-hot and melts away
+            // from the footpads up over the crash delay.
+            float melt = 1.0f - resetTimer / CRASH_RESET_DELAY;
+            if (melt < 0.0f) melt = 0.0f;
+            if (melt > 1.0f) melt = 1.0f;
+
+            float sx = ship.posX * viewScale + viewX;
+            float sy = ship.posY * viewScale + viewY;
+            float sc = ship.scale * viewScale;
+            float pulse = 0.75f + 0.25f * sinf((float)ship.counter * 0.18f);
+            float meltWorld = ship.posY + (14.0f - melt * 19.0f) * ship.scale;
+            float meltScreen = meltWorld * viewScale + viewY;
+
+            // Pulsing radial heat glow behind the wreck, growing as it melts.
+            float gr = (7.0f + melt * 11.0f) * sc + 2.0f;
+            int gb = (int)(140.0f * (0.35f + 0.65f * melt) * pulse);
+            for (int yy = (int)(-gr); yy <= (int)gr; yy++) {
+                int halfw = (int)sqrtf(gr * gr - (float)(yy * yy));
+                for (int xx = -halfw; xx <= halfw; xx++) {
+                    float d = sqrtf((float)(xx * xx + yy * yy)) / gr;
+                    int b = (int)(gb * (1.0f - d));
+                    if (b > 0) r.pixelShade(sx + (float)xx, sy + 2.0f * sc + (float)yy, b);
+                }
+            }
+
+            // Molten edge across the hull at the melt front.
+            int edgeB = (int)(255.0f * pulse);
+            int halfw2 = (int)(11.0f * sc);
+            for (int xx = -halfw2; xx <= halfw2; xx++) {
+                int ax = xx < 0 ? -xx : xx;
+                float wob = 1.5f * sinf((float)ship.counter * 0.3f + xx * 0.5f);
+                r.pixelShade(sx + (float)xx, meltScreen + wob, edgeB - ax * 3);
+            }
+
+            // Embers rising from the glowing wreck.
+            for (int e = 0; e < 14; e++) {
+                int seed = e * 7 + ship.counter;
+                float ex = sx + (float)((seed * 37) % 41 - 20) * 0.35f * sc;
+                float ph = (float)((seed * 53) % 100) / 100.0f;
+                float life = fmodf((float)ship.counter * 0.02f + ph, 1.0f);
+                float rise = life * (9.0f + melt * 12.0f) * sc;
+                float sway = sinf((float)ship.counter * 0.3f + ph * 6.0f) * 2.5f * sc;
+                int b = (int)(230.0f * (1.0f - life));
+                if (b > 0) r.pixelShade(ex + sway, sy - rise, b);
+            }
+
+            // Molten drips falling from the melt front.
+            for (int d = 0; d < 8; d++) {
+                int seed = d * 13 + ship.counter;
+                float dx = sx + (float)((seed * 29) % 31 - 15) * 0.5f * sc;
+                float ph = (float)((seed * 71) % 100) / 100.0f;
+                float life = fmodf((float)ship.counter * 0.015f + ph, 1.0f);
+                float fall = life * (16.0f + melt * 10.0f) * sc;
+                int b = (int)(200.0f * (1.0f - life));
+                if (b > 0) r.pixelShade(dx, meltScreen + fall, b);
+            }
+
+            // The hull itself melts away from the bottom up.
+            ship.draw(r, viewX, viewY, viewScale, melt);
+        }
 
         {
             const std::vector<TerrainLine> &tl = terrain.getLines();
@@ -534,24 +1016,69 @@ void Game::draw(Renderer &r)
 
         char buf[40];
         if (introTimer <= 0) {
+            bool glitch = (stormHitTimer > 0.0f);
+
+            int ang = (int)ship.rotation;
+            int pwr = (int)(input.powerLevel * 100);
+            int alt = (ship.altitude < 0) ? 0 : (int)ship.altitude;
+            int vx = (int)(ship.velX * 200);
+            int vy = (int)(ship.velY * 200);
+
+            // A lightning hit scrambles the instruments (EM interference):
+            // readouts show random alphanumeric garbage that dances around.
             snprintf(buf, sizeof buf, "L%d SCORE %d", level, score);
             r.text(22, 22, buf);
             snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
             r.text(22, 32, buf);
-            snprintf(buf, sizeof buf, "ANG %d", (int)ship.rotation);
-            r.text(22, 42, buf);
-            snprintf(buf, sizeof buf, "PWR %d", (int)(input.powerLevel * 100));
-            r.text(22, 52, buf);
 
-            int alt = (ship.altitude < 0) ? 0 : (int)ship.altitude;
-            snprintf(buf, sizeof buf, "ALT %d", alt);
-            r.text(250, 22, buf);
-            snprintf(buf, sizeof buf, "VX %d", (int)(ship.velX * 200));
-            r.text(250, 32, buf);
-            snprintf(buf, sizeof buf, "VY %d", (int)(ship.velY * 200));
-            r.text(250, 42, buf);
+            if (glitch) {
+                char gb[8];
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "ANG %s", gb);
+                r.text(22, 42, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "PWR %s", gb);
+                r.text(22, 52, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "ALT %s", gb);
+                r.text(250, 22, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "VX  %s", gb);
+                r.text(250, 32, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "VY  %s", gb);
+                r.text(250, 42, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "G   %s", gb);
+                r.text(250, 52, buf);
+            } else {
+                snprintf(buf, sizeof buf, "ANG %d", ang);
+                r.text(22, 42, buf);
+                snprintf(buf, sizeof buf, "PWR %d", pwr);
+                r.text(22, 52, buf);
+                snprintf(buf, sizeof buf, "ALT %d", alt);
+                r.text(250, 22, buf);
+                snprintf(buf, sizeof buf, "VX %d", vx);
+                r.text(250, 32, buf);
+                snprintf(buf, sizeof buf, "VY %d", vy);
+                r.text(250, 42, buf);
+                snprintf(buf, sizeof buf, "G %.2f", ship.gravity / GRAVITY);
+                r.text(250, 52, buf);
+            }
 
-            if (demo) r.text(22, 62, "DEMO");
+#if defined(ARDUINO)
+            snprintf(buf, sizeof buf, "MEM %uK", (unsigned)(ESP.getFreeHeap() / 1024));
+            r.text(22, 62, buf);
+#endif
+            if (demo) r.text(22, 72, "DEMO");
+            bool windShown = windEnabled;
+            if (windShown) {
+                snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
+                         windDir > 0 ? '>' : '<');
+                r.text(250, 62, buf);
+                warnY = 72;
+                fastY = 82;
+            }
         }
 
         auto centerText = [&r](float y, const char *s) {
@@ -567,8 +1094,30 @@ void Game::draw(Renderer &r)
                 centerText(102, "HOPELESSLY MAROONED");
             }
         } else if (state == STATE_CRASHED) {
-            centerText(90, "YOU CRASHED");
-            centerText(102, "FUEL TANKS DESTROYED");
+            if (lavaBurn) {
+                centerText(90, "YOU BURNED");
+                centerText(102, "LAVA DESTROYED THE SHIP");
+            } else if (ringHit) {
+                if (zoomedIn) {
+                    // In zoom-in place the two lines below the lower band so
+                    // they read clearly instead of overlapping the debris.
+                    float bandSy = rings.lowerBandY(terrain, ship.posX) * viewScale + viewY;
+                    float yTxt = bandSy + 18.0f;
+                    if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
+                    if (yTxt < 20.0f) yTxt = 20.0f;
+                    centerText(yTxt, "YOU CRASHED");
+                    centerText(yTxt + 12, "STRUCK BY ORBITAL DEBRIS");
+                } else {
+                    centerText(108, "YOU CRASHED");
+                    centerText(120, "STRUCK BY ORBITAL DEBRIS");
+                }
+            } else if (twisterCrash) {
+                centerText(90, "YOU CRASHED");
+                centerText(102, "TWISTER SMASHED THE SHIP");
+            } else {
+                centerText(90, "YOU CRASHED");
+                centerText(102, "FUEL TANKS DESTROYED");
+            }
         } else if (state == STATE_GAMEOVER) {
             centerText(90, "OUT OF FUEL");
             centerText(102, "GAME OVER");
@@ -576,14 +1125,14 @@ void Game::draw(Renderer &r)
 
         if (state == STATE_PLAYING && introTimer <= 0) {
             if (ship.fuel <= 0) {
-                if ((ship.counter % 50) < 30) r.text(250, 52, "OUT OF FUEL");
+                if ((ship.counter % 50) < 30) r.text(250, warnY, "OUT OF FUEL");
             } else if (ship.fuel < 300) {
-                if ((ship.counter % 50) < 30) r.text(250, 52, "LOW FUEL");
+                if ((ship.counter % 50) < 30) r.text(250, warnY, "LOW FUEL");
             }
             if ((ship.velY > LAND_HARD_VY ||
                  ship.velX > LAND_HARD_VX || ship.velX < -LAND_HARD_VX) &&
                 (ship.counter % 50) < 30) {
-                r.text(250, 62, "TOO FAST");
+                r.text(250, fastY, "TOO FAST");
             }
         }
 
@@ -599,6 +1148,13 @@ void Game::draw(Renderer &r)
             float tx = (SCREEN_W - tw) / 2.0f;
             float ty = (SCREEN_H - 7 * scale) / 2.0f;
             r.textScaled(tx, ty, buf, (float)scale, brightness);
+
+            int scale2 = 2;
+            const char *mn = moonName(level);
+            int tw2 = (int)strlen(mn) * 6 * scale2;
+            float tx2 = (SCREEN_W - tw2) / 2.0f;
+            float ty2 = ty + 7 * scale + 4;
+            r.textScaled(tx2, ty2, mn, (float)scale2, brightness);
         }
 
         if (zoomedIn) {

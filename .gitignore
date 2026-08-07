@@ -12,6 +12,12 @@ test_pc
 main_pc
 demo_sim
 demo_render
+storm_demo
+geyser_demo
+volcano_demo
+titan_demo
+rings_demo
+twister_demo
 
 # Generated output
 frames/
@@ -31,3 +37,7 @@ frames/
 *~
 .vscode/
 .idea/
+
+# opencode runtime deps
+.opencode/node_modules/
+rings_demo
