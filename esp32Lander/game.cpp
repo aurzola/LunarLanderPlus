@@ -364,6 +364,38 @@ void Game::runDemoAI()
         return;
     }
 
+    // TEMP crash showcase (DEMO_FORCE_TANKER_CRASH): fly the module straight
+    // into the tanker hull. Instead of the careful docking approach, the
+    // autopilot aims just past the hull centre and keeps full authority, so
+    // the probe crosses the hull box and triggers the fuel explosion.
+    if (DEMO_FORCE_TANKER_CRASH && demoTankerPhase < 0 &&
+        tanker.active && !tanker.done) {
+        float dir = (tanker.bodyX > ship.posX) ? 1.0f : -1.0f;
+        float tx = tanker.bodyX + dir * TANKER_HULL_W; // plow through the hull
+        float ty = tanker.bodyY;
+
+        float errX = tx - ship.posX;
+        float desVX = clampf(errX * 0.004f, -0.16f, 0.16f);
+        float aX = clampf((desVX - ship.velX) * 0.02f, -0.002f, 0.002f);
+
+        float errY = ty - ship.posY;
+        float desVY = clampf(errY * 0.005f, -0.10f, 0.06f);
+        float aY = clampf((ship.velY - desVY) * 0.03f + ship.gravity, 0.0f, 0.0018f);
+
+        float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
+        float angle = atan2f(aX, aY) * 180.0f / PI;
+        if (thrust > 1.0f) thrust = 1.0f;
+
+        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.thrust = thrust;
+        float pw = input.powerLevel;
+        float step = DEMO_POWER_RATE * GAME_DT;
+        if (thrust > pw) pw = fminf(thrust, pw + step);
+        else pw = fmaxf(thrust, pw - step);
+        input.powerLevel = pw;
+        return;
+    }
+
     // Aerial-tanker mode: descend at a pre-position left of the drogue (so the
     // descent never crosses the hull band), then slide in horizontally at the
     // drogue altitude (below the hull) and plug the probe into the basket. The
