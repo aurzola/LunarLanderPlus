@@ -692,9 +692,20 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
         tolerancia, fuel fluye tras lock). `tanker_demo 1`: dock frame 0, refill completo frame 595. `demo_sim 60 seeds`
         con `DEMO_LEVEL_FORCE=0`: **47% win rate** (sin cambios; el tanker no forzado no afecta la mayoría de demos).
         Sketch ESP32: **525086 B (40%)**, RAM **109236 B (33%)**. **Upload a `/dev/ttyUSB0` verificado.**
-      - Archivos: `config.h` (`TANKER_DOCK_LOCK_TIME/BREAK_TIME/BREAK_TOL_*`), `tanker.h/cpp` (`dockOffsetX/Y`,
-        `fuelFlowing`, hold/break logic, escala visual condicional), `game.cpp` (nudge desde `input.angle`, feedback PiP,
-        probe flecha sólida, demo AI docked, HUD DOCKING/REFUELING), `test_pc.cpp`. `esp32LanderComposite/src/`
-        sincronizado (`DEMO_LEVEL_FORCE=2`).
+       - Archivos: `config.h` (`TANKER_DOCK_LOCK_TIME/BREAK_TIME/BREAK_TOL_*`), `tanker.h/cpp` (`dockOffsetX/Y`,
+         `fuelFlowing`, hold/break logic, escala visual condicional), `game.cpp` (nudge desde `input.angle`, feedback PiP,
+         probe flecha sólida, demo AI docked, HUD DOCKING/REFUELING), `test_pc.cpp`. `esp32LanderComposite/src/`
+         sincronizado (`DEMO_LEVEL_FORCE=2`).
+   29b. **Visual plutónico de la cisterna (22/8/2026)** — globo y góndola rediseñados:
+       - **Globo**: elipsoide relleno por filas con `lineShade` (brillo 120→160, más claro al centro) + contorno 255 en
+         los bordes + arco de resalte superior (200) + **franja oscura a media altura** (3 filas, brillo 60→80) que
+         reemplaza a la antigua línea central resaltada (que se leía como un corte).
+       - **Góndola**: cabina aerodinámica con contorno `\___|` — nariz en diagonal que toca el casco (`gNoseTopX,gy`),
+         panza plana (`___`) y popa vertical (`|`) pegada al mismo `gy` que el borde inferior del globo, sin arista de
+         techo separada. **Rellenada** como el globo (trapezoide con degradado `lineShade` 150→120 descendiendo,
+         izquierda inclinada de `gNoseTopX` a `gNoseBotX`), conservando ventana/luz 230. **Se quitaron los 2 cables de
+         soporte** que la hacían parecer colgando (ahora es una cabina pegada al casco).
+       - Validación: `test_pc` **950 ALL CHECKS PASSED**, sketch ESP32 **576038 B (43%)** / RAM 109260 B (33%).
+         `tanker.cpp` sincronizado en `esp32LanderComposite/src/`; **upload a `/dev/ttyUSB0` verificado**.
 
 (End of file - total 689 lines)

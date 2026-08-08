@@ -383,17 +383,39 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
     int hly = (int)roundf(RY * 0.7f);
     for (int px = x0 - (int)roundf(RX * 0.6f); px <= x0 + (int)roundf(RX * 0.6f); px++)
         r.pixelShade((float)px, y0 - hly, 200);
-    r.line(x0 - (int)roundf(RX * 0.8f), y0, x0 + (int)roundf(RX * 0.8f), y0);
+    // Dark band across the mid-height of the balloon, replacing the old
+    // highlighted horizontal line through the middle.
+    int bandW = (int)roundf(RX * 0.8f);
+    for (int bb = -1; bb <= 1; bb++) {
+        int b = 60 + 20 * (1 - abs(bb));
+        r.lineShade(x0 - (float)bandW, y0 + (float)bb, x0 + (float)bandW, y0 + (float)bb, b);
+    }
 
     float gx = x0 - 1.0f * s, gy = y0 + RY;
-    r.line(gx - 3.0f * s, gy, gx + 3.0f * s, gy);
-    r.line(gx - 3.0f * s, gy, gx - 3.0f * s, gy + 2.2f * s);
-    r.line(gx + 3.0f * s, gy, gx + 3.0f * s, gy + 2.2f * s);
-    r.line(gx - 3.0f * s, gy + 2.2f * s, gx + 3.0f * s, gy + 2.2f * s);
+
+    // Cabin-like gondola: aerodynamic "\___|" shape attached to the hull,
+    // filled like the balloon instead of hanging on cables.
+    float gNoseTopX = gx - 3.0f * s;   // top of the nose diagonal (touches hull)
+    float gNoseBotX = gx - 1.0f * s;   // foot of the diagonal
+    float gRearX    = gx + 3.0f * s;   // vertical stern
+    float gBotY     = gy + 2.2f * s;   // belly line
+
+    // Fill the gondola, tapering the left edge from nose down to the belly.
+    int gTopY = (int)roundf(gy), gBotYi = (int)roundf(gBotY);
+    for (int yy = gTopY; yy <= gBotYi; yy++) {
+        float tt = (gBotYi > gTopY) ? (float)(yy - gTopY) / (float)(gBotYi - gTopY) : 1.0f;
+        float lx = gNoseTopX + (gNoseBotX - gNoseTopX) * tt;
+        int b = (int)(150.0f * (1.0f - 0.2f * tt));
+        r.lineShade(lx, (float)yy, gRearX, (float)yy, b);
+    }
+
+    r.line(gNoseTopX, gy, gNoseBotX, gBotY);   // \ nose
+    r.line(gNoseBotX, gBotY, gRearX, gBotY);   // ___ belly
+    r.line(gRearX, gBotY, gRearX, gy);         // | stern, hugging the hull
+
+    // window / light detail
     r.line(gx - 1.0f * s, gy + 1.0f * s, gx + 1.2f * s, gy + 1.0f * s);
     r.pixelShade(gx, gy + 1.2f * s, 230);
-    r.line(gx - 2.0f * s, gy, gx - 2.0f * s, y0 + RY * 0.6f);
-    r.line(gx + 2.0f * s, gy, gx + 2.0f * s, y0 + RY * 0.6f);
 
     float tail = x0 + RX - 1.0f * s;
     r.line(tail, y0 - 1.0f * s, tail + 4.5f * s, y0 - 4.0f * s);
