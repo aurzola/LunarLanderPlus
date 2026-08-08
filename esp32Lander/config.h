@@ -37,8 +37,8 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 6;   // TEMP: demo fija nivel Titán (niebla nueva)
-const int START_LEVEL = 4; // TEMP: primer nivel = Ganímedes (anillos)
+const int DEMO_LEVEL_FORCE = 0;  // el demo elige nivel al azar 1..DEMO_MAX_LEVEL
+const int START_LEVEL = 1;  // el juego comienza por el nivel 1 (LUNA)
 const float DEMO_POWER_RATE = 0.4f;
 
 const int WIND_START_LEVEL = 4;
@@ -222,5 +222,52 @@ const float TWISTER_TOP_HALF = 34.0f;        // half width at the funnel top (u)
 const float TWISTER_EDGE_POKE = 0.12f;      // max overshoot beyond the cone wall while captured
 const float TWISTER_SWAY_AMP = 7.0f;        // funnel sway (u)
 const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
+
+// Fuel tanker: an aerial tanker ship hovering over flat terrain. It trails two
+// refueling hoses (probe-and-drogue): the ship must fly the module's refuel
+// probe into the drogue basket at the end of a hose and STAY connected, because
+// fuel flows incrementally (longer connection = more fuel). Touching the
+// mothership hull destroys both ships. It only appears when fuel is running low
+// (< half), so the rendezvous is reserved for when it actually matters.
+const int TANKER_START_LEVEL = 2;
+const int TANKER_FORCE_LEVEL1 = 1; // TEMP CRT test: force tanker in level 1
+const int TANKER_CHANCE_PERCENT = 70;
+const float TANKER_HOVER_ALT = 340.0f;   // hover so the dock altitude clears the minimap (ZOOM_IN_ALT=200)
+const float TANKER_TITAN_Y = 85.0f;      // Titan: fixed world-y, clear of the fog
+const float TANKER_FUEL_FRACTION = 0.5f; // spawn only when fuel < FUEL_MAX * this
+const float TANKER_HULL_W = 22.0f;
+const float TANKER_HULL_H = 6.0f;
+const float TANKER_PLATFORM_W = 24.0f;
+const float TANKER_DRIFT_SPEED = 9.0f;
+const float TANKER_DRIFT_RANGE = 40.0f;
+const float TANKER_BOB_AMP = 3.0f;
+const float TANKER_BOB_SPEED = 0.9f;
+const float TANKER_DOCK_TOL_X = 8.0f;
+const float TANKER_DOCK_TOL_Y = 5.0f;
+const float TANKER_DOCK_ZONE_X = 90.0f;
+const float TANKER_DOCK_ZONE_Y = 45.0f;
+const float TANKER_HOSE_LEN = 20.0f;         // drogue hangs this far from the hull
+const float TANKER_APPROACH_X = 55.0f;       // demo pre-position: left of the drogue
+const float TANKER_DROGUE_RIM = 3.0f;        // basket mouth half-width (world u)
+const float TANKER_DROGUE_DEPTH = 3.5f;      // cone depth from target to mouth (world u)
+const float TANKER_DROGUE_BACK_R = 1.6f;     // filled target radius at the basket back
+// Picture-in-picture docking window: magnified contact point (basket + probe).
+const int PIP_SIZE = 76;                     // window size in px
+const float PIP_SCALE = SCREEN_H / 700.0f * 16.0f; // px per world unit inside the PiP
+const float TANKER_DROGUE_SWAY = 3.0f;       // drogue sway amplitude (world u)
+const float TANKER_DROGUE_SWAY_SPEED = 1.6f; // rad/s, independent of the bob phase
+const float TANKER_REFUEL_RATE = 200.0f;     // fuel units per second while connected
+const float TANKER_HULL_MARGIN = 3.0f;       // ship touching the hull destroys both
+const float TANKER_LEAVE_SPEED = 1.4f;
+const float TANKER_LEAVE_DIST = 90.0f;
+const float TANKER_NOZZLE_LEN = 8.0f;    // module refuel probe offset from ship center
+
+// Docking mini-game: hold the probe in the drogue for 1 second before fuel
+// starts to flow, then keep it aligned while the tanker drifts/bobs/sways.
+// Going outside the larger break tolerance for this long breaks the link.
+const float TANKER_DOCK_LOCK_TIME = 1.0f;
+const float TANKER_DOCK_BREAK_TIME = 0.4f;
+const float TANKER_DOCK_BREAK_TOL_X = 12.0f;
+const float TANKER_DOCK_BREAK_TOL_Y = 8.0f;
 
 #endif
