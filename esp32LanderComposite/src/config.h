@@ -37,7 +37,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 0;  // el demo elige nivel al azar 1..DEMO_MAX_LEVEL
+const int DEMO_LEVEL_FORCE = 2;  // TEMP: demo plays level 2 (Io) for tanker showcase
 const int START_LEVEL = 1;  // el juego comienza por el nivel 1 (LUNA)
 const float DEMO_POWER_RATE = 0.4f;
 
@@ -231,6 +231,7 @@ const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
 // (< half), so the rendezvous is reserved for when it actually matters.
 const int TANKER_START_LEVEL = 2;
 const int TANKER_FORCE_LEVEL1 = 1; // TEMP CRT test: force tanker in level 1
+const int DEMO_FORCE_TANKER_CRASH = 1; // TEMP: demo AI flies into the tanker hull
 const int TANKER_CHANCE_PERCENT = 70;
 const float TANKER_HOVER_ALT = 340.0f;   // hover so the dock altitude clears the minimap (ZOOM_IN_ALT=200)
 const float TANKER_TITAN_Y = 85.0f;      // Titan: fixed world-y, clear of the fog

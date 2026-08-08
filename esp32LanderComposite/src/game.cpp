@@ -241,10 +241,18 @@ void Game::startDemo()
     // autopilot flies up to it and plugs the probe in (aerial refueling). The
     // runDemoAI tanker mode tracks the swaying drogue live.
     if (DEMO_LEVEL_FORCE > 0 && tanker.active) {
-        demoTargetX = tanker.drogueX();
-        demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
-        demoSkill = 0.85f;
-        demoTankerPhase = 0;
+        if (DEMO_FORCE_TANKER_CRASH) {
+            // TEMP: fly straight into the hull for explosion showcase.
+            demoTargetX = tanker.bodyX;
+            demoTargetY = tanker.bodyY;
+            demoSkill = 1.0f;
+            demoTankerPhase = -1; // skip the docking approach mode
+        } else {
+            demoTargetX = tanker.drogueX();
+            demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
+            demoSkill = 0.85f;
+            demoTankerPhase = 0;
+        }
     } else
     // TEST aim: prefer a lava-covered strip of a landing pad (Io), so the
     // burnt-ship ending shows up while tuning it. Pick the lava zone closest
@@ -362,7 +370,7 @@ void Game::runDemoAI()
     // target tracks the swaying drogue live (probe-and-drogue). Once docked,
     // the autopilot keeps making tiny corrections so the 1-second lock holds
     // and fuel keeps flowing.
-    if (DEMO_LEVEL_FORCE > 0 && (tanker.targeted() || tanker.docked)) {
+    if (DEMO_LEVEL_FORCE > 0 && demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
         float tx = tanker.drogueX();
         float ty = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
 
@@ -1263,8 +1271,8 @@ void Game::draw(Renderer &r)
             float sc = ship.scale * viewScale;
             float cx = sx, cy = sy + 2.0f * sc;
 
-            // Initial flash: brilliant white at ignition, fading fast.
-            float flash = 1.0f - t * t * 4.0f;
+            // Initial flash: brilliant white at ignition, lingering briefly.
+            float flash = 1.0f - t * t * 2.5f;
             if (flash < 0.0f) flash = 0.0f;
             int flashB = (int)(255 * flash);
             float flashR = (flash + 0.2f) * 10.0f * sc;
@@ -1302,13 +1310,13 @@ void Game::draw(Renderer &r)
             }
 
             // Fire ejecta: 28 particles scatter in all directions with an upward
-            // bias (fuel rises), fastest at ignition, decelerating outward.
+            // bias (fuel rises), fast at ignition, decelerating outward.
             for (int p = 0; p < 28; p++) {
                 int seed = p * 29 + ship.counter;
                 float ang = (float)(seed * 53 % 628) * 0.01f;
                 float upward = 1.0f;
                 if (cosf(ang) < 0.0f) upward = 1.0f + fabsf(cosf(ang)) * 1.2f;
-                float spd = 3.0f + (float)(seed * 13 % 100) / 100.0f * 5.0f;
+                float spd = 1.5f + (float)(seed * 13 % 100) / 100.0f * 4.0f;
                 float life = fmodf((float)ship.counter * 0.012f + (float)(p % 50) / 50.0f, 1.0f);
                 float dist = life * spd * (22.0f + t * 10.0f) * sc * upward;
                 float px = cx + sinf(ang) * dist;

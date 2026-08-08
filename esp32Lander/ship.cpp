@@ -287,8 +287,8 @@ void Ship::land()
 
 void Ship::updateExplosion()
 {
-    // Fuel explosion: pieces scatter much faster and with extra chaos.
-    float mul = fuelExplosion ? 5.0f : 1.0f;
+    // Fuel explosion: pieces scatter violently but not instant (2.5x normal).
+    float mul = fuelExplosion ? 2.5f : 1.0f;
     for (int i = 0; i < 6; i++) {
         shapePosX[i] += shapes[i].velX * 0.1f * mul;
         shapePosY[i] += shapes[i].velY * 0.1f * mul;

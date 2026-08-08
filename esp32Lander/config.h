@@ -231,6 +231,7 @@ const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
 // (< half), so the rendezvous is reserved for when it actually matters.
 const int TANKER_START_LEVEL = 2;
 const int TANKER_FORCE_LEVEL1 = 1; // TEMP CRT test: force tanker in level 1
+const int DEMO_FORCE_TANKER_CRASH = 1; // TEMP: demo AI flies into the tanker hull
 const int TANKER_CHANCE_PERCENT = 70;
 const float TANKER_HOVER_ALT = 340.0f;   // hover so the dock altitude clears the minimap (ZOOM_IN_ALT=200)
 const float TANKER_TITAN_Y = 85.0f;      // Titan: fixed world-y, clear of the fog
