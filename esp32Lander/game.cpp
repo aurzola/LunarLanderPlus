@@ -737,7 +737,7 @@ void Game::checkCollisions()
     if (tanker.hitsHull(ship.posX, ship.posY)) {
         tankerCrash = true;
         tanker.destroy();
-        ship.crash();
+        ship.crash(true);
         int lost = 200 + (rand() % 200);
         fuel -= lost;
         ship.fuel -= lost;
@@ -1171,7 +1171,7 @@ void Game::draw(Renderer &r)
         twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
         tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
-        if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
+        if (!lavaBurn && !tankerCrash && !fogged) ship.draw(r, viewX, viewY, viewScale);
 
         // Refuel probe on top of the module: a thin boom with a diamond tip
         // that sticks out of the hull toward the tanker, shown during the
@@ -1251,6 +1251,75 @@ void Game::draw(Renderer &r)
 
             // The hull itself melts away from the bottom up.
             ship.draw(r, viewX, viewY, viewScale, melt);
+        } else if (tankerCrash) {
+            // Fuel tanker explosion: a violent fireball blooms as the ship's
+            // fragments are blasted apart by the ruptured fuel tanks.
+            float t = 1.0f - resetTimer / CRASH_RESET_DELAY;
+            if (t < 0.0f) t = 0.0f;
+            if (t > 1.0f) t = 1.0f;
+
+            float sx = ship.posX * viewScale + viewX;
+            float sy = ship.posY * viewScale + viewY;
+            float sc = ship.scale * viewScale;
+            float cx = sx, cy = sy + 2.0f * sc;
+
+            // Initial flash: brilliant white at ignition, fading fast.
+            float flash = 1.0f - t * t * 4.0f;
+            if (flash < 0.0f) flash = 0.0f;
+            int flashB = (int)(255 * flash);
+            float flashR = (flash + 0.2f) * 10.0f * sc;
+            for (int yy = -(int)flashR; yy <= (int)flashR; yy++) {
+                int hw = (int)sqrtf(flashR * flashR - (float)(yy * yy));
+                for (int xx = -hw; xx <= hw; xx++) {
+                    r.pixelShade(cx + (float)xx, cy + (float)yy, flashB);
+                }
+            }
+
+            // Fireball: rapid ease-out expansion, cooling from white to orange.
+            float e = 1.0f - (1.0f - t) * (1.0f - t);
+            float fb = e * (30.0f * sc) + 5.0f * sc;
+            int coreB = (int)(240 * (0.6f + 0.4f * (1.0f - t)));
+            for (int yy = -(int)fb; yy <= (int)fb; yy++) {
+                int hw = (int)sqrtf(fb * fb - (float)(yy * yy));
+                for (int xx = -hw; xx <= hw; xx++) {
+                    float d = sqrtf((float)(xx * xx + yy * yy)) / fb;
+                    int b = (int)(coreB * (1.0f - d * 0.6f));
+                    if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
+                }
+            }
+
+            // Shockwave ring: a bright expanding rim that fades with distance.
+            float br = e * (42.0f * sc) + fb;
+            int ringB = (int)(180 * (1.0f - t) * (0.6f + 0.4f * sinf((float)ship.counter * 0.13f)));
+            if (ringB > 0) {
+                int ir = (int)br;
+                for (int yy = -ir; yy <= ir; yy++) {
+                    int hw = (int)sqrtf(br * br - (float)(yy * yy));
+                    if (hw <= 0) continue;
+                    r.pixelShade(cx + (float)(-hw), cy + (float)yy, ringB);
+                    r.pixelShade(cx + (float)(hw), cy + (float)yy, ringB);
+                }
+            }
+
+            // Fire ejecta: 28 particles scatter in all directions with an upward
+            // bias (fuel rises), fastest at ignition, decelerating outward.
+            for (int p = 0; p < 28; p++) {
+                int seed = p * 29 + ship.counter;
+                float ang = (float)(seed * 53 % 628) * 0.01f;
+                float upward = 1.0f;
+                if (cosf(ang) < 0.0f) upward = 1.0f + fabsf(cosf(ang)) * 1.2f;
+                float spd = 3.0f + (float)(seed * 13 % 100) / 100.0f * 5.0f;
+                float life = fmodf((float)ship.counter * 0.012f + (float)(p % 50) / 50.0f, 1.0f);
+                float dist = life * spd * (22.0f + t * 10.0f) * sc * upward;
+                float px = cx + sinf(ang) * dist;
+                float py = cy + cosf(ang) * dist;
+                int b = (int)(230 * (1.0f - life) * (0.7f + 0.3f * (1.0f - t)));
+                if (b > 0) r.pixelShade(px, py, b);
+            }
+
+            // Ship's exploding fragments fly outward on top of the fire glow,
+            // silhouetted against the inferno (5x scatter speed).
+            ship.draw(r, viewX, viewY, viewScale);
         }
 
         {

@@ -8,7 +8,7 @@ Ship::Ship()
     : posX(0), posY(0), velX(0), velY(0),
       rotation(-90), targetRotation(-90),
       thrustBuild(0), fuel(FUEL_MAX), scale(1.0f),
-      altitude(0), active(true), exploding(false), counter(0),
+      altitude(0),     active(true), exploding(false), fuelExplosion(false), counter(0),
       windStrength(0), windDir(1), gravity(GRAVITY)
 {
     defineShapes();
@@ -88,6 +88,7 @@ void Ship::reset(float x, float y)
     scale = 1.0f;
     active = true;
     exploding = false;
+    fuelExplosion = false;
     counter = 0;
     windStrength = 0;
     windDir = 1;
@@ -268,12 +269,13 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
     }
 }
 
-void Ship::crash()
+void Ship::crash(bool fuel)
 {
     rotation = 0;
     targetRotation = 0;
     active = false;
     exploding = true;
+    fuelExplosion = fuel;
     thrustBuild = 0;
 }
 
@@ -285,8 +287,10 @@ void Ship::land()
 
 void Ship::updateExplosion()
 {
+    // Fuel explosion: pieces scatter much faster and with extra chaos.
+    float mul = fuelExplosion ? 5.0f : 1.0f;
     for (int i = 0; i < 6; i++) {
-        shapePosX[i] += shapes[i].velX * 0.1f;
-        shapePosY[i] += shapes[i].velY * 0.1f;
+        shapePosX[i] += shapes[i].velX * 0.1f * mul;
+        shapePosY[i] += shapes[i].velY * 0.1f * mul;
     }
 }
