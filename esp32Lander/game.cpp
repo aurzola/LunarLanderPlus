@@ -25,6 +25,52 @@ static float clampf(float v, float lo, float hi)
     return v;
 }
 
+// Refuel probe of the module: a thin boom (two rails) ending in a solid
+// triangular arrowhead that must penetrate the tanker drogue basket. bx,by is
+// the module center in screen space; ux,uy the probe direction (unit vector);
+// scPx the pixel scale of the drawing (viewScale in the main view, PIP_SCALE
+// inside the PiP window).
+static void drawProbe(Renderer &r, float bx, float by, float ux, float uy,
+                      float shipScale, float scPx)
+{
+    float px_ = -uy, py_ = ux;
+    float inner = 4.0f * shipScale * scPx;
+    float L = TANKER_NOZZLE_LEN * shipScale * scPx;
+    float rail = 0.4f * shipScale * scPx;
+
+    // thin refuel rod: a bright hairline with a dim offset for depth
+    r.line(bx + inner * ux - rail * px_, by + inner * uy - rail * py_,
+           bx + L * ux - rail * px_, by + L * uy - rail * py_);
+    r.lineShade(bx + inner * ux + rail * px_, by + inner * uy + rail * py_,
+                bx + L * ux + rail * px_, by + L * uy + rail * py_, 180);
+
+    // small collar where the rod leaves the hull
+    float colW = 0.9f * shipScale * scPx;
+    r.line(bx + inner * ux - colW * px_, by + inner * uy - colW * py_,
+           bx + inner * ux + colW * px_, by + inner * uy + colW * py_);
+
+    // Solid triangular arrowhead at the physical contact point (distance L).
+    // The bright base at L is the align point; the triangle points toward the
+    // basket so the direction to guide is unmistakable. No bright tip circle.
+    float tx = bx + L * ux, ty = by + L * uy;
+    float tL = 1.6f * shipScale * scPx;
+    float tW = 1.1f * shipScale * scPx;
+    float apx = tx + tL * ux, apy = ty + tL * uy;
+    r.line(tx, ty, apx, apy);
+    r.line(apx, apy, tx - tW * px_, ty - tW * py_);
+    r.line(apx, apy, tx + tW * px_, ty + tW * py_);
+    // filled arrowhead
+    int steps = (int)(tL + 0.5f);
+    for (int i = 0; i <= steps; i++) {
+        float t = (float)i / steps;
+        float mx = tx + tL * t * ux;
+        float my = ty + tL * t * uy;
+        float w = tW * (1.0f - t);
+        r.line(mx - w * px_, my - w * py_, mx + w * px_, my + w * py_);
+    }
+    r.pixelShade(tx, ty, 255);
+}
+
 // Fill `n` chars with random display garbage (digits + letters, occasionally a
 // dash) to simulate a scrambled instrument readout after a lightning hit.
 static void glitchChars(char *out, int n)
@@ -41,8 +87,8 @@ Game::Game()
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0), stormHitTimer(0), lavaBurn(false), ringHit(false),
-      twisterCrash(false)
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), demoHoldAltitude(false),
+      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), demoTankerPhase(0)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -56,6 +102,7 @@ Game::Game()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
+    tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -87,9 +134,11 @@ void Game::newGame()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
+    tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
+    tankerCrash = false;
 }
 
 void Game::restartLevel()
@@ -102,6 +151,7 @@ void Game::restartLevel()
     introTimer = LEVEL_INTRO_TIME;
     lavaBurn = false;
     ringHit = false;
+    tankerCrash = false;
     twisterCrash = false;
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
@@ -129,9 +179,11 @@ void Game::nextLevel()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
+    tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
+    tankerCrash = false;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -150,6 +202,7 @@ void Game::endGame()
 void Game::startDemo()
 {
     demo = true;
+    demoHoldAltitude = false;
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
     level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
@@ -171,9 +224,11 @@ void Game::startDemo()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
+    tanker.reset(level, terrain, ship.fuel, true);
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
+    tankerCrash = false;
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -182,11 +237,29 @@ void Game::startDemo()
 
     const std::vector<TerrainLine> &tl = terrain.getLines();
 
+    // Aim the demo at the tanker's underside drogue when one is present, so the
+    // autopilot flies up to it and plugs the probe in (aerial refueling). The
+    // runDemoAI tanker mode tracks the swaying drogue live.
+    if (DEMO_LEVEL_FORCE > 0 && tanker.active) {
+        if (DEMO_FORCE_TANKER_CRASH) {
+            // TEMP: fly straight into the hull for explosion showcase.
+            demoTargetX = tanker.bodyX;
+            demoTargetY = tanker.bodyY;
+            demoSkill = 1.0f;
+            demoTankerPhase = -1; // skip the docking approach mode
+        } else {
+            demoTargetX = tanker.drogueX();
+            demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
+            demoSkill = 0.85f;
+            demoTankerPhase = 0;
+        }
+    } else
     // TEST aim: prefer a lava-covered strip of a landing pad (Io), so the
     // burnt-ship ending shows up while tuning it. Pick the lava zone closest
     // to the spawn so the flight is short and cannot land short on an
     // intervening pad. Regenerate the forced level until lava is available;
     // otherwise fall back to any landing pad.
+    {
     int lavaPick = -1;
     for (int attempt = 0; attempt < 20 && lavaPick < 0; attempt++) {
         float bestDist = 1e9f;
@@ -236,6 +309,7 @@ void Game::startDemo()
             demoTargetX += off;
         }
     }
+    }
 }
 
 void Game::endDemoToTitle()
@@ -256,6 +330,132 @@ void Game::setupTitleShip()
 
 void Game::runDemoAI()
 {
+    // Cruise phase after aerial refueling: hold altitude while flying to the
+    // nearest pad, then hand over to the normal descent controller.
+    if (demoHoldAltitude) {
+        float errX = demoTargetX - ship.posX;
+        float desVX = clampf(errX * 0.004f, -0.12f, 0.12f);
+        if (fabsf(errX) < 60.0f) desVX = clampf(errX * 0.002f, -0.04f, 0.04f);
+        float windPush = ship.windStrength * WIND_ACCEL;
+        float aX = clampf((desVX - ship.velX) * 0.02f - (float)ship.windDir * windPush,
+                          -0.0015f, 0.0015f);
+
+        float errY = ship.posY - demoTargetY;
+        float desVY = clampf(-errY * 0.005f, -0.05f, 0.05f);
+        float aY = clampf((ship.velY - desVY) * 0.03f + ship.gravity, 0.0f, 0.0018f);
+
+        float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
+        float angle = atan2f(aX, aY) * 180.0f / PI;
+        if (thrust > 1.0f) thrust = 1.0f;
+
+        float imp = 1.0f - demoSkill;
+        float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
+        angle += n * imp * 14.0f;
+        thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
+
+        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.thrust = thrust;
+        float pw = input.powerLevel;
+        float step = DEMO_POWER_RATE * GAME_DT;
+        if (thrust > pw) pw = fminf(thrust, pw + step);
+        else pw = fmaxf(thrust, pw - step);
+        input.powerLevel = pw;
+        if (fabsf(errX) < 60.0f) demoHoldAltitude = false;
+        return;
+    }
+
+    // TEMP crash showcase (DEMO_FORCE_TANKER_CRASH): fly the module straight
+    // into the tanker hull. Instead of the careful docking approach, the
+    // autopilot aims just past the hull centre and keeps full authority, so
+    // the probe crosses the hull box and triggers the fuel explosion.
+    if (DEMO_FORCE_TANKER_CRASH && demoTankerPhase < 0 &&
+        tanker.active && !tanker.done) {
+        float dir = (tanker.bodyX > ship.posX) ? 1.0f : -1.0f;
+        float tx = tanker.bodyX + dir * TANKER_HULL_W; // plow through the hull
+        float ty = tanker.bodyY;
+
+        float errX = tx - ship.posX;
+        float desVX = clampf(errX * 0.004f, -0.16f, 0.16f);
+        float aX = clampf((desVX - ship.velX) * 0.02f, -0.002f, 0.002f);
+
+        float errY = ty - ship.posY;
+        float desVY = clampf(errY * 0.005f, -0.10f, 0.06f);
+        float aY = clampf((ship.velY - desVY) * 0.03f + ship.gravity, 0.0f, 0.0018f);
+
+        float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
+        float angle = atan2f(aX, aY) * 180.0f / PI;
+        if (thrust > 1.0f) thrust = 1.0f;
+
+        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.thrust = thrust;
+        float pw = input.powerLevel;
+        float step = DEMO_POWER_RATE * GAME_DT;
+        if (thrust > pw) pw = fminf(thrust, pw + step);
+        else pw = fmaxf(thrust, pw - step);
+        input.powerLevel = pw;
+        return;
+    }
+
+    // Aerial-tanker mode: descend at a pre-position left of the drogue (so the
+    // descent never crosses the hull band), then slide in horizontally at the
+    // drogue altitude (below the hull) and plug the probe into the basket. The
+    // target tracks the swaying drogue live (probe-and-drogue). Once docked,
+    // the autopilot keeps making tiny corrections so the 1-second lock holds
+    // and fuel keeps flowing.
+    if (DEMO_LEVEL_FORCE > 0 && demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
+        float tx = tanker.drogueX();
+        float ty = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
+
+        // When already docked, the autopilot actively cancels the horizontal
+        // joystick offset to keep the probe centered in the drogue.
+        if (tanker.docked) {
+            float ox = tanker.dockOffsetX;
+            float ang = (ox > 0.0f) ? -PI * 0.4f : (ox < 0.0f ? PI * 0.4f : 0.0f);
+            input.angle = ang;
+            input.thrust = 0.3f;
+            float pw = input.powerLevel;
+            float step = DEMO_POWER_RATE * GAME_DT;
+            if (input.thrust > pw) pw = fminf(input.thrust, pw + step);
+            else pw = fmaxf(input.thrust, pw - step);
+            input.powerLevel = pw;
+            return;
+        }
+
+        if (demoTankerPhase == 0) {
+            tx = tx - TANKER_APPROACH_X;
+            if (fabsf(ship.posX - tx) < 8.0f && fabsf(ship.posY - ty) < 12.0f)
+                demoTankerPhase = 1;
+        }
+        float errX = tx - ship.posX;
+        float desVX = clampf(errX * 0.004f, -0.14f, 0.14f);
+        if (fabsf(errX) < 50.0f) desVX = clampf(errX * 0.002f, -0.03f, 0.03f);
+        float windPush = ship.windStrength * WIND_ACCEL;
+        float aX = clampf((desVX - ship.velX) * 0.02f - (float)ship.windDir * windPush,
+                          -0.0016f, 0.0016f);
+
+        float errY = ship.posY - ty;
+        float desVY = clampf(-errY * 0.005f, -0.06f, 0.05f);
+        float aY = clampf((ship.velY - desVY) * 0.03f + ship.gravity, 0.0f, 0.0018f);
+
+        float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
+        float angle = atan2f(aX, aY) * 180.0f / PI;
+        if (thrust > 1.0f) thrust = 1.0f;
+
+        float imp = 1.0f - demoSkill;
+        float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
+        angle += n * imp * 14.0f;
+        thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
+
+        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.thrust = thrust;
+        float pw = input.powerLevel;
+        float step = DEMO_POWER_RATE * GAME_DT;
+        if (thrust > pw) pw = fminf(thrust, pw + step);
+        else pw = fmaxf(thrust, pw - step);
+        input.powerLevel = pw;
+        return;
+    }
+
     float errX = demoTargetX - ship.posX;
     float distX = fabsf(errX);
     float alt = ship.altitude;
@@ -524,6 +724,23 @@ void Game::updateView()
     float marginbottom = SCREEN_H * 0.3f;
     float marginx = SCREEN_W * 0.2f;
 
+    bool tankerZone = tanker.active && !tanker.done &&
+                      fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
+                      fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+
+    // Aerial docking: the viewport goes to the macro zoom-in centered on the
+    // midpoint between the module and the tanker so both ships and the
+    // deployed hose stay on screen while the player lines up the probe; the
+    // fine probe/drogue contact point is magnified in the PiP window.
+    if (tankerZone) {
+        if (!zoomedIn) setZoom(true);
+        float midX = (ship.posX + tanker.bodyX) * 0.5f;
+        float midY = (ship.posY + tanker.bodyY) * 0.5f;
+        viewX = SCREEN_W * 0.5f - midX * viewScale;
+        viewY = SCREEN_H * 0.5f - midY * viewScale;
+        return;
+    }
+
     if (!zoomedIn && ship.altitude < ZOOM_IN_ALT) {
         setZoom(true);
     } else if (zoomedIn && ship.altitude > ZOOM_OUT_ALT) {
@@ -554,6 +771,31 @@ void Game::checkCollisions()
         state = STATE_CRASHED;
         resetTimer = CRASH_RESET_DELAY;
         return;
+    }
+
+    // Aerial tanker: touching the mothership hull destroys BOTH ships.
+    if (tanker.hitsHull(ship.posX, ship.posY)) {
+        tankerCrash = true;
+        tanker.destroy();
+        ship.crash(true);
+        int lost = 200 + (rand() % 200);
+        fuel -= lost;
+        ship.fuel -= lost;
+        if (ship.fuel < 0) ship.fuel = 0;
+        if (fuel < 0) fuel = 0;
+        score += 5;
+        state = STATE_CRASHED;
+        resetTimer = TANKER_CRASH_DURATION;
+        return;
+    }
+
+    // Probe-and-drogue: docking in flight plugs the probe into a drogue basket
+    // and fuel flows incrementally while the connection holds.
+    if (tanker.targeted()) {
+        if (tanker.checkDock(ship)) {
+            tanker.beginDock(ship.velX, ship.velY);
+            return;
+        }
     }
 
     int result = terrain.checkLanding(
@@ -626,6 +868,7 @@ void Game::update()
 {
     float dt = GAME_DT;
     updateWind(dt);
+    if (fuelMaxTimer > 0.0f) fuelMaxTimer -= dt;
     ship.windStrength = windEnabled ? windStrength : 0.0f;
     ship.windDir = windDir;
     ship.gravity = GRAVITY * moonGravity(level);
@@ -675,6 +918,48 @@ void Game::update()
             return;
         }
 
+        if (tanker.docked) {
+            if (demo) runDemoAI();
+
+            // Docking mini-game: the joystick X axis micro-adjusts the probe
+            // horizontally inside the drogue. Neutral stick (angle 0) lets the
+            // centering spring keep the probe aligned.
+            ship.velX = sinf(input.angle) * 0.8f;
+            ship.velY = 0.0f;
+            // Firing the engine (Z button held) breaks the connection: you get
+            // only the fuel accumulated so far. The tanker stays on station.
+            if (!demo && input.thrust > 0.0f) {
+                tanker.breakAway(ship);
+            } else if (tanker.update(dt, ship)) {
+                fuelMaxTimer = 1.5f;
+                fuel = ship.fuel;
+                if (demo && DEMO_LEVEL_FORCE > 0) {
+                    const std::vector<TerrainLine> &tl2 = terrain.getLines();
+                    float bestD = 1e9f;
+                    int bestI = -1;
+                    for (int i = 0; i < (int)tl2.size(); i++) {
+                        if (tl2[i].labelX >= 0) {
+                            float d = fabsf(tl2[i].labelX - ship.posX);
+                            if (d < bestD) { bestD = d; bestI = i; }
+                        }
+                    }
+                    if (bestI >= 0) {
+                        demoTargetX = tl2[bestI].labelX;
+                        demoTargetY = ship.posY;
+                        demoHoldAltitude = true;
+                    }
+                }
+            } else {
+                fuel = ship.fuel;
+            }
+            ship.left = ship.posX - 10.0f * ship.scale;
+            ship.right = ship.posX + 10.0f * ship.scale;
+            ship.bottom = ship.posY + 14.0f * ship.scale;
+            ship.top = ship.posY - 5.0f * ship.scale;
+            updateView();
+            return;
+        }
+
         if (demo) runDemoAI();
 
         float deg = input.angle * 180.0f / PI;
@@ -707,6 +992,8 @@ void Game::update()
             ship.velX *= ATMOS_DRAG;
             ship.velY += ATMOS_DOWN;
         }
+
+        if (tanker.active && !tanker.docked && !tanker.done) tanker.update(dt, ship);
 
         if (ship.posX > terrain.getWidth() + 10)
             ship.posX = -10;
@@ -922,9 +1209,27 @@ void Game::draw(Renderer &r)
         drawWind(r);
         rings.draw(r, terrain, viewX, viewY, viewScale);
         twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
+        tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
-        if (!lavaBurn && !fogged) ship.draw(r, viewX, viewY, viewScale);
+        if (!lavaBurn && !tankerCrash && !fogged) ship.draw(r, viewX, viewY, viewScale);
+
+        // Refuel probe on top of the module: a thin boom with a diamond tip
+        // that sticks out of the hull toward the tanker, shown during the
+        // docking maneuver so the player can line it up with a drogue basket.
+        // The magnified view of the contact point lives in the PiP window.
+        bool tankerDockShow = tanker.active && !tanker.done &&
+            fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
+            fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+        if (tankerDockShow && !lavaBurn && !fogged) {
+            float rad = ship.rotation * PI / 180.0f;
+            float ux = sinf(rad), uy = -cosf(rad);
+            float bx = ship.posX * viewScale + viewX;
+            float by = ship.posY * viewScale + viewY;
+            drawProbe(r, bx, by, ux, uy, ship.scale, viewScale);
+        }
         storm.drawBolts(r, viewX, viewY, viewScale);
+
+        drawDockingPiP(r);
 
         if (lavaBurn) {
             // The ship touched down on lava: it glows white-hot and melts away
@@ -986,6 +1291,154 @@ void Game::draw(Renderer &r)
 
             // The hull itself melts away from the bottom up.
             ship.draw(r, viewX, viewY, viewScale, melt);
+        } else if (tankerCrash) {
+            // Fuel tanker explosion: a violent fireball blooms as the ship's
+            // fragments are blasted apart by the ruptured fuel tanks.
+            float t = 1.0f - resetTimer / CRASH_RESET_DELAY;
+            if (t < 0.0f) t = 0.0f;
+            if (t > 1.0f) t = 1.0f;
+            float sx = ship.posX * viewScale + viewX;
+            float sy = ship.posY * viewScale + viewY;
+            float sc = ship.scale * viewScale;
+            float cx = sx, cy = sy + 2.0f * sc;
+
+            // Elliptical footprint: wider than tall. Swap/tweak these if you
+            // want a vertical (mushroom-cloud) shape instead.
+            const float EXP_RX = 1.15f;
+            const float EXP_RY = 0.68f;
+
+            // --- Initial flash: brilliant white at ignition, with a subtle
+            // flicker so it doesn't read as a flat disc.
+            float flash = 1.0f - t * t * 2.5f;
+            if (flash < 0.0f) flash = 0.0f;
+            float flicker = 0.85f + 0.15f * sinf((float)ship.counter * 1.7f);
+            int flashB = (int)(255 * flash * flicker);
+            float flashR = (flash + 0.2f) * 10.0f * sc;
+            float flashRX = flashR * EXP_RX;
+            float flashRY = flashR * EXP_RY;
+            for (int yy = -(int)flashRY; yy <= (int)flashRY; yy++) {
+                float ny = (float)yy / (flashRY + 0.001f);
+                if (ny * ny > 1.0f) continue;
+                int hw = (int)(flashRX * sqrtf(1.0f - ny * ny));
+                for (int xx = -hw; xx <= hw; xx++) {
+                    float nx = (float)xx / (flashRX + 0.001f);
+                    float d = sqrtf(nx * nx + ny * ny);
+                    int b = (int)(flashB * (1.0f - d * 0.3f));
+                    if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
+                }
+            }
+
+            // --- Fireball: rapid ease-out expansion, cooling from white to orange,
+            // with a mottled edge (cheap turbulence via sine noise) so the rim
+            // isn't perfectly circular — and now elliptical instead of round.
+            float e = 1.0f - (1.0f - t) * (1.0f - t);
+            float fb = e * (30.0f * sc) + 5.0f * sc;
+            float fbRX = fb * EXP_RX;
+            float fbRY = fb * EXP_RY;
+            int coreB = (int)(240 * (0.6f + 0.4f * (1.0f - t)));
+            for (int yy = -(int)fbRY; yy <= (int)fbRY; yy++) {
+                for (int xx = -(int)fbRX; xx <= (int)fbRX; xx++) {
+                    float nx = (float)xx / (fbRX + 0.001f);
+                    float ny = (float)yy / (fbRY + 0.001f);
+                    float ang = atan2f(ny, nx);
+                    float noise = 1.0f + 0.12f * sinf(ang * 5.0f + (float)ship.counter * 0.2f)
+                                        + 0.08f * sinf(ang * 11.0f - (float)ship.counter * 0.35f);
+                    float rad2 = nx * nx + ny * ny;
+                    float radLimit = noise * noise;
+                    if (rad2 > radLimit) continue;
+                    float d = sqrtf(rad2) / noise;
+                    int b = (int)(coreB * (1.0f - d * d * 0.65f)); // d^2 falloff = hotter core
+                    if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
+                }
+            }
+
+            // --- Heat halo: a faint, wider elliptical glow around the fireball
+            // for extra bloom.
+            float haloRX = fbRX * 1.6f;
+            float haloRY = fbRY * 1.6f;
+            int haloB = (int)(60 * (1.0f - t));
+            if (haloB > 0) {
+                for (int yy = -(int)haloRY; yy <= (int)haloRY; yy++) {
+                    float ny = (float)yy / (haloRY + 0.001f);
+                    if (ny * ny > 1.0f) continue;
+                    int hw = (int)(haloRX * sqrtf(1.0f - ny * ny));
+                    for (int xx = -hw; xx <= hw; xx += 2) { // sparse for a soft look
+                        float nx = (float)xx / (haloRX + 0.001f);
+                        float d = sqrtf(nx * nx + ny * ny);
+                        int b = (int)(haloB * (1.0f - d));
+                        if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
+                    }
+                }
+            }
+
+            // --- Shockwave ring: thicker, textured expanding elliptical rim
+            // that fades with time.
+            float br = e * (42.0f * sc) + fb;
+            float brRX = br * EXP_RX;
+            float brRY = br * EXP_RY;
+            int ringBase = (int)(180 * (1.0f - t));
+            if (ringBase > 0) {
+                int ir = (int)brRY;
+                for (int yy = -ir; yy <= ir; yy++) {
+                    float ny = (float)yy / (brRY + 0.001f);
+                    if (ny * ny > 1.0f) continue;
+                    int hw = (int)(brRX * sqrtf(1.0f - ny * ny));
+                    if (hw <= 0) continue;
+                    float ringNoise = 0.6f + 0.4f * sinf((float)ship.counter * 0.13f + (float)yy * 0.3f);
+                    int ringB = (int)(ringBase * ringNoise);
+                    if (ringB <= 0) continue;
+                    // give the ring some thickness (2px) instead of a single point
+                    for (int t2 = 0; t2 <= 1; t2++) {
+                        r.pixelShade(cx + (float)(-hw - t2), cy + (float)yy, ringB);
+                        r.pixelShade(cx + (float)(hw + t2), cy + (float)yy, ringB);
+                    }
+                }
+            }
+
+            // --- Fire ejecta: 28 particles with short trails, scattering with an
+            // upward bias (fuel rises) and the same elliptical footprint, fast at
+            // ignition, decelerating outward.
+            for (int p = 0; p < 28; p++) {
+                int seed = p * 29 + ship.counter;
+                float ang = (float)(seed * 53 % 628) * 0.01f;
+                float upward = 1.0f;
+                if (cosf(ang) < 0.0f) upward = 1.0f + fabsf(cosf(ang)) * 1.2f;
+                float spd = 1.5f + (float)(seed * 13 % 100) / 100.0f * 4.0f;
+                float life = fmodf((float)ship.counter * 0.012f + (float)(p % 50) / 50.0f, 1.0f);
+                float dist = life * spd * (22.0f + t * 10.0f) * sc * upward;
+                float px = cx + sinf(ang) * dist * EXP_RX;
+                float py = cy + cosf(ang) * dist * EXP_RY;
+                int b = (int)(230 * (1.0f - life) * (0.7f + 0.3f * (1.0f - t)));
+                if (b <= 0) continue;
+                r.pixelShade(px, py, b);
+                float trailDist = (life - 0.06f) * spd * (22.0f + t * 10.0f) * sc * upward;
+                if (trailDist > 0.0f) {
+                    float tx = cx + sinf(ang) * trailDist * EXP_RX;
+                    float ty = cy + cosf(ang) * trailDist * EXP_RY;
+                    r.pixelShade(tx, ty, b / 2);
+                }
+            }
+
+            // --- Rising smoke: fades in as the fireball cools, drifts upward and
+            // spreads, giving the explosion an aftermath instead of just vanishing.
+            if (t > 0.35f) {
+                float st = (t - 0.35f) / 0.65f;
+                for (int p = 0; p < 16; p++) {
+                    int seed = p * 71 + 17;
+                    float ang = (float)(seed * 37 % 628) * 0.01f;
+                    float spread = 0.5f + (float)(seed % 100) / 100.0f;
+                    float rise = st * (18.0f + (float)(seed % 40)) * sc;
+                    float drift = sinf(ang) * spread * st * 10.0f * sc;
+                    float px = cx + drift;
+                    float py = cy - rise;
+                    int b = (int)(70 * st * (1.0f - st));
+                    if (b > 0) r.pixelShade(px, py, b);
+                }
+            }
+
+            // Ship's exploding fragments fly outward on top of the fire glow,
+            // silhouetted against the inferno (5x scatter speed).
+            ship.draw(r, viewX, viewY, viewScale);
         }
 
         {
@@ -1098,9 +1551,9 @@ void Game::draw(Renderer &r)
                 centerText(90, "YOU BURNED");
                 centerText(102, "LAVA DESTROYED THE SHIP");
             } else if (ringHit) {
-                if (zoomedIn) {
                     // In zoom-in place the two lines below the lower band so
                     // they read clearly instead of overlapping the debris.
+                    if (zoomedIn) {
                     float bandSy = rings.lowerBandY(terrain, ship.posX) * viewScale + viewY;
                     float yTxt = bandSy + 18.0f;
                     if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
@@ -1114,6 +1567,9 @@ void Game::draw(Renderer &r)
             } else if (twisterCrash) {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "TWISTER SMASHED THE SHIP");
+            } else if (tankerCrash) {
+                centerText(90, "BOTH DESTROYED");
+                centerText(102, "COLLIDED WITH THE TANKER");
             } else {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "FUEL TANKS DESTROYED");
@@ -1134,6 +1590,22 @@ void Game::draw(Renderer &r)
                 (ship.counter % 50) < 30) {
                 r.text(250, fastY, "TOO FAST");
             }
+            if (tanker.docked && tanker.fuelFlowing) {
+                r.text(250, warnY, "REFUELING");
+            } else if (tanker.docked) {
+                if ((ship.counter % 40) < 24) r.text(250, warnY, "DOCKING");
+            } else {
+                bool tankerZone = tanker.targeted() &&
+                    fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
+                    fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+                if (tankerZone && (ship.counter % 40) < 24) {
+                    r.text(250, warnY, "DOCKING");
+                }
+            }
+        }
+
+        if (fuelMaxTimer > 0.0f) {
+            centerText(96, "FUEL MAX");
         }
 
         if (introTimer > 0) {
@@ -1157,7 +1629,10 @@ void Game::draw(Renderer &r)
             r.textScaled(tx2, ty2, mn, (float)scale2, brightness);
         }
 
-        if (zoomedIn) {
+        bool dockZone = tanker.active && !tanker.done &&
+                        fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
+                        fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+        if (zoomedIn && !dockZone) {
             const float MX = 112, MY = 22, MW = 96, MH = 49;
             r.line(MX, MY, MX + MW, MY);
             r.line(MX, MY + MH, MX + MW, MY + MH);
@@ -1208,4 +1683,101 @@ void Game::draw(Renderer &r)
     }
 
     r.flush();
+}
+
+void Game::drawDockingPiP(Renderer &r)
+{
+    // Picture-in-picture docking window: a framed sub-screen in the bottom
+    // right corner that magnifies the contact point (the drogue basket and
+    // the module's probe tip), so millimetric X/Y misalignments are visible
+    // that would be lost at the general view's scale.
+    if (state != STATE_PLAYING) return;
+    if (!tanker.active || tanker.done) return;
+    if (introTimer > 0 || lavaBurn) return;
+    bool inZone = fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
+                  fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+    if (!tanker.docked && !inZone) return;
+
+    float dwx = tanker.drogueX();
+    float dwy = tanker.drogueY();
+    float rad = ship.rotation * PI / 180.0f;
+    float ux = sinf(rad), uy = -cosf(rad);
+    // Probe tip = module center + boom along the probe direction (same as
+    // drawProbe and checkDock): at rotation 0 (uy=-1) it sits NOZZLE above.
+    float pwx = ship.posX + TANKER_NOZZLE_LEN * ship.scale * ux;
+    float pwy = ship.posY + TANKER_NOZZLE_LEN * ship.scale * uy;
+    float midX = (dwx + pwx) * 0.5f;
+    float midY = (dwy + pwy) * 0.5f;
+
+    int P = PIP_SIZE;
+    // Top-center, the same spot the minimap uses: while the docking zone is
+    // active the main viewport shows the macro zoom-in and the minimap is
+    // suppressed, so the window never overlaps it.
+    int pipX = (int)((SCREEN_W - P) * 0.5f);
+    int pipY = 22;
+    // Window center in px: the midpoint between basket and probe tip maps here.
+    float cx0 = pipX + P * 0.5f;
+    float cy0 = pipY + P * 0.5f;
+
+    // Magnification: full PIP_SCALE when the pair is close (the fine-alignment
+    // regime); when they are farther apart than the window can show, zoom out
+    // so the basket and probe tip always stay visible (never a black box), with
+    // a floor so the window never zooms out past a useful minimum.
+    float dist = sqrtf((dwx - pwx) * (dwx - pwx) + (dwy - pwy) * (dwy - pwy));
+    float sc = PIP_SCALE;
+    float fitHalf = P * 0.5f - 6.0f;
+    if (dist > fitHalf / PIP_SCALE) sc = fitHalf / dist;
+    if (sc < PIP_SCALE * (1.0f / 3.0f)) sc = PIP_SCALE * (1.0f / 3.0f);
+
+    r.setClip((float)pipX, (float)pipY, (float)P, (float)P);
+    // Opaque black background so the magnified view reads clean over the scene.
+    for (int yy = pipY; yy < pipY + P; yy++)
+        for (int xx = pipX; xx < pipX + P; xx++)
+            r.pixelShade((float)xx, (float)yy, 0);
+
+    // Magnified receiving basket (inverted truncated cone; its seat, at the
+    // align point, must catch the probe tip).
+    float dxx = cx0 + (dwx - midX) * sc;
+    float dyy = cy0 + (dwy - midY) * sc;
+    Tanker::drawDroguePip(r, dxx, dyy, sc);
+    // Magnified probe (thin rod + solid arrowhead tip) reaching toward the basket.
+    drawProbe(r, cx0 + (ship.posX - midX) * sc,
+              cy0 + (ship.posY - midY) * sc,
+              ux, uy, ship.scale, sc);
+
+    // Status ring around the basket gives immediate feedback on the mini-game:
+    // red = probe outside and about to break, yellow = aligning/locking,
+    // green = locked and fuel is flowing.
+    int statusColor = 0;
+    if (tanker.docked) {
+        if (tanker.fuelFlowing) statusColor = 255;
+        else statusColor = 210;
+    } else if (inZone) {
+        statusColor = 90;
+    }
+    if (statusColor > 0) {
+        float ringR = (PIP_SIZE * 0.5f - 4.0f);
+        int segs = 24;
+        for (int i = 0; i < segs; i++) {
+            float a0 = (float)i / segs * 2.0f * PI;
+            float a1 = (float)(i + 1) / segs * 2.0f * PI;
+            if ((i + (ship.counter / 4)) % 4 == 0) continue;
+            r.lineShade(cx0 + cosf(a0) * ringR, cy0 + sinf(a0) * ringR,
+                        cx0 + cosf(a1) * ringR, cy0 + sinf(a1) * ringR,
+                        statusColor);
+        }
+        // A small crosshair shows where the probe tip is relative to the seat.
+        float tpx = cx0 + (pwx - midX) * sc;
+        float tpy = cy0 + (pwy - midY) * sc;
+        r.lineShade(tpx - 2.0f, tpy, tpx + 2.0f, tpy, 160);
+        r.lineShade(tpx, tpy - 2.0f, tpx, tpy + 2.0f, 160);
+    }
+
+    r.clearClip();
+
+    // White frame delimiting the window.
+    r.line(pipX - 3.0f, pipY - 3.0f, pipX + P + 2.0f, pipY - 3.0f);
+    r.line(pipX - 3.0f, pipY - 3.0f, pipX - 3.0f, pipY + P + 2.0f);
+    r.line(pipX + P + 2.0f, pipY - 3.0f, pipX + P + 2.0f, pipY + P + 2.0f);
+    r.line(pipX - 3.0f, pipY + P + 2.0f, pipX + P + 2.0f, pipY + P + 2.0f);
 }

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "audio.h"
 #include "audio_data.h"
+#include "tanker_explosion_sound.h"
 #include "soc/ledc_struct.h"
 #include "driver/dac.h"
 #include "driver/rtc_io.h"
@@ -35,6 +36,7 @@ static uint8_t *explBuf = NULL;
 static uint8_t *windBuf = NULL;
 static uint8_t *boltBuf = NULL;
 static uint8_t *beepBuf = NULL;
+static const uint8_t *tankerExplBuf = NULL;
 
 static volatile uint16_t thrustPos = 0;
 static volatile int thrustPrev = 0;
@@ -45,6 +47,8 @@ static volatile uint16_t beepPos = BEEP_LEN;
 static volatile uint16_t beepLen = 0;
 static volatile uint32_t burnPos = 0xFFFFFFFF;
 static volatile uint32_t burnNoise = 0xABCDEF01u;
+static volatile uint32_t tankerExplPos = 0xFFFFFFFF;
+static volatile int tankerExplLevel = 0;
 
 // Targets set from the game; current levels are eased toward them in the ISR
 // using integer math only (no FPU inside the IRAM ISR).
@@ -96,6 +100,11 @@ static void IRAM_ATTR audioIsr() {
         v += (int32_t)explBuf[explPos] - 128;
         explPos++;
         if (explPos >= EXPLOSION_SOUND_LEN) explPos = 0xFFFF;
+    }
+    if (tankerExplPos < TANKER_EXPLOSION_SOUND_LEN) {
+        v += (((int32_t)pgm_read_byte(&tankerExplBuf[tankerExplPos]) - 128) * tankerExplLevel) >> 8;
+        tankerExplPos++;
+        if (tankerExplPos >= TANKER_EXPLOSION_SOUND_LEN) tankerExplPos = 0xFFFFFFFF;
     }
     if (boltPos < LIGHTNING_SOUND_LEN) {
         v += (int32_t)boltBuf[boltPos] - 128;
@@ -173,6 +182,7 @@ void Audio::begin() {
     explBuf = (uint8_t *)EXPLOSION_SOUND;
     windBuf = (uint8_t *)WIND_SOUND;
     boltBuf = (uint8_t *)LIGHTNING_SOUND;
+    tankerExplBuf = TANKER_EXPLOSION_SOUND;
     beepBuf = (uint8_t *)malloc(BEEP_LEN);
     if (beepBuf == NULL) {
         Serial.println("[audio] FATAL: no memory for beep buffer");
@@ -220,6 +230,11 @@ void Audio::setWind(float level) {
 
 void Audio::playExplosion() {
     explPos = 0;
+}
+
+void Audio::playTankerExplosion() {
+    tankerExplPos = 0;
+    tankerExplLevel = 255;
 }
 
 void Audio::playBurn() {

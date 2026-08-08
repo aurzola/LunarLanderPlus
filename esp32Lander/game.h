@@ -11,6 +11,7 @@
 #include "atmosphere.h"
 #include "rings.h"
 #include "twister.h"
+#include "tanker.h"
 #include "config.h"
 
 enum GameState {
@@ -64,6 +65,7 @@ public:
     Atmosphere atmosphere;
     Rings rings;
     Twister twister;
+    Tanker tanker;
     bool windEnabled;
     float windStrength;
     int windDir;
@@ -71,6 +73,7 @@ public:
     bool lavaBurnGet() const { return lavaBurn; }
     bool ringHitGet() const { return ringHit; }
     bool twisterCrashGet() const { return twisterCrash; }
+    bool tankerCrashGet() const { return tankerCrash; }
 
 private:
     float viewX, viewY, viewScale;
@@ -83,9 +86,13 @@ private:
     float windPhase;
     float windFlipTimer;
     float stormHitTimer;
+    float fuelMaxTimer;
+    bool demoHoldAltitude;
     bool lavaBurn;
     bool ringHit;
     bool twisterCrash;
+    bool tankerCrash;
+    int demoTankerPhase; // 0 = approach pre-position left of the drogue, 1 = slide in
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
     void updateView();
@@ -100,6 +107,7 @@ private:
     void spawnDust();
     void updateWind(float dt);
     void drawWind(Renderer &r);
+    void drawDockingPiP(Renderer &r);
 };
 
 #endif

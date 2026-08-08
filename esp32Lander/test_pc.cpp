@@ -13,6 +13,7 @@
 #include "atmosphere.h"
 #include "rings.h"
 #include "twister.h"
+#include "tanker.h"
 #include "renderer_pc.h"
 
 static int checks = 0;
@@ -466,6 +467,7 @@ static int testVolcanoLava()
 
 static int testAtmosphere()
 {
+    srand(42);
     CHECK(moonHasTitan(6));
     CHECK(moonHasTitan(14));
     CHECK(moonHasTitan(30));
@@ -717,6 +719,248 @@ static int testTwister()
     return 0;
 }
 
+static int testTanker()
+{
+    srand(42);
+    Terrain t1;
+    t1.generate(1);
+    Tanker tn1;
+    tn1.reset(1, t1, 100.0f);
+    if (!TANKER_FORCE_LEVEL1) CHECK(!tn1.active);
+
+    // A full tank never summons the tanker.
+    Tanker tnFull;
+    tnFull.reset(2, t1, FUEL_MAX);
+    CHECK(!tnFull.active);
+
+    // Forced spawn bypasses the fuel check (attract-mode showcase).
+    bool forcedSpawn = false;
+    for (int s = 0; s < 200 && !forcedSpawn; s++) {
+        srand(10000 + s);
+        Terrain tf;
+        tf.generate(2);
+        Tanker tkf;
+        tkf.reset(2, tf, FUEL_MAX, true);
+        if (tkf.active) forcedSpawn = true;
+    }
+    CHECK(forcedSpawn);
+
+    // Ganymede debris rings: no tanker there, even forced.
+    srand(7);
+    Terrain tg;
+    tg.generate(4);
+    Tanker tnG;
+    tnG.reset(4, tg, 100.0f, true);
+    CHECK(!tnG.active);
+
+    // Titan: the tanker hovers at a fixed world-y above the fog bands.
+    bool titanSeen = false;
+    for (int s = 0; s < 200 && !titanSeen; s++) {
+        srand(5000 + s);
+        Terrain tt;
+        tt.generate(6);
+        Tanker tkT;
+        tkT.reset(6, tt, 100.0f, true);
+        if (!tkT.active) continue;
+        titanSeen = true;
+        CHECK(tkT.baseY == TANKER_TITAN_Y);
+        CHECK(fabsf(tkT.bodyY - tkT.baseY) <= 0.01f);
+        CHECK(tkT.portY > tkT.bodyY);
+    }
+    CHECK(titanSeen);
+
+    srand(42);
+    bool spawned = false;
+    for (int seed = 0; seed < 200 && !spawned; seed++) {
+        srand(seed);
+        Terrain t;
+        t.generate(2);
+        Tanker tk;
+        tk.reset(2, t, 100.0f);
+        if (!tk.active) continue;
+
+        spawned = true;
+
+        CHECK(tk.portY > tk.bodyY);
+        CHECK(tk.baseY > 0.0f);
+        CHECK(fabsf(tk.bodyY - tk.baseY) <= TANKER_BOB_AMP + 0.01f);
+        CHECK(tk.bodyY <= 500.0f);
+
+        float terrainW = t.getWidth();
+        CHECK(tk.bodyX >= 0.0f);
+        CHECK(tk.bodyX <= terrainW);
+
+        Ship dummy;
+        dummy.reset(20.0f, 20.0f);
+
+        float x0 = tk.bodyX;
+        for (int i = 0; i < 60; i++) tk.update(GAME_DT, dummy);
+        CHECK(fabsf(tk.bodyX - x0) > 0.01f);
+        CHECK(fabsf(tk.bodyX - x0) <= TANKER_DRIFT_SPEED * GAME_DT * 60.0f + 1.0f);
+
+        // Belly dock: rotation 0 lines the module probe up with the underside
+        // drogue (the ship center sits NOZZLE_LEN above the drogue).
+        Ship ship;
+        ship.reset(tk.drogueX(), tk.drogueY() + TANKER_NOZZLE_LEN);
+        ship.fuel = 100.0f;
+        ship.scale = 1.0f;
+        ship.velY = 0.02f;
+        ship.velX = 0.02f;
+
+        // The drogue hangs clear of the hull at the end of its hose.
+        CHECK(fabsf(tk.drogueX() - tk.bodyX) <= TANKER_DROGUE_SWAY + 0.01f);
+        CHECK(tk.drogueY() > tk.portY);
+
+        CHECK(tk.checkDock(ship));
+        CHECK(tk.active);
+
+        tk.beginDock(ship.velX, ship.velY);
+        CHECK(tk.docked);
+        CHECK(!tk.fuelFlowing);
+
+        float beforeFuel = ship.fuel;
+        CHECK(beforeFuel < FUEL_MAX);
+
+        // For the first second fuel does NOT flow yet: it is a hold mini-game.
+        for (int i = 0; i < (int)(TANKER_DOCK_LOCK_TIME / GAME_DT) - 5; i++) {
+            tk.update(GAME_DT, ship);
+        }
+        CHECK(ship.fuel == beforeFuel);
+        CHECK(!tk.fuelFlowing);
+        for (int i = 0; i < 10; i++) tk.update(GAME_DT, ship);
+        CHECK(tk.fuelFlowing);
+
+        // Fuel flows incrementally after the lock: a short connection only tops
+        // up partway.
+        float afterLockFuel = ship.fuel;
+        for (int i = 0; i < 60; i++) {
+            tk.update(GAME_DT, ship);
+        }
+        CHECK(ship.fuel > afterLockFuel);
+        CHECK(ship.fuel < FUEL_MAX);
+        CHECK(tk.docked);
+
+        // Breakaway: firing the engine releases the probe early, keeps the
+        // partial fuel and leaves the tanker on station for a reconnect.
+        tk.breakAway(ship);
+        CHECK(!tk.docked);
+        CHECK(!tk.fuelFlowing);
+        CHECK(ship.velY > 0.0f);
+        CHECK(!tk.leaving);
+        CHECK(!tk.done);
+
+        // Reconnect and stay plugged in until the tank is full.
+        ship.reset(tk.drogueX(), tk.drogueY() + TANKER_NOZZLE_LEN);
+        ship.fuel = beforeFuel;
+        ship.scale = 1.0f;
+        ship.velY = 0.02f;
+        ship.velX = 0.02f;
+        CHECK(tk.checkDock(ship));
+        tk.beginDock(ship.velX, ship.velY);
+        CHECK(tk.docked);
+        for (int i = 0; i < 700; i++) {
+            tk.update(GAME_DT, ship);
+        }
+
+        CHECK(ship.fuel == FUEL_MAX);
+        CHECK(ship.fuel > beforeFuel);
+        CHECK(ship.velY == 0.0f);
+        CHECK(ship.velX == 0.0f);
+        CHECK(tk.leaving);
+        CHECK(!tk.docked);
+
+        // Breakaway on a bad alignment: push the probe outside the break
+        // tolerance with the joystick nudge and confirm the link auto-releases
+        // after BREAK_TIME.
+        Tanker tkBr;
+        tkBr.reset(2, t, 100.0f, true);
+        Ship shipBr;
+        shipBr.reset(tkBr.drogueX(), tkBr.drogueY() + TANKER_NOZZLE_LEN);
+        shipBr.scale = 1.0f;
+        shipBr.velX = 20.0f; // held strong sideways nudge
+        shipBr.velY = 0.0f;
+        tkBr.beginDock(shipBr.velX, shipBr.velY);
+        CHECK(tkBr.docked);
+        for (int i = 0; i < (int)(TANKER_DOCK_BREAK_TIME / GAME_DT) + 5; i++) {
+            tkBr.update(GAME_DT, shipBr);
+            shipBr.velX = 20.0f; // player keeps the stick deflected
+            shipBr.velY = 0.0f;
+        }
+        CHECK(!tkBr.docked);
+
+        float startX = tk.bodyX;
+        for (int i = 0; i < 9000 && !tk.done; i++) {
+            tk.update(GAME_DT, ship);
+        }
+        CHECK(tk.done);
+        CHECK(tk.bodyX > startX);
+
+        Tanker tk2;
+        tk2.reset(2, t, 100.0f, true);
+        CHECK(tk2.active == true);
+    }
+    CHECK(spawned);
+
+    srand(99);
+    Terrain t2;
+    t2.generate(3);
+    Tanker tk3;
+    tk3.reset(3, t2, 100.0f);
+    if (tk3.active) {
+        Ship ship3;
+        ship3.reset(tk3.drogueX() + 200.0f, tk3.drogueY() + TANKER_NOZZLE_LEN);
+        ship3.scale = 1.0f;
+        ship3.velY = 0.02f;
+        CHECK(!tk3.checkDock(ship3));
+
+        Ship ship3b;
+        ship3b.reset(tk3.drogueX(), tk3.drogueY() + TANKER_NOZZLE_LEN);
+        ship3b.scale = 1.0f;
+        ship3b.velY = 0.5f;
+        CHECK(!tk3.checkDock(ship3b));
+
+        Ship ship3c;
+        ship3c.reset(tk3.drogueX(), tk3.drogueY() + TANKER_NOZZLE_LEN);
+        ship3c.scale = 1.0f;
+        ship3c.velY = 0.02f;
+        ship3c.velX = 0.5f;
+        CHECK(!tk3.checkDock(ship3c));
+
+        // Wrong rotation: the probe points sideways instead of up into the
+        // drogue basket. The module is placed left of the drogue with rotation
+        // 90, so the horizontal probe tip lands far out of the (now forgiving)
+        // horizontal tolerance.
+        Ship shipW;
+        shipW.reset(tk3.drogueX() - 30.0f, tk3.drogueY() + TANKER_NOZZLE_LEN);
+        shipW.rotation = 90.0f;
+        shipW.targetRotation = 90.0f;
+        shipW.scale = 1.0f;
+        shipW.velY = 0.02f;
+        shipW.velX = 0.02f;
+        CHECK(!tk3.checkDock(shipW));
+    }
+
+    // Touching the mothership hull is lethal for both ships; a destroyed
+    // tanker no longer collides.
+    srand(123);
+    for (int s = 0; s < 300; s++) {
+        Terrain td;
+        td.generate(2);
+        Tanker tkd;
+        tkd.reset(2, td, 100.0f, true);
+        if (!tkd.active) continue;
+        CHECK(tkd.hitsHull(tkd.bodyX, tkd.bodyY));
+        CHECK(tkd.hitsHull(tkd.bodyX, tkd.bodyY - 60.0f) == false);
+        CHECK(tkd.hitsHull(tkd.bodyX + 200.0f, tkd.bodyY) == false);
+        tkd.destroy();
+        CHECK(!tkd.active);
+        CHECK(tkd.done);
+        CHECK(!tkd.hitsHull(tkd.bodyX, tkd.bodyY));
+        break;
+    }
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -745,6 +989,8 @@ int main()
     r = testRings();
     if (r) return r;
     r = testTwister();
+    if (r) return r;
+    r = testTanker();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

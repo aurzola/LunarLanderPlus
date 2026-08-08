@@ -482,3 +482,230 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
     labio superior tenue, motas de giro y falda de polvo en la base. Validado: `make && ./test_pc`
     **890 ALL CHECKS PASSED**; `./twister_demo 1 8` OK. Sync a `esp32LanderComposite/src/`.
     Sketch 511398 → 512802 B (39%), RAM 101940 B (31%). Subido a placa; aprobado en CRT.
+23. **BUG PENDIENTE — render incompleto por la izquierda en el demo (23/8/2026, reportado en CRT)**: a
+    veces el juego no se renderiza completo por el **margen izquierdo** de la pantalla, dejando una
+    franja sin pintar o sin usar. Notado principalmente en el auto-demo / attract mode (aunque puede
+    no ser exclusivo del demo). El bug convive con el doble buffer (el `memcpy(shadow→videoFB)` en el
+    blanking copia el frame completo, así que no es tearing del DMA vertical). Hipótesis a investigar:
+    (a) offset de inicio de línea horizontal (back porch del CRT / sincronización de la librería
+    aquaticus) que desplaza el área visible; (b) algún `clear`/`rect` que no cubre el margen izquierdo
+    en ciertos estados de cámara (el demo usa vista normal `viewX=0`); (c) deriva/desbordamiento en el
+    render de efectos (niebla/rocas/anillos) que no pinta la primera columna. Referencia:
+    `Game::draw()` (clear → storm.drawSky → atmosphere.drawSky → terreno → nave → minimapa → HUD) en
+    `esp32Lander/game.cpp`. **Sin arreglo todavía; ajeno a los anillos de Ganímedes / niebla de Titán
+    que ya están validados.**
+ 24. **Nave cisterna aérea con repostaje en vuelo (30/8/2026 → rediseño 7/9/2026, ronda 2 8/9/2026):** nave
+     cisterna (nave espacial: fuselaje alargado, aletas, cabina, faro, brillo de motor) que aparece en
+     niveles ≥2 (70 %) y **flota** a `TANKER_HOVER_ALT=140 u` sobre terreno plano con **deriva horizontal**
+     (rebote en ±40 u) + **balanceo vertical** sinusoidal. El jugador debe **acoplar en vuelo** (docking
+     aéreo): `checkDock()` alinea la trompa de la nave con el puerto inferior (`portY = bodyY + HULL_H/2`,
+     tolerancias `TOL_X=8`/`TOL_Y=5`, `|velY|<0.09`, `|velX|<0.14`). **Zoom de docking (ronda 2)**: 
+     `updateView()` fuerza zoom-in centrado entre nave y cisterna cuando `tanker.targeted()` y la nave está
+     en la zona `DOCK_ZONE_X=90`/`DOCK_ZONE_Y=45`; al salir, lógica normal de altitud. Dock 0.5 s (nave
+     enganchada siguiendo la deriva, línea de conexión + gotas), recarga a `FUEL_MAX` y se suelta **sin
+     rebote** (`velX=velY=0`, ronda 2) para continuar el curso; la cisterna vuela arriba-derecha hasta salir.
+     Si la nave embiste el casco, empuje suave hacia abajo. En demo forzado (`DEMO_LEVEL_FORCE>0`) el
+     autopilot sube, acopla **30/30** en simulación (todos con zoom) y tras el refill re-apunta al pad
+     **más cercano** con **fase de crucero** (`demoHoldAltitude`: mantiene altitud hasta llegar a la X del
+     pad y descende solo encima → aterriza 21/30 tras el refill; antes 5/30 con descenso directo). El
+     rediseño reemplaza al camión terrestre con plataforma elevada original (el docking no puede ser
+     aterrizar sobre un vehículo inmóvil).
+     Archivos: `tanker.h/cpp` en `esp32Lander/` y `esp32LanderComposite/src/`. API tests: `testTanker`
+     (916 ALL CHECKS PASSED). Sketch ESP32: 520522 B (39%), RAM 109204 B (33%).
+     TODO: sonido de repostaje (LEDC), minimapa con marcador de tanker, ajustar `TANKER_CHANCE_PERCENT`.
+ 25. **Nave cisterna aérea, ronda 3 (7/9/2026, rama tanker-r3):** rediseño de la aparición y el docking.
+     - **Aparición por combustible (petición del usuario)**: la cisterna **solo aparece cuando el nivel
+       de combustible está bajo** (`fuel < FUEL_MAX · TANKER_FUEL_FRACTION`, `TANKER_FUEL_FRACTION=0.5`),
+       para que el rendezvous solo ocurra cuando importa. `Tanker::reset()` recibe `float fuel`; el modo
+       demo/attract (`force=true`) ignora el chequeo. `TANKER_CHANCE_PERCENT` se mantiene (70 %) como
+       segunda condición.
+     - **Altura**: `TANKER_HOVER_ALT` 140→**300 u** (fuera del alcance de los efectos de superficie).
+       En Titán (`moonHasTitan`) `baseY = TANKER_TITAN_Y = 85` fijo, por encima del techo de la niebla
+       (~108). **Excluida de Ganímedes** (`moonHasRings`, nivel 4): la banda alta de anillos de roca
+       (`RING_CY_HIGH=360`) la destruiría; el torbellino de Tritón no alcanza (vuela alto).
+     - **Dos puertos de repostaje (ronda 3)**: boquilla **inferior** (`bodyX, portY`) y boquilla de
+       **nariz** (`nosePortX() = bodyX − HULL_W/2`, `nosePortY() = bodyY`). `checkDock()` elige puerto
+       según la rotación del módulo: `rotation <= TANKER_NOSE_ANGLE` (−45°) → nariz; si no → inferior.
+       Alinea el **centro de la boquilla del módulo** (`posX + NOZZLE_LEN·scale·sin(rad)`,
+       `posY − NOZZLE_LEN·scale·cos(rad)`, `TANKER_NOZZLE_LEN=8`) con el puerto objetivo (tolerancias
+       `TOL_X=8`/`TOL_Y=5`, `|velY|<0.09`, `|velX|<0.14`). `beginDock()` engancha a la boquilla
+       correspondiente y fija la rotación (inferior: pos bajo el puerto, rot 0; nariz: colgando de la
+       nariz, rot −90) siguiendo deriva/bob.
+     - **Visual (ronda 3)**: boquilla del módulo dibujada en escena solo durante la maniobra
+       (`tanker.active && zoomedIn && dentro de la zona`, sin lava/niebla): línea de `5·scale` a
+       `NOZZLE_LEN·scale` a lo largo de `(sin,−cos)` + círculo brillante. Anillo de boquilla de nariz
+       en la cisterna. HUD `DOCKING` parpadeante al entrar en la zona (`tanker.targeted()`), antes de
+       `REFUELING` durante el dock. El bloque docked **ya no lee `input.angle`** (la rotación la fija
+       el enganche).
+     - Validación: `test_pc` **928 ALL CHECKS PASSED** (testTanker reescrito: full tank no spawnea,
+       forzado ignora combustible, Ganímedes excluida incluso forzada, Titán `baseY==TANKER_TITAN_Y`,
+       dock inferior con rot 0, dock frontal con rot −90, no-dock con rot 0 en la nariz, velocidad
+       excesiva rechazada, drift/bob, refill, secuencia leaving→done). Simulación 30 seeds con
+       `DEMO_LEVEL_FORCE=2`: **30/30 docks, 21/30 aterrizajes post-refill** (mismo ratio que la ronda 2).
+       Sketch ESP32: 521442 B (39%), RAM 109212 B (33%). **Subido a la placa** (`/dev/ttyUSB0` apareció
+       después; upload ronda 3 completado y verificado).
+     - Archivos: `config.h` (constantes TANKER), `tanker.h/cpp`, `game.cpp` (4 call sites de `reset`,
+       HUD `DOCKING`, boquilla del módulo), `test_pc.cpp`, `tanker_demo.cpp` (frames de dock/leaving en
+       `frames/frame_0000.ppm` y `_0001.ppm`).
+  26. **Nave cisterna aérea, ronda 4 — probe-and-drogue (8/8/2026, rama tanker-r4):** la mecánica pasa a
+      **probe-and-drogue** (dos mangueras con cesta) con **repostaje incremental** y **colisión letal**
+      contra el casco de la nodriza. Petición del usuario: más tiempo conectado = más combustible.
+     - **Dos hoses con drogue**: la cisterna extiende `TANKER_HOSE_LEN=20 u` de manguera bajo la panza
+       (hacia abajo) y por la nariz (hacia la izquierda), cada una terminada en **cesta drogue** con
+       sway sinusoidal independiente (`TANKER_DROGUE_SWAY=3 u`, `TANKER_DROGUE_SWAY_SPEED=1.6 rad/s`,
+       `droguePhase`). `drogueX(0)=bodyX+sway`, `drogueY(0)=portY+HOSE_LEN+sway`; `drogueX(1)=
+       nosePortX()−HOSE_LEN+sway`, `drogueY(1)=bodyY+sway`. El módulo introduce su **probe** (la boquilla
+       `NOZZLE_LEN=8` ya dibujada) en la cesta.
+     - **Colisión contra el casco (nodo central)**: `hitsHull(x,y)` (caja `HULL_W/2+3` × `HULL_H/2+3`)
+       → **se destruyen AMBAS naves**: `tankerCrash=true`, `tanker.destroy()`, `ship.crash()`, final
+       `"BOTH DESTROYED" / "COLLIDED WITH THE TANKER"` (`tankerCrashGet()`). `destroy()` deja
+       `active=false, done=true`; la colisión se comprueba antes de `checkLanding`.
+     - **Refuel incremental**: `TANKER_REFUEL_RATE=200 fuel/s` mientras hay conexión (se quitó
+       `TANKER_REFUEL_TIME`). En `update()` docked, `fuel += RATE·dt` hasta `FUEL_MAX` → `leaving=true`.
+       **Podar antes** (`breakAway(Ship&)`, nuevo): suelta el probe con pequeño impulso de separación y
+       **la cisterna se queda en estación** para reconectar; el fuel acumulado se conserva (el HUD lo
+       refleja: `game.cpp` hace `fuel=ship.fuel` cada frame). En el bloque docked, `input.thrust>0` (no
+       demo) dispara `breakAway`.
+     - **Demo AI de 2 fases** (`demoTankerPhase`): la nave no puede decelerar lo bastante para frenar en
+       la cesta (empuje limitado) y cruzaba la banda del casco (`y∈[384,402]`) en la bajada → crash
+       total en sim. Fix: fase 0 desciende en una **pre-posición `TANKER_APPROACH_X=55 u` a la izquierda
+       del drogue** (la bajada nunca cruza la banda del casco), cambia a fase 1 (|Δx|<8, |Δy|<12) y
+       **desliza en horizontal a la altitud del drogue** (por debajo del casco) hasta clavar el probe.
+     - Validación: `test_pc` **947 ALL CHECKS PASSED** (testTanker: dock solo contra drogue, cesta sway,
+       refill incremental —60 frames no llenan—, `breakAway` conserva fuel y deja la cisterna en
+       estación, reconexión, `hitsHull` letal + `destroy` la desactiva, dock nariz con rot −90). Sim 60
+       seeds `DEMO_LEVEL_FORCE=2`: **60/60 docks, 47/60 aterrizajes post-refill, 0 choques contra el
+       casco**. Sketch ESP32: 523430 B (39%), RAM 109220 B (33%). **Upload ronda 4 a `/dev/ttyUSB0`
+       completado y verificado.**
+     - Archivos: `config.h` (HOSE_LEN/APPROACH_X/DROGUE_SWAY/SWAY_SPEED/REFUEL_RATE/HULL_MARGIN, sin
+       REFUEL_TIME), `tanker.h/cpp` (`drogueX/Y`, `breakAway`, `hitsHull`, `destroy`), `game.cpp/h`
+       (`tankerCrash`, `demoTankerPhase`, demo AI 2 fases, HUD REFUELING), `test_pc.cpp`,
+       `tanker_demo.cpp`. `esp32LanderComposite/src/` sincronizado (`diff` limpio, `DEMO_LEVEL_FORCE=2`).
+  27. **Nave cisterna aérea, ronda 5 — cesta proporcional + PiP de docking (8/8/2026, rama tanker-r5):**
+      la cesta drogue deja de ser un rectángulo 6×6 que "parece que atrapará toda la nave" y pasa a un
+      **cono truncado hueco proporcional** (boca ~6 u, algo menor que la nave ~6.4 u), y el zoom forzado
+      a pantalla completa del acople se sustituye por una **ventana picture-in-picture** de contacto.
+     - **Cesta proporcional**: `drawDrogue` (ahora pública estática de `Tanker`, compartida con el PiP)
+       dibuja un cono truncado HUECO cuyo fondo es un **objetivo relleno** (`fillTarget`, círculo sólido
+       `TANKER_DROGUE_BACK_R=1.6 u` + outline) = el punto físico de alineación (`drogueX/drogueY`).
+       Boca `TANKER_DROGUE_RIM=3 u` (≈6 u de ancho) < nave ~6.4 u → atrapa solo la punta del probe;
+       profundidad `TANKER_DROGUE_DEPTH=3.5 u` + anillo intermedio. kind 0 = boca abajo, kind 1 = boca
+       izquierda (nariz). La **física no cambia**: `checkDock` sigue alineando el centro de la boquilla
+       con `drogueX/drogueY` (TOL_X=8/TOL_Y=5).
+     - **Mangueras como mangueras**: `drawHose` sustituye la línea recta por una **polilínea de 5
+       segmentos** con doblez sinusoidal perpendicular (`1.4·s·sin(t·π)`) y endpoints fijos → leen como
+       manguera flexible, no como rayo. Se usa para ambos hoses y para el tramo del dock.
+     - **PiP de docking (en vez del zoom forzado)**: `updateView()` ya no fuerza zoom en la zona de
+       dock; el viewport queda en vista normal con ambas naves + mangueras, y `drawDockingPiP` pinta en
+       una ventana de esquina (recuadro blanco, abajo-derecha, `PIP_SIZE=76`, `PIP_MARGIN=8`) el punto
+       medio entre cesta y punta del probe magnificado a `PIP_SCALE=SCREEN_H/700·16` px/u. Si la pareja
+       está más lejos de lo que la ventana muestra, hace **zoom-out de ajuste** (`sc=fitHalf/dist`, suelo
+       `PIP_SCALE/3`) para que nunca quede una caja negra vacía; a distancia de alineación vuelve a
+       escala máxima. `port` se elige igual que `checkDock` (rotación ≤ −45° → nariz). Crosshair de 6 px
+       sobre el objetivo. Se muestra mientras `tanker.active && !done && (docked || en zona)`.
+     - **Probe rediseñado**: `drawProbe` (estática en `game.cpp`) dibuja una **varilla fina de 2
+       carriles** desde la panza/nariz hasta la boquilla + **punta de diamante** (triángulos superior e
+       inferior + base). Se dibuja en escena durante la maniobra (`tankerDockShow`, **sin exigir
+       `zoomedIn`**) y también dentro del PiP.
+     - **Clip del renderer**: `Renderer` gana `setClip/clearClip` (puras virtuales); `RendererCanvas` los
+       implementa (`clipOn`/`clipX..H`, `clipTest`, `px`/`pxShade`) y TODAS las primitivas (`line`,
+       `rect`, `circle`, `text`, `textScaled`) dibujan vía `px`/`pxShade` → el recorte funciona también
+       en `RendererESP32` (que solo hereda). El PiP pinta fondo negro opaco + cesta + probe + crosshair
+       dentro del clip y el marco blanco fuera.
+     - **Fix encontrado durante la validación visual**: la ventana se centraba en `pipX` (esquina) en vez
+       de `pipX+P/2` → la composición quedaba desplazada medio marco a la izquierda. Y `pwy` usaba `-`
+       con `uy` ya negado → el punto medio se desplazaba 16 u y la cesta salía de la ventana. Verificado
+       con composiciones estáticas (acercamiento inferior alineado / desalineado, nariz rot −45°, lejos
+       con zoom-out) y con el dock real (probe enchufado en la cesta, boom colgando por la boca).
+     - Validación: `test_pc` **947 ALL CHECKS PASSED**; sim 60 seeds `DEMO_LEVEL_FORCE=2`:
+       **60/60 docks, 47/60 aterrizajes post-refill, 0 choques** (la física no cambió). Sketch ESP32:
+       524974 B (40%), RAM 109220 B (33%). Sin upload (pendiente probar en CRT).
+     - Archivos: `config.h` (DROGUE_RIM/DEPTH/BACK_R, PIP_SIZE/PIP_MARGIN/PIP_SCALE), `renderer.h` y
+       `renderer_canvas.h/cpp` (clip), `tanker.h/cpp` (`drawDrogue` estática, `drawHose`), `game.h/cpp`
+       (`drawDockingPiP`, `drawProbe`, `updateView` sin zoom de dock), `.gitignore` (tanker_demo).
+       `esp32LanderComposite/src/` sincronizado (`diff` limpio, `DEMO_LEVEL_FORCE=2`).
+  28. **Nave cisterna aérea, ronda 5b — manguera única + zoom macro + PiP arriba-centro (8/8/2026, rama tanker-r5b):**
+      - **Vuelta al zoom macro de dock (9/8)**: el usuario pidió recuperar el zoom-in forzado de la aproximación
+        (que ronda 5 había sustituido por el vista general) y dejar el PiP **solo** como vista de precisión fina del
+        probe & drogue. `updateView()` ahora **fuerza `setZoom(true)`** en la zona de dock (`tanker.active &&
+        !tanker.done && |dx|<TANKER_DOCK_ZONE_X=90 && |dy|<TANKER_DOCK_ZONE_Y=45` vs `portY`) y centra el viewport
+        en el **punto medio nave↔cisterna** (`midX/midY` = `(ship+body)/2`, `viewX/viewY` = mitad de pantalla −
+        mid·viewScale), con `return` antes de la lógica de altitud. Fuera de la zona → lógica normal por altitud
+        (`ZOOM_IN_ALT=200`/`ZOOM_OUT_ALT=350`). Anteriormente `updateView` hacía `if (tankerZone) { if (zoomedIn)
+        setZoom(false); }` (los dos ships + manguera en general view y el punto de contacto solo en el PiP).
+      - **Minimapa suprimido en la zona de dock (punto 3 confirmado por el usuario)**: el minimapa es útil en la
+        fase de acercamiento (baja altitud) y el docking/refuel se hace a mayor altura → sin conflicto; en la zona
+        de dock se **salta el minimapa** (`if (zoomedIn && !dockZone)`), dejando el hueco arriba-centro al PiP.
+        El PiP ya vivía arriba-centro (`pipX=(SCREEN_W−PIP_SIZE)/2`, `pipY=22`); comentarios ajustados.
+      - **Manguera única (1/8 → pedido «la izquierda quitala, déjemos una sola»)**: se eliminó la drogue de
+        **nariz (puerto 1)** — `nosePortX()/nosePortY()`, `dockPort` y `TANKER_NOSE_ANGLE` borrados. Solo queda la
+        **cesta inferior** (`drogueX()/drogueY()` sin argumento = `bodyX+sway` / `portY+HOSE_LEN+sway`). `checkDock`
+        siempre apunta a la cesta inferior (alinea el probe con `drogueX()/drogueY()`, rotación correcta al acoplar
+        desde abajo); `Tanker::update` docked solo cuelga la nave erguida (rot 0°) bajo la cesta; `breakAway` solo
+        empuje vertical; `Tanker::draw` dibuja **una** manguera (`drawHose`) + **una** cesta (`drawDrogue`, sin `kind`),
+        con los drops de fuel solo verticales; `drawDockingPiP` sin selección de puerto. Se quitó `PIP_MARGIN` (sin uso).
+      - **Probe & drogue con mejor calidad visual**: `drawProbe` — varilla de 2 carriles con **carril trasero dim
+        `lineShade` 150** + **centro dim 110**, **collar** en la base (línea perpendicular `1.05·scale·sc`), y punta de
+        **diamante relleno** (secciones transversales por filas, `steps=ceil(tipF)`, `hw=tipW·(1−t)`) + outline + ápice
+        brillante. `drawDrogue`/`fillTarget` — **bullseye**: disco relleno dim 150 + **core brillante** (`rect`) +
+        outline; el cono con **ribs** dim (`lineShade` 120) + **lip** (2 líneas en la boca) + **barbs** en los extremos
+        del rim. **`lineShade` (ronda 5b)**: nuevo primitivo puro `Renderer` (`lineShade(x0,y0,x1,y1,b)`) implementado
+        en `RendererCanvas` como Bresenham con `pxShade` (respeta clip).
+      - **Altitud de la cisterna (ajuste posterior)**: `TANKER_HOVER_ALT` 300→**340 u** para que la altitud de la nave
+        en el dock (~340 −(HULL_H/2+HOSE_LEN+sway+probe·scale) ≈ **307 u**) quede holgadamente **por encima del umbral
+        del minimapa** (`ZOOM_IN_ALT=200`) y por debajo de `ZOOM_OUT_ALT=350`. Así durante **toda** la maniobra la nave
+        está fuera del rango donde el minimapa empieza a mostrarse y nunca choca con la ventana PiP.
+      - Validación: `test_pc` **942 ALL CHECKS PASSED** (se quitaron ~5 checks del puerto 1; test de nariz sustituido
+        por un negativo de rotación 90° que desvía el probe en Y). Sim 60 seeds `DEMO_LEVEL_FORCE=2` a 340 u:
+        **60/60 docks, 0 choques**, aterrizajes post-refill 45–47/60 (ruido de semilla; ronda 4 era 47/60). Sketch ESP32:
+        524978 B (40%), RAM 109212 B (33%). **Upload a `/dev/ttyUSB0` completado y verificado (hash + RTS).**
+      - Archivos: `config.h` (HOVER_ALT=340, sin NOSE_ANGLE/PIP_MARGIN), `renderer.h` + `renderer_canvas.h/cpp`
+        (`lineShade`), `tanker.h/cpp` (manguera/cesta única, sin dockPort/nosePort, drawDrogue sin kind),
+        `game.cpp` (updateView zoom macro, minimap gate, drawProbe/drawDockingPiP), `test_pc.cpp`, `tanker_demo.cpp`.
+        `esp32LanderComposite/src/` sincronizado (`diff` limpio salvo `DEMO_LEVEL_FORCE=2`).
+   29. **Nave cisterna aérea, ronda 5b (refine 3) — mini-juego de docking + cisterna grande en zoom out (8/8/2026):**
+       Petición del usuario: convertir el acoplamiento/repostaje en un **mini-juego de mantenimiento** durante toda la
+       conexión, con probe visible sin círculo brillante en la punta y cisterna más grande solo en zoom out (hitbox sin
+       cambios).
+      - **Hold de 1 s + mini-juego de corrección**: `Tanker` añade `dockOffsetX/Y`, `dockLockTimer`, `fuelFlowing` y
+        `dockBreakTimer`. `beginDock(vx,vy)` engancha con offset inicial suave. `update()` docked convierte la entrada
+        del joystick (`ship.velX`) en **empujón horizontal** del probe dentro de la cesta; un **muelle de centrado**
+        suave devuelve el probe al punto de alineación con stick neutro. Hay que mantener el probe dentro de
+        `TANKER_DOCK_TOL_X=8`/`TANKER_DOCK_TOL_Y=5` durante `TANKER_DOCK_LOCK_TIME=1.0 s` para que empiece a fluir el
+        combustible; si se sale de `TANKER_DOCK_BREAK_TOL_X=12`/`TANKER_DOCK_BREAK_TOL_Y=8` durante
+        `TANKER_DOCK_BREAK_TIME=0.4 s`, `breakAway()` libera el probe. El combustible sigue fluyendo incrementalmente
+        (`TANKER_REFUEL_RATE=200/s`) mientras se mantenga alineado; al llenarse la cisterna se va.
+      - **Probe rediseñado**: `drawProbe` ahora dibuja una **flecha sólida triangular** en la punta (sin círculo
+        brillante), con la base brillante en el punto de contacto físico (`TANKER_NOZZLE_LEN`). El vástago sigue siendo
+        una varilla fina de dos carriles.
+      - **Feedback visual en el PiP**: `drawDockingPiP` añade un **anillo de estado** alrededor de la cesta (verde =
+        repostando, amarillo = alineando/enganchado, rojo = desalineado) y una pequeña cruz que marca la posición real de
+        la punta del probe respecto al asiento.
+      - **Cisterna más grande solo en zoom out**: `Tanker::draw()` usa `drawScale = viewScale*1.6f` para el globo del
+        zeppelin cuando `viewScale < 1.0f`; en zoom-in forzado se conserva la escala actual. La hitbox física
+        (`hitsHull`) y el punto de enganche (`portY`, `drogueX/Y`) **no cambian**.
+      - **Demo AI adaptado**: durante `tanker.docked` el autopilot corrige el offset horizontal con el stick para mantener
+        el probe centrado y evitar rupturas. El breakaway por motor solo afecta al jugador (`!demo`).
+      - **HUD**: mientras está enganchado pero aún no fluye combustible muestra `DOCKING` parpadeante; una vez fluye,
+        `REFUELING` sólido.
+      - Validación: `test_pc` **949 ALL CHECKS PASSED** (nuevos checks: hold de 1 s sin fuel, ruptura tras 0.4 s fuera de
+        tolerancia, fuel fluye tras lock). `tanker_demo 1`: dock frame 0, refill completo frame 595. `demo_sim 60 seeds`
+        con `DEMO_LEVEL_FORCE=0`: **47% win rate** (sin cambios; el tanker no forzado no afecta la mayoría de demos).
+        Sketch ESP32: **525086 B (40%)**, RAM **109236 B (33%)**. **Upload a `/dev/ttyUSB0` verificado.**
+       - Archivos: `config.h` (`TANKER_DOCK_LOCK_TIME/BREAK_TIME/BREAK_TOL_*`), `tanker.h/cpp` (`dockOffsetX/Y`,
+         `fuelFlowing`, hold/break logic, escala visual condicional), `game.cpp` (nudge desde `input.angle`, feedback PiP,
+         probe flecha sólida, demo AI docked, HUD DOCKING/REFUELING), `test_pc.cpp`. `esp32LanderComposite/src/`
+         sincronizado (`DEMO_LEVEL_FORCE=2`).
+   29b. **Visual plutónico de la cisterna (22/8/2026)** — globo y góndola rediseñados:
+       - **Globo**: elipsoide relleno por filas con `lineShade` (brillo 120→160, más claro al centro) + contorno 255 en
+         los bordes + arco de resalte superior (200) + **franja oscura a media altura** (3 filas, brillo 60→80) que
+         reemplaza a la antigua línea central resaltada (que se leía como un corte).
+       - **Góndola**: cabina aerodinámica con contorno `\___|` — nariz en diagonal que toca el casco (`gNoseTopX,gy`),
+         panza plana (`___`) y popa vertical (`|`) pegada al mismo `gy` que el borde inferior del globo, sin arista de
+         techo separada. **Rellenada** como el globo (trapezoide con degradado `lineShade` 150→120 descendiendo,
+         izquierda inclinada de `gNoseTopX` a `gNoseBotX`), conservando ventana/luz 230. **Se quitaron los 2 cables de
+         soporte** que la hacían parecer colgando (ahora es una cabina pegada al casco).
+       - Validación: `test_pc` **950 ALL CHECKS PASSED**, sketch ESP32 **576038 B (43%)** / RAM 109260 B (33%).
+         `tanker.cpp` sincronizado en `esp32LanderComposite/src/`; **upload a `/dev/ttyUSB0` verificado**.
+
+(End of file - total 689 lines)

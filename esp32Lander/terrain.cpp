@@ -270,3 +270,15 @@ int Terrain::checkLanding(float left, float right, float bottom, float rotation,
     }
     return 0;
 }
+
+float Terrain::yAt(float x, float fallback) const
+{
+    for (int i = 0; i < (int)lines.size(); i++) {
+        const TerrainLine &l = lines[i];
+        if (x >= l.x1 && x <= l.x2 && l.x2 != l.x1) {
+            float t = (x - l.x1) / (l.x2 - l.x1);
+            return l.y1 + (l.y2 - l.y1) * t;
+        }
+    }
+    return fallback;
+}

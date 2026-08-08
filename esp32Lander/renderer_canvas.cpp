@@ -95,6 +95,36 @@ const unsigned char *findGlyph(char c)
 
 } // namespace
 
+bool RendererCanvas::clipTest(float x, float y) const
+{
+    return !clipOn ||
+           (x >= clipX && x < clipX + clipW && y >= clipY && y < clipY + clipH);
+}
+
+void RendererCanvas::px(float x, float y)
+{
+    if (clipTest(x, y)) pixel(x, y);
+}
+
+void RendererCanvas::pxShade(float x, float y, int b)
+{
+    if (clipTest(x, y)) pixelShade(x, y, b);
+}
+
+void RendererCanvas::setClip(float x, float y, float w, float h)
+{
+    clipX = x;
+    clipY = y;
+    clipW = w;
+    clipH = h;
+    clipOn = w > 0.0f && h > 0.0f;
+}
+
+void RendererCanvas::clearClip()
+{
+    clipOn = false;
+}
+
 void RendererCanvas::line(float x0, float y0, float x1, float y1)
 {
     int x = (int)roundf(x0), y = (int)roundf(y0);
@@ -103,13 +133,13 @@ void RendererCanvas::line(float x0, float y0, float x1, float y1)
     if (x == xe) {
         int step = y < ye ? 1 : -1;
         for (int cy = y; cy != ye + step; cy += step)
-            pixel((float)x, (float)cy);
+            px((float)x, (float)cy);
         return;
     }
     if (y == ye) {
         int step = x < xe ? 1 : -1;
         for (int cx = x; cx != xe + step; cx += step)
-            pixel((float)cx, (float)y);
+            px((float)cx, (float)y);
         return;
     }
 
@@ -118,7 +148,23 @@ void RendererCanvas::line(float x0, float y0, float x1, float y1)
     int err = dx + dy;
 
     for (;;) {
-        pixel((float)x, (float)y);
+        px((float)x, (float)y);
+        if (x == xe && y == ye) break;
+        int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x += sx; }
+        if (e2 <= dx) { err += dx; y += sy; }
+    }
+}
+
+void RendererCanvas::lineShade(float x0, float y0, float x1, float y1, int brightness)
+{
+    int x = (int)roundf(x0), y = (int)roundf(y0);
+    int xe = (int)roundf(x1), ye = (int)roundf(y1);
+    int dx = abs(xe - x), sx = x < xe ? 1 : -1;
+    int dy = -abs(ye - y), sy = y < ye ? 1 : -1;
+    int err = dx + dy;
+    for (;;) {
+        pxShade((float)x, (float)y, brightness);
         if (x == xe && y == ye) break;
         int e2 = 2 * err;
         if (e2 >= dy) { err += dy; x += sx; }
@@ -132,7 +178,7 @@ void RendererCanvas::rect(float x, float y, float w, float h)
     int iw = (int)roundf(w), ih = (int)roundf(h);
     for (int row = iy; row < iy + ih; row++) {
         for (int col = ix; col < ix + iw; col++) {
-            pixel((float)col, (float)row);
+            px((float)col, (float)row);
         }
     }
 }
@@ -142,14 +188,14 @@ void RendererCanvas::circle(float cx, float cy, float r)
     int xc = (int)roundf(cx), yc = (int)roundf(cy), rr = (int)roundf(r);
     int x = 0, y = rr, d = 1 - rr;
     while (x <= y) {
-        pixel((float)(xc + x), (float)(yc + y));
-        pixel((float)(xc - x), (float)(yc + y));
-        pixel((float)(xc + x), (float)(yc - y));
-        pixel((float)(xc - x), (float)(yc - y));
-        pixel((float)(xc + y), (float)(yc + x));
-        pixel((float)(xc - y), (float)(yc + x));
-        pixel((float)(xc + y), (float)(yc - x));
-        pixel((float)(xc - y), (float)(yc - x));
+        px((float)(xc + x), (float)(yc + y));
+        px((float)(xc - x), (float)(yc + y));
+        px((float)(xc + x), (float)(yc - y));
+        px((float)(xc - x), (float)(yc - y));
+        px((float)(xc + y), (float)(yc + x));
+        px((float)(xc - y), (float)(yc + x));
+        px((float)(xc + y), (float)(yc - x));
+        px((float)(xc - y), (float)(yc - x));
         if (d < 0) d += 2 * x + 3;
         else { d += 2 * (x - y) + 5; y--; }
         x++;
@@ -165,7 +211,7 @@ void RendererCanvas::text(float x, float y, const char *s)
         for (int row = 0; row < 7; row++) {
             unsigned char b = g[row];
             for (int col = 0; col < 5; col++) {
-                if (b & (1 << (4 - col))) pixel((float)(cx + col), (float)(cy + row));
+                if (b & (1 << (4 - col))) px((float)(cx + col), (float)(cy + row));
             }
         }
         cx += 6;
@@ -190,8 +236,8 @@ void RendererCanvas::textScaled(float x, float y, const char *s, float scale, in
                     if (b & (1 << (4 - col))) {
                         for (int yy = 0; yy < s_; yy++)
                             for (int xx = 0; xx < s_; xx++)
-                                pixelShade((float)(gx + col * s_ + xx),
-                                           (float)(gy + row * s_ + yy), brightness);
+                                pxShade((float)(gx + col * s_ + xx),
+                                        (float)(gy + row * s_ + yy), brightness);
                     }
                 }
             }

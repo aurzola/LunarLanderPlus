@@ -26,6 +26,7 @@ public:
     const std::vector<TerrainLine>& getLines() const { return lines; }
     float getWidth() const { return tileWidth; }
     int checkLanding(float left, float right, float bottom, float rotation, float vy, float vx);
+    float yAt(float x, float fallback = 500.0f) const;
 
 private:
     std::vector<TerrainLine> lines;
