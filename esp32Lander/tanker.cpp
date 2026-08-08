@@ -150,14 +150,22 @@ bool Tanker::update(float dt, Ship& ship)
         float sc = ship.scale;
 
         // Docking mini-game: the joystick nudges the ship's offset relative to
-        // the drogue. The player must keep the probe tip inside the basket
-        // while the tanker drifts/bobs/sways.
-        float nudgeSpeed = 18.0f * dt; // world units per second of joystick deflection
+        // the drogue. The real drogue is a funnel: while the probe is threaded
+        // into the cone mouth the tapered walls pull it home (centering), so
+        // the player only needs to seat the probe — not fight a twitchy hold.
+        // Nudge is deliberately low-sensitivity so a slight stick drift does
+        // not drag the probe out of the cone.
+        float nudgeSpeed = 9.0f * dt; // world units per second of joystick deflection
         dockOffsetX += ship.velX * nudgeSpeed;
         dockOffsetY += ship.velY * nudgeSpeed;
-        // Soft centering spring so a neutral stick returns to aligned.
-        dockOffsetX -= dockOffsetX * 1.5f * dt;
-        dockOffsetY -= dockOffsetY * 1.5f * dt;
+        // Funnel centering: strong pull while seated inside the cone, a firm
+        // recovery spring outside so the probe is always pulled back toward
+        // the mouth rather than drifting off.
+        bool seated = fabsf(dockOffsetX) <= TANKER_DOCK_TOL_X &&
+                      fabsf(dockOffsetY) <= TANKER_DOCK_TOL_Y;
+        float pull = seated ? TANKER_CONE_GUIDE : (TANKER_CONE_GUIDE * 0.3f);
+        dockOffsetX -= dockOffsetX * pull * dt;
+        dockOffsetY -= dockOffsetY * pull * dt;
 
         // Clamp to a reasonable control range.
         if (dockOffsetX > 18.0f) dockOffsetX = 18.0f;
@@ -245,8 +253,8 @@ bool Tanker::hitsHull(float shipX, float shipY) const
 {
     if (!active || docked || done) return false;
     float halfW = TANKER_HULL_W * 0.5f + TANKER_HULL_MARGIN;
-    float halfH = TANKER_HULL_H * 0.5f + TANKER_HULL_MARGIN;
-    return fabsf(shipX - bodyX) < halfW && fabsf(shipY - bodyY) < halfH;
+    float balloonHalfH = 5.5f + TANKER_HULL_MARGIN * 0.5f;
+    return fabsf(shipX - bodyX) < halfW && fabsf(shipY - bodyY) < balloonHalfH;
 }
 
 void Tanker::destroy()

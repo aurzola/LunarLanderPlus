@@ -390,6 +390,7 @@ void loop()
     if (game.state != lastGameState) {
         if (game.state == STATE_CRASHED) {
             if (game.lavaBurnGet()) Audio::playBurn();
+            else if (game.tankerCrashGet()) Audio::playTankerExplosion();
             else Audio::playExplosion();
         }
         lastGameState = game.state;

@@ -785,7 +785,7 @@ void Game::checkCollisions()
         if (fuel < 0) fuel = 0;
         score += 5;
         state = STATE_CRASHED;
-        resetTimer = CRASH_RESET_DELAY;
+        resetTimer = TANKER_CRASH_DURATION;
         return;
     }
 

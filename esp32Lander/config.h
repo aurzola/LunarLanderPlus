@@ -33,6 +33,7 @@ const float LAND_HARD_VX = 0.15f;
 const float LAND_MAX_ROTATION = 5.0f;
 
 const float CRASH_RESET_DELAY = 4.0f;
+const float TANKER_CRASH_DURATION = 3.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
@@ -243,8 +244,8 @@ const float TANKER_DRIFT_SPEED = 9.0f;
 const float TANKER_DRIFT_RANGE = 40.0f;
 const float TANKER_BOB_AMP = 3.0f;
 const float TANKER_BOB_SPEED = 0.9f;
-const float TANKER_DOCK_TOL_X = 8.0f;
-const float TANKER_DOCK_TOL_Y = 5.0f;
+const float TANKER_DOCK_TOL_X = 12.0f;       // cone mouth: easy to seat the probe
+const float TANKER_DOCK_TOL_Y = 8.0f;
 const float TANKER_DOCK_ZONE_X = 90.0f;
 const float TANKER_DOCK_ZONE_Y = 45.0f;
 const float TANKER_HOSE_LEN = 20.0f;         // drogue hangs this far from the hull
@@ -263,12 +264,16 @@ const float TANKER_LEAVE_SPEED = 1.4f;
 const float TANKER_LEAVE_DIST = 90.0f;
 const float TANKER_NOZZLE_LEN = 8.0f;    // module refuel probe offset from ship center
 
-// Docking mini-game: hold the probe in the drogue for 1 second before fuel
-// starts to flow, then keep it aligned while the tanker drifts/bobs/sways.
-// Going outside the larger break tolerance for this long breaks the link.
-const float TANKER_DOCK_LOCK_TIME = 1.0f;
-const float TANKER_DOCK_BREAK_TIME = 0.4f;
-const float TANKER_DOCK_BREAK_TOL_X = 12.0f;
-const float TANKER_DOCK_BREAK_TOL_Y = 8.0f;
+// Docking: the drogue is a funnel. Once the probe is threaded into the cone
+// mouth it is guided home by the tapered walls (see the centering pull in
+// Tanker::update), so the player only has to seat the probe on the mouth, not
+// fight a twitchy mini-game. The connection is robust by design: steady pull
+// toward center, low nudge sensitivity, and a long hold needed to break — it
+// only lets go if you drive the probe hard to the edge and keep it there.
+const float TANKER_DOCK_LOCK_TIME = 0.4f;
+const float TANKER_DOCK_BREAK_TIME = 1.5f;
+const float TANKER_DOCK_BREAK_TOL_X = 18.0f;
+const float TANKER_DOCK_BREAK_TOL_Y = 14.0f;
+const float TANKER_CONE_GUIDE = 12.0f; // sec^-1: funnel centering pull while seated
 
 #endif

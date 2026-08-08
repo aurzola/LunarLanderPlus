@@ -877,12 +877,14 @@ static int testTanker()
         Ship shipBr;
         shipBr.reset(tkBr.drogueX(), tkBr.drogueY() + TANKER_NOZZLE_LEN);
         shipBr.scale = 1.0f;
-        shipBr.velX = 20.0f; // strong sideways nudge
+        shipBr.velX = 20.0f; // held strong sideways nudge
         shipBr.velY = 0.0f;
         tkBr.beginDock(shipBr.velX, shipBr.velY);
         CHECK(tkBr.docked);
         for (int i = 0; i < (int)(TANKER_DOCK_BREAK_TIME / GAME_DT) + 5; i++) {
             tkBr.update(GAME_DT, shipBr);
+            shipBr.velX = 20.0f; // player keeps the stick deflected
+            shipBr.velY = 0.0f;
         }
         CHECK(!tkBr.docked);
 
@@ -925,10 +927,11 @@ static int testTanker()
         CHECK(!tk3.checkDock(ship3c));
 
         // Wrong rotation: the probe points sideways instead of up into the
-        // drogue basket. Centered under the drogue with rotation 90 the probe
-        // tip lands 8 u to the side, out of the vertical tolerance.
+        // drogue basket. The module is placed left of the drogue with rotation
+        // 90, so the horizontal probe tip lands far out of the (now forgiving)
+        // horizontal tolerance.
         Ship shipW;
-        shipW.reset(tk3.drogueX() - TANKER_NOZZLE_LEN, tk3.drogueY() + TANKER_NOZZLE_LEN);
+        shipW.reset(tk3.drogueX() - 30.0f, tk3.drogueY() + TANKER_NOZZLE_LEN);
         shipW.rotation = 90.0f;
         shipW.targetRotation = 90.0f;
         shipW.scale = 1.0f;
