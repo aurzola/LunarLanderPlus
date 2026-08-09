@@ -153,8 +153,8 @@ const int FOG_SCREEN_TOP = 68;
 const int RING_COUNT = 2;
 const float RING_CY_HIGH = 360.0f;   // upper band: crossed first in the normal
                                      // (zoom-out) approach, higher in the sky
-const float RING_CY_LOW = 560.0f;    // lower band: concentric ellipse, lower
-                                     // (crossed in zoom-in), kept above terrain
+const float RING_CY_LOW = 710.0f;    // lower band: concentric ellipse,
+                                     // crossed as zoom-in activates (~alt=200)
 const int RING_SMALL_HIGH = 24;      // decorative small rocks (no collision)
 const int RING_SMALL_LOW = 30;
 const int RING_DANGER_HIGH = 8;      // big dangerous rocks (collide)

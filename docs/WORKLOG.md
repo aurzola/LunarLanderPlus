@@ -770,5 +770,12 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       nunchuck). Ejecutado: ambos árboles `OK`.
     - **Pendiente en hardware**: cablear el segundo ESP32 + conector DE-15, flashear con
       `VGA_TEST_PATTERN=1`, verificar rampa de grises/rejilla/marco, y pasar a `0` (juego).
-    - Docs actualizados: `AGENTS.md` (sección "Port a VGA" + pinado board VGA + comandos),
-      `docs/hardware.md` (sección VGA), `docs/PLAN_VGA.md` (estado → implementado).
+     - Docs actualizados: `AGENTS.md` (sección "Port a VGA" + pinado board VGA + comandos),
+       `docs/hardware.md` (sección VGA), `docs/PLAN_VGA.md` (estado → implementado).
+  32. **Ganímedes: altura de banda baja + frame-skip (9/8/2026)**: la segunda banda de rocas
+      (`RING_CY_LOW`) estaba a 560 (prácticamente al nivel del terreno) → subida a **710** para que
+      cruzar la banda coincida con el inicio del zoom-in (`alt<200`, ZOOM_IN_ALT). Banda baja queda a
+      Y=655–710 (centro–bordes), 55–210 u sobre el terreno. **Frame-skip**: la banda baja (46 rocas)
+      se dibuja cada 2 frames (`mutable frameCtr_` en `Rings`, banda 0 siempre dibuja); física y
+      colisiones siguen cada frame. Reduce ~50% el coste de dibujo de la banda más densa.
+      Verificación: `test_pc` 963 OK, `rings_demo` OK, sketch compila 576 KB (43%).
