@@ -13,7 +13,7 @@ float randf01()
 } // namespace
 
 Rings::Rings()
-    : level_(1), enabled_(false), t_(0.0f), width_(800.0f), frameCtr_(0)
+    : level_(1), enabled_(false), t_(0.0f), width_(800.0f)
 {
     bands_[0].cy = RING_CY_HIGH;
     bands_[0].drift = RING_DRIFT_HIGH;
@@ -250,13 +250,10 @@ void Rings::fillDanger(Renderer &r, const float *px, const float *py, int n) con
 void Rings::draw(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const
 {
     if (!enabled_) return;
-    int frame = ++frameCtr_;
 
     drawFog(r, t, viewX, viewY, viewScale);
 
     for (int b = 0; b < RING_COUNT; b++) {
-        if (b == 1 && (frame & 1)) continue;
-
         const Band &band = bands_[b];
         int n = band.smallCount + band.dangerCount;
         for (int i = 0; i < n; i++) {

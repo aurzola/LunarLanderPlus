@@ -61,7 +61,6 @@ private:
     float t_;
     float width_;    // world width over which rocks wrap
     Band bands_[RING_COUNT];
-    mutable int frameCtr_;
 
     float rockY(const Terrain &t, int b, int i) const;
     float bandY(const Terrain &t, int b, float x) const;
