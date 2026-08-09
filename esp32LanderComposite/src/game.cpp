@@ -754,10 +754,12 @@ void Game::updateView()
         return;
     }
 
-    if (!zoomedIn && ship.altitude < ZOOM_IN_ALT) {
+    float zi = moonHasRings(level) ? 120.0f : ZOOM_IN_ALT;
+    float zo = moonHasRings(level) ? 220.0f : ZOOM_OUT_ALT;
+    if (!zoomedIn && ship.altitude < zi) {
         float zm = moonHasRings(level) ? 2.0f : 5.0f;
         setZoom(true, zm);
-    } else if (zoomedIn && ship.altitude > ZOOM_OUT_ALT) {
+    } else if (zoomedIn && ship.altitude > zo) {
         setZoom(false);
     }
 
