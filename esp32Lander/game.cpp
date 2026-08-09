@@ -1124,7 +1124,7 @@ void Game::draw(Renderer &r)
         };
         centerText(40, "Copyright Alex Urzola 2026/Opencode");
 
-        if ((ship.counter % 50) < 30) r.text(103, 183, "PRESS BUTTON TO PLAY");
+        if ((ship.counter % 50) < 30) r.text(170, 120, "PRESS BUTTON TO PLAY");
 
         auto SX = [](float x) { return x * 1.2f + 26.0f; };
         auto SY = [](float y) { return y * 1.2f + 56.0f; };
@@ -1451,11 +1451,11 @@ void Game::draw(Renderer &r)
             // deploy was refused. Nothing is shown once the chute is spent.
             if (chuteAvailable) {
                 if (chuteTooLowTimer > 0.0f) {
-                    if ((ship.counter % 40) < 26) r.text(22, 12, "TOO LOW");
+                    if ((ship.counter % 40) < 26) r.text(22, 62, "TOO LOW");
                 } else if (ship.chute) {
-                    if ((ship.counter % 30) < 22) r.text(22, 12, "CHUTE");
+                    if ((ship.counter % 30) < 22) r.text(22, 62, "CHUTE");
                 } else {
-                    r.text(22, 12, "CHUTE");
+                    r.text(22, 62, "CHUTE");
                 }
             }
         }

@@ -26,7 +26,7 @@ const int PIN_VSYNC = 33;
 
 // 1 = dibuja la rampa de grises + rejilla (validación de grises y sync HS/VS);
 // 0 = el juego. Validar el patrón en el monitor antes de pasar a 0.
-#define VGA_TEST_PATTERN 1
+#define VGA_TEST_PATTERN 0
 
 #define CONTROLS_WIRED 1
 #define NUNCHUCK_TRIGGER_Z 1
@@ -439,9 +439,9 @@ void setup()
     // scaling in the line ISR. setFrameStore must run before init() because
     // init() allocates the (external) frame buffer.
     display.setFrameStore(fbFront, XRES, YRES);
-    bool vgaOk = display.init(VGAMode::MODE640x480, PIN_HSYNC, PIN_VSYNC,
+    bool vgaOk = display.init(VGAMode::MODE320x240, PIN_HSYNC, PIN_VSYNC,
                               PIN_DAC, /*voltageDivider=*/true);
-    Serial.printf("[vga] init=%d mode=%s\n", (int)vgaOk, "MODE640x480");
+    Serial.printf("[vga] init=%d mode=%s\n", (int)vgaOk, "MODE320x240");
 
     renderer = new RendererVGA(fbBack, fbFront, XRES, YRES, vgaWaitVBlank);
 }
