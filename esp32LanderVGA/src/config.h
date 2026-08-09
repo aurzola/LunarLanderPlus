@@ -145,27 +145,22 @@ const int FOG_SCREEN_TOP = 68;
 // passable gap (RING_GAP_MIN) so it is never impossible.
 // Ganymede debris bands (franjas de roca): the moon's debris is rendered as a
 // few bands of hollow rock polygons hugging the terrain silhouette (the same
-// "band" concept as Titan's fog sheets, but made of rocks). Each band sits at
-// a fixed height above the terrain and holds danger rocks drawn only as
-// outlines (hollow), of varying irregular shape and size. The ship weaves down
-// through both without touching a rock. Higher band is denser (harder), the
-// lower sparser, but both keep a guaranteed passable gap (RING_GAP_MIN).
-const int RING_COUNT = 2;
-const float RING_CY_HIGH = 360.0f;   // upper band: crossed first in the normal
-                                     // (zoom-out) approach, higher in the sky
-const float RING_CY_LOW = 480.0f;    // center ~425, well above terrain even with jitter
-const int RING_SMALL_HIGH = 24;      // decorative small rocks (no collision)
-const int RING_SMALL_LOW = 30;
-const int RING_DANGER_HIGH = 8;      // big dangerous rocks (collide)
-const int RING_DANGER_LOW = 16;      // more, so the lower band is harder
-const float RING_DRIFT_LOW = 4.0f;     // horizontal drift (world u/s)
-const float RING_DRIFT_HIGH = -6.0f;   // opposite direction for the upper band
-const float RING_SMALL_MIN_R = 1.2f;  // small rock radius range (never collide)
+// band" concept as Titan's fog sheets, but made of rocks). A single debris
+// band with a density gradient: smaller decorative rocks cluster in the upper
+// half (easier to pass through), bigger dangerous rocks pack tighter in the
+// lower half (riskier the deeper you go). The guaranteed passable gap
+// (RING_GAP_MIN) is maintained between danger rocks.
+const int RING_COUNT = 1;
+const float RING_CY = 420.0f;        // band center Y (world), follows elliptical arc
+const float RING_DRIFT = -5.0f;      // horizontal drift (world u/s)
+const int RING_SMALL_COUNT = 30;     // decorative small rocks, upper half: [-JITTER, 0]
+const int RING_DANGER_COUNT = 24;    // dangerous rocks, lower half: [0, +JITTER]
+const float RING_SMALL_MIN_R = 1.2f; // small rock radius range (never collide)
 const float RING_SMALL_MAX_R = 3.0f;
 const float RING_DANGER_MIN_R = 7.0f; // big rock radius range (collides)
 const float RING_DANGER_MAX_R = 13.0f;
-const float RING_Y_JITTER = 45.0f;     // vertical scatter: rocks spread up/down,
-                                       // not a single row
+const float RING_Y_JITTER = 75.0f;    // vertical scatter (single thick band),
+                                      // upper half small rocks, lower half danger
 const float RING_SPIN_MAX = 0.6f;      // rock rotation speed (rad/s)
 const float RING_GAP_MIN = 22.0f;      // gap between danger rocks (u); grouped so
                                        // they are tighter but still passable

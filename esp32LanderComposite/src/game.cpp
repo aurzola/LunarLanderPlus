@@ -754,13 +754,31 @@ void Game::updateView()
         return;
     }
 
-    float zi = moonHasRings(level) ? 80.0f : ZOOM_IN_ALT;
-    float zo = moonHasRings(level) ? 160.0f : ZOOM_OUT_ALT;
-    if (!zoomedIn && ship.altitude < zi) {
-        float zm = moonHasRings(level) ? 2.0f : 5.0f;
-        setZoom(true, zm);
-    } else if (zoomedIn && ship.altitude > zo) {
-        setZoom(false);
+    if (moonHasRings(level)) {
+        // Rings zoom: band-proximity instead of altitude.  Enter the band
+        // region (with a margin) -> zoom-in so the player can weave through
+        // the rocks; exit the region -> zoom-out back to the normal view.
+        // Hysteresis (enter/exit margins differ) prevents flickering when
+        // the ship flies along the band border.
+        float bandCY = rings.centerBandY(terrain, ship.posX);
+        float bandTop = bandCY - RING_Y_JITTER - 30.0f;
+        float bandBot = bandCY + RING_Y_JITTER + 30.0f;
+        float bandTopOut = bandCY - RING_Y_JITTER - 60.0f;
+        float bandBotOut = bandCY + RING_Y_JITTER + 60.0f;
+
+        if (!zoomedIn && ship.posY >= bandTop && ship.posY <= bandBot) {
+            setZoom(true, 2.0f);
+        } else if (zoomedIn && (ship.posY < bandTopOut || ship.posY > bandBotOut)) {
+            setZoom(false);
+        }
+    } else {
+        float zi = ZOOM_IN_ALT;
+        float zo = ZOOM_OUT_ALT;
+        if (!zoomedIn && ship.altitude < zi) {
+            setZoom(true);
+        } else if (zoomedIn && ship.altitude > zo) {
+            setZoom(false);
+        }
     }
 
     float sx = ship.posX * viewScale + viewX;
@@ -1487,10 +1505,8 @@ void Game::draw(Renderer &r)
                 centerText(90, "YOU BURNED");
                 centerText(102, "LAVA DESTROYED THE SHIP");
             } else if (ringHit) {
-                    // In zoom-in place the two lines below the lower band so
-                    // they read clearly instead of overlapping the debris.
                     if (zoomedIn) {
-                    float bandSy = rings.lowerBandY(terrain, ship.posX) * viewScale + viewY;
+                    float bandSy = rings.centerBandY(terrain, ship.posX) * viewScale + viewY;
                     float yTxt = bandSy + 18.0f;
                     if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
                     if (yTxt < 20.0f) yTxt = 20.0f;

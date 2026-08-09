@@ -575,11 +575,10 @@ static int testRings()
     r.reset(4, t);
     CHECK(r.active());
     CHECK(r.ringCount() == RING_COUNT);
-    CHECK(r.rocksInRing(0) == RING_SMALL_HIGH + RING_DANGER_HIGH);
-    CHECK(r.rocksInRing(1) == RING_SMALL_LOW + RING_DANGER_LOW);
-    CHECK(r.rockDanger(0, 0) == false);
-    CHECK(r.rockDanger(0, RING_SMALL_HIGH) == true);
-    CHECK(r.rockDanger(0, RING_SMALL_HIGH + RING_DANGER_HIGH) == false);
+    CHECK(r.rocksInRing() == RING_SMALL_COUNT + RING_DANGER_COUNT);
+    CHECK(r.rockDanger(0) == false);
+    CHECK(r.rockDanger(RING_SMALL_COUNT) == true);
+    CHECK(r.rockDanger(RING_SMALL_COUNT + RING_DANGER_COUNT) == false);
     r.reset(1, t);
     CHECK(!r.active());
 
@@ -587,19 +586,14 @@ static int testRings()
     // Some rock must be visible above the terrain and another reachable to hit.
     float wx = 0, wy = 0;
     bool sawVisible = false;
-    for (int k = 0; k < RING_COUNT; k++) {
-        for (int i = 0; i < r.rocksInRing(k); i++) {
-            if (r.rockVisible(t, k, i, wx, wy)) { sawVisible = true; break; }
-        }
-        if (sawVisible) break;
+    for (int i = 0; i < r.rocksInRing() && !sawVisible; i++) {
+        if (r.rockVisible(t, i, wx, wy)) { sawVisible = true; }
     }
     CHECK(sawVisible);
     // Park the ship exactly on the first DANGER rock -> guaranteed hit.
     float rx = 0, ry = 0;
-    for (int k = 0; k < RING_COUNT && ry == 0.0f && rx == 0.0f; k++) {
-        for (int i = 0; i < r.rocksInRing(k); i++) {
-            if (r.rockVisible(t, k, i, rx, ry) && r.rockDanger(k, i)) break;
-        }
+    for (int i = 0; i < r.rocksInRing(); i++) {
+        if (r.rockVisible(t, i, rx, ry) && r.rockDanger(i)) break;
     }
     CHECK(r.hitsShip(t, rx, ry, RING_SHIP_RADIUS));
     // Far above the highest possible band (terrain top - RING_HEIGHT_HIGH) ->
@@ -609,14 +603,12 @@ static int testRings()
     // Rings move over time (positions are a function of the advancing phase).
     float p0x = 0, p0y = 0, p1x = 999, p1y = 999;
     bool vis0 = false, vis1 = false;
-    for (int k = 0; k < RING_COUNT && !vis0; k++)
-        for (int i = 0; i < r.rocksInRing(k); i++)
-            if (r.rockVisible(t, k, i, p0x, p0y)) { vis0 = true; break; }
+    for (int i = 0; i < r.rocksInRing() && !vis0; i++)
+        if (r.rockVisible(t, i, p0x, p0y)) { vis0 = true; }
     CHECK(vis0);
     for (int i = 0; i < 2000; i++) r.update(GAME_DT);
-    for (int k = 0; k < RING_COUNT && !vis1; k++)
-        for (int i = 0; i < r.rocksInRing(k); i++)
-            if (r.rockVisible(t, k, i, p1x, p1y)) { vis1 = true; break; }
+    for (int i = 0; i < r.rocksInRing() && !vis1; i++)
+        if (r.rockVisible(t, i, p1x, p1y)) { vis1 = true; }
     CHECK(vis1);
     CHECK(p0x != p1x || p0y != p1y);
 
