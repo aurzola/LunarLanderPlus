@@ -38,7 +38,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 2;  // TEMP: demo plays level 2 (Io) for tanker showcase
+const int DEMO_LEVEL_FORCE = 0;  // el demo elige nivel al azar 1..DEMO_MAX_LEVEL
 const int START_LEVEL = 1;  // el juego comienza por el nivel 1 (LUNA)
 const float DEMO_POWER_RATE = 0.4f;
 
@@ -275,5 +275,24 @@ const float TANKER_DOCK_BREAK_TIME = 1.5f;
 const float TANKER_DOCK_BREAK_TOL_X = 18.0f;
 const float TANKER_DOCK_BREAK_TOL_Y = 14.0f;
 const float TANKER_CONE_GUIDE = 12.0f; // sec^-1: funnel centering pull while seated
+
+// Player parachute: a one-shot steerable canopy deployed with C+Z during
+// flight. Once deployed it cannot be retracted. While open the free fall is
+// braked toward PARACHUTE_SINK (below the hard-landing threshold, above the
+// perfect one), the stick steers laterally instead of rotating the ship
+// (dirigible glide), and wind acts on the canopy like a sail (drift gain).
+// The engine still works (variant B), so a short burst can flare the
+// touchdown into a perfect landing (+50 fuel) — the tradeoff is that a pure
+// glide always lands hard (no bonus) but saves the fuel the descent would
+// have burned, keeping the budget alive to reach the tanker next level.
+// Deployment is ignored below PARACHUTE_MIN_ALT (canopy can't open in time).
+// NOTE (future): variant A would disable the engine entirely while deployed,
+// making every chute landing a hard one — a starker fuel-vs-bonus tradeoff.
+const float PARACHUTE_OPEN_TIME = 0.5f;    // s, canopy inflates (physics ramps in)
+const float PARACHUTE_SINK = 0.09f;        // terminal descent while open (u/tick)
+const float PARACHUTE_MIN_ALT = 80.0f;     // u, deploy ignored below this
+const float PARACHUTE_STEER = 0.0012f;     // lateral glide accel from the stick (u/tick)
+const float PARACHUTE_DRIFT_MAX = 0.30f;   // horizontal cap while open (u/tick)
+const float PARACHUTE_WIND_GAIN = 2.0f;    // canopy sail: wind drift multiplier
 
 #endif

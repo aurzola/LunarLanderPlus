@@ -41,6 +41,8 @@ public:
     float windStrength;
     int windDir;
     float gravity;
+    bool chute;          // parachute deployed (one-shot per level)
+    float chuteOpen;     // 0..1 canopy opening ramp (physics + visual)
 
 private:
     ShipShape shapes[6];

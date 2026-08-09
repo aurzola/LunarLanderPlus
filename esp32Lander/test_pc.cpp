@@ -961,6 +961,86 @@ static int testTanker()
     return 0;
 }
 
+static int testParachute()
+{
+    // Braking to the sink: with the canopy fully open the fall converges on
+    // PARACHUTE_SINK instead of accelerating toward TOP_SPEED.
+    Ship s;
+    s.reset(400, 60);
+    s.chute = true;
+    s.velY = 0.3f;
+    for (int i = 0; i < 300; i++) s.update();
+    CHECK(fabsf(s.chuteOpen - 1.0f) < 1e-3f);
+    CHECK(s.velY <= PARACHUTE_SINK + 1e-4f);
+
+    // Engine flare while deployed pushes below the sink (perfect landing).
+    Ship f;
+    f.reset(400, 60);
+    f.chute = true;
+    f.chuteOpen = 1.0f;
+    f.velY = 0.3f;
+    f.setThrust(1.0f);
+    for (int i = 0; i < 800; i++) f.update();
+    CHECK(f.velY < PARACHUTE_SINK);
+
+    // Horizontal drift is capped by the canopy.
+    Ship d;
+    d.reset(400, 60);
+    d.chute = true;
+    d.chuteOpen = 1.0f;
+    d.velX = 2.0f;
+    d.update();
+    CHECK(fabsf(d.velX) <= PARACHUTE_DRIFT_MAX + 1e-5f);
+
+    // Wind works as a sail: twice the push while the chute is open.
+    Ship w1, w2;
+    w1.reset(400, 60); w2.reset(400, 60);
+    w1.velX = w2.velX = 0.0f;
+    w1.windStrength = w2.windStrength = 0.5f;
+    w1.windDir = w2.windDir = 1;
+    w1.chute = false; w2.chute = true;
+    w2.chuteOpen = 1.0f;
+    w1.update(); w2.update();
+    CHECK(fabsf(w2.velX - 2.0f * w1.velX) < 1e-4f);
+
+    // reset() clears the chute so each level starts with it available again.
+    Ship r;
+    r.reset(400, 60);
+    r.chute = true; r.chuteOpen = 1.0f;
+    r.reset(400, 60);
+    CHECK(!r.chute && r.chuteOpen == 0.0f);
+
+    // Deploy through the game: high in the descent an edge toggle deploys.
+    Game g;
+    g.newGame();
+    for (int i = 0; i < 300; i++) g.update();
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(g.ship.altitude > PARACHUTE_MIN_ALT);
+    g.input.chuteToggle = true;
+    g.update();
+    CHECK(g.ship.chute);
+
+    // One-shot: a second toggle while already deployed does nothing.
+    g.input.chuteToggle = true;
+    g.update();
+    CHECK(g.ship.chute);
+
+    // Deploy refused too low: with the altitude gate under MIN_ALT the toggle
+    // keeps the chute stowed and flashes the warning.
+    Game g2;
+    g2.newGame();
+    g2.tanker.done = true;
+    for (int i = 0; i < 300; i++) g2.update();
+    CHECK(g2.state == STATE_PLAYING);
+    g2.ship.altitude = PARACHUTE_MIN_ALT - 20.0f;
+    g2.input.chuteToggle = true;
+    g2.update();
+    CHECK(!g2.ship.chute);
+    CHECK(g2.chuteTooLow() > 0.0f);
+
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -991,6 +1071,8 @@ int main()
     r = testTwister();
     if (r) return r;
     r = testTanker();
+    if (r) return r;
+    r = testParachute();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

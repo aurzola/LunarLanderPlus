@@ -1,9 +1,9 @@
 # PLAN — Puerto VGA del Lunar Lander ESP32 (proyecto paralelo)
 
-> Estado: **factibilidad estudiada, NO implementado**. Este archivo es para retomar
-> el proyecto cuando se decida. Conversación original (15/8/2026) en sesión de opencode.
->
-> Para retomar: crear rama `vga-out` y seguir el plan paso a paso (ver "Siguientes pasos").
+> Estado: **implementado (rama `vga-out`, 23/8/2026)**. `esp32LanderVGA/` existe y compila
+> (552 KB flash / RAM 112 KB estáticos + fbFront en heap, `no_ota`). Falta: cablear el segundo
+> ESP32, probar el patrón de prueba en monitor (`VGA_TEST_PATTERN=1`) y pasar a `0` (juego).
+> Plan original (factibilidad, 15/8/2026) abajo.
 
 ## Objetivo
 
@@ -60,16 +60,24 @@ del píxel.
 Variante elegida (**con divisor, 255 tonos**, `voltageDivider=true` en `init()`):
 
 ```
-GPIO25 ──[100Ω]──┬────────► VGA pin 1 (R)
-          [100Ω]─┤────────► VGA pin 2 (G)
-          [220Ω]─┴────────► VGA pin 3 (B)
+GPIO25 ──[270Ω]──┬────────► VGA pin 1 (R)
+GPIO25 ──[270Ω]─┤────────► VGA pin 2 (G)
+GPIO25 ──[270Ω]─┴────────► VGA pin 3 (B)
 GPIO32 ────────────────────► VGA pin 13 (HSYNC)
 GPIO33 ────────────────────► VGA pin 14 (VSYNC)
 GND ───────────────────────► VGA pines 5/6/7/8/10
 ```
 
+> **Corrección 23/8/2026 (agente hardware)**: el `100/100/220` original de este plan es el
+> circuito de bitluni para **dos DACs** (GPIO25→R/G, GPIO26→B). Con un solo GPIO25 en mono da
+> `3.3·75/(100+75)=1.414 V` en R/G (el spec VGA es 0.7 V → recorte de la rampa de grises) y
+> tinte por desbalance. **270 Ω en las tres ramas** = `0.717 V` en blanco, 0 V en negro,
+> gris neutro, ~29 mA totales. Alternativas: 280 Ω (0.697 V) o 330 Ω (0.611 V).
+
 Nota: GPIO25 + GPIO26 son los DAC del ESP32. Usamos solo GPIO25 (GPIO26 = audio LEDC).
 Las resistencias + los 75 Ω de terminación interna del monitor forman el divisor de voltaje.
+HSYNC/VSYNC van directos (TTL, sin terminación). No conectar el pin 9 (+5 V) ni los DDC
+(4/11/12/15). Verificar que el DevKit no use GPIO32/33 como XTAL_32K (algunos con RTC).
 
 ## Cambios de código (mínimos)
 

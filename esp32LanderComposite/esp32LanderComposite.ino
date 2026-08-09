@@ -57,6 +57,7 @@ static unsigned long lastNunchuckPrint = 0;
 static const float PWR_STICK_RATE = 0.008f;
 static bool pwrStickActive = false;
 static float powerLevel = 0.5f;
+static bool lastBothPressed = false;
 
 #if !POT_DISABLED
 static int lowPass(int prev, int raw, int shift)
@@ -260,6 +261,7 @@ static void drawCalibration(Renderer &r);
 static void readInputs()
 {
     game.input.startPressed = false;
+    game.input.chuteToggle = false;
 
 #if CONTROLS_WIRED
     nunchuck.read();
@@ -289,6 +291,13 @@ static void readInputs()
         }
     }
 
+    // C+Z together during flight deploys the one-shot parachute (edge trigger).
+    bool bothNow = nunchuck.buttonC() && nunchuck.buttonZ();
+    if (bothNow && !lastBothPressed && game.state == STATE_PLAYING) {
+        game.input.chuteToggle = true;
+    }
+    lastBothPressed = bothNow;
+
     game.input.angle = readStickAngle();
 #if !POT_DISABLED
     potLevel = readPotLevel();
@@ -296,7 +305,7 @@ static void readInputs()
 
     bool cNow = nunchuck.buttonC();
     float yDev = readStickYDev();
-    if (cNow && (yDev > 0.1f || yDev < -0.1f)) {
+    if (cNow && !bothNow && (yDev > 0.1f || yDev < -0.1f)) {
         if (!pwrStickActive) {
             pwrStickActive = true;
 #if !POT_DISABLED

@@ -709,3 +709,66 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
          `tanker.cpp` sincronizado en `esp32LanderComposite/src/`; **upload a `/dev/ttyUSB0` verificado**.
 
 (End of file - total 689 lines)
+30. **Paracaídas dirigible one-shot por nivel (23/8/2026)** — ver AGENTS.md "Paracaídas":
+    - **Diseño (confirmado con el usuario)**: desplegable una sola vez por nivel con **C+Z** en
+      vuelo (edge trigger; en el título C+Z sigue abriendo la calibración). Motor permitido
+      mientras está abierto (variante B) → un toque de motor hace el flare para aterrizar
+      perfecto. Sin motor = aterrizaje hard (sin bonus de fuel). Apertura **ignorada bajo
+      `PARACHUTE_MIN_ALT=80`** con aviso `TOO LOW` parpadeante (el dosel no abriría a tiempo).
+    - **Física** (`Ship::update()`): el dosel se infla `PARACHUTE_OPEN_TIME=0.5 s`; frena la caída
+      hacia `PARACHUTE_SINK=0.09` **solo si cae más rápido** (con `-gravity` dentro del brake para
+      que la velocidad terminal sea exactamente el sink, no sink+gravity/rate). El flare del motor
+      puede bajar de sink (aterrizaje perfecto). **Dirigible**: el stick ya no rota, **desvía
+      lateralmente** `velX += sin(angle)*PARACHUTE_STEER=0.0012` (con `chuteOpen` como rampa);
+      `Game` auto-nivela la rotación a 0° con la vela; el viento actúa como **vela ×2**
+      (`PARACHUTE_WIND_GAIN=2.0`), tope horizontal `PARACHUTE_DRIFT_MAX=0.30`. Un rayo en modo vela
+      "revuelve" el steering en vez de la rotación.
+    - **Visual** (`Ship::draw()`): paquete plegado 4×2 px sobre el casco mientras disponible;
+      desplegado = **cúpula** (arco elíptico con vértice centrado, corregido: la 1ª versión lo
+      dibujaba invertido con los picos en los bordes) + **borde festoneado** (4 chevrons) + 5
+      líneas de suspensión (`lineShade` 120) + **relleno de tela** por filas con `shadedLine`
+      (brillo 30→15, media elipse `sqrt(1-t²)`). Todo escala desde el top del casco (dy=-5) con
+      `chuteOpen` en coordenadas locales del ship. `crash()`/`reset()` limpian el chute.
+    - **HUD**: `CHUTE` sólido en `(22,220)` mientras disponible, parpadeante desplegado,
+      `TOO LOW` parpadeante 1.2 s al rechazar apertura. Línea de título
+      `C+Z: PARACHUTE (1/LEVEL)`.
+    - **Demo**: el autopilot no despliega el chute en v1 (herramienta solo del jugador).
+    - Validación: `test_pc` **963 ALL CHECKS PASSED** (8 checks nuevos: brake→sink, flare por
+      debajo de sink, tope horizontal, viento ×2, reset limpia, deploy alto, one-shot, rechazo
+      bajo + timer). `parachute_demo 1`: open=1.00 velY=0.090 sink=0.090. Sketch ESP32:
+      **575790 B (43%)** / RAM 110540 B (33%). `esp32LanderComposite/src/` sincronizado
+      (config.h, ship.h/cpp, game.h/cpp); `.ino` añade `lastBothPressed` (edge C+Z) y salta el
+      ajuste de potencia mientras ambos están pulsados. Pendiente prueba en CRT.
+
+31. **Port a VGA paralelo (23/8/2026, rama `vga-out`)** — segundo ESP32 con salida SVGA 640x480@60
+    monocromo, CRT intacto. Plan: `docs/PLAN_VGA.md`.
+    - **Decisión (con el usuario)**: dos placas dedicadas (composite ↔ VGA), driver bitluni
+      `VGA8BitDACI` embebido como fuente, `MODE640x480` con escalado 2x software del canvas
+      320x240, patrón de prueba primero.
+    - **Estructura**: `esp32LanderVGA/` = copia del composite; se quitaron `video.h/c` y
+      `renderer_esp32.*`; `.ino` reescrito (loop idéntico, `static Game`, `VGA_TEST_PATTERN`).
+    - **`src/renderer_vga.{h,cpp}`**: `RendererVGA : RendererCanvas` con doble buffer —
+      `game.draw()` pinta en `fbBack` (estático 76.8 KB); `flush()` = `waitVBlank()` +
+      `memcpy` a `fbFront`. `fbFront` es **heap** (el DRAM estático no da para dos buffers de
+      76.8 KB; patrón del composite).
+    - **`src/esp32lib/`**: ESP32Lib embebido (VGA/, Graphics/, I2S/, Tools/; podado de drivers
+      no usados). **Fork de `VGA8BitDACI`**: `setFrameStore(store,W,H)` +
+      `allocateFrameBuffer()` mapean las filas del driver dentro del store 320x240 (sin malloc
+      de 300 KB, no hay PSRAM); `interruptPixelLine()` escala 2x horizontal (repite el byte en
+      las dos muestras del 32-bit) y el `interrupt()` 2x vertical (`y>>1`). `waitVSync()`
+      bloquea hasta el blanking vertical.
+    - **`I2S_ESP32.cpp` retocado para IDF5** (core Arduino 3.3.10): `#include "driver/dac.h"`
+      (compat vía `-iwithprefixbefore driver/deprecated`) y `rtc_clk_apll_*` con firma nueva.
+    - **Pines**: GPIO25 (DAC1) → divisor **270Ω×3** en paralelo a R/G/B (verificado por el agente
+      hardware: el `100/100/220` de bitluni es para 2 DACs y en mono recortaría a 1.414 V, spec
+      0.7 V, con tinte; 270 Ω da 0.717 V neutro); HSYNC GPIO32, VSYNC GPIO33 directos (TTL);
+      audio/nunchuck/pot/start igual que el composite (el `.ino` lleva `CONTROLS_WIRED=1`).
+    - **Compila**: `--fqbn esp32:esp32:esp32 --build-property build.partitions=no_ota` →
+      **552546 B (42%)** flash, RAM estática **111940 B (34%)**, heap ~215 KB (76.8 KB al `fbFront`).
+    - **`sync.sh`** (raíz): copia las fuentes compartidas de `esp32Lander/` a ambos sketches y
+      verifica con `cmp` que queden idénticas (no toca `video.*`, renderers, `esp32lib/`, audio,
+      nunchuck). Ejecutado: ambos árboles `OK`.
+    - **Pendiente en hardware**: cablear el segundo ESP32 + conector DE-15, flashear con
+      `VGA_TEST_PATTERN=1`, verificar rampa de grises/rejilla/marco, y pasar a `0` (juego).
+    - Docs actualizados: `AGENTS.md` (sección "Port a VGA" + pinado board VGA + comandos),
+      `docs/hardware.md` (sección VGA), `docs/PLAN_VGA.md` (estado → implementado).

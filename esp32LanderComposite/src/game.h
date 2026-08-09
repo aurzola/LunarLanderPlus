@@ -28,6 +28,7 @@ struct Input {
     float angle;
     float thrust;
     float powerLevel;
+    bool chuteToggle;  // rising edge of C+Z together: deploy the parachute
 };
 
 struct WindStreak {
@@ -76,6 +77,7 @@ public:
     bool ringHitGet() const { return ringHit; }
     bool twisterCrashGet() const { return twisterCrash; }
     bool tankerCrashGet() const { return tankerCrash; }
+    float chuteTooLow() const { return chuteTooLowTimer; }
 
 private:
     float viewX, viewY, viewScale;
@@ -89,6 +91,7 @@ private:
     float windFlipTimer;
     float stormHitTimer;
     float fuelMaxTimer;
+    float chuteTooLowTimer;
     bool demoHoldAltitude;
     bool lavaBurn;
     bool ringHit;

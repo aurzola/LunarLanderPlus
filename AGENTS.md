@@ -14,6 +14,7 @@ Estética objetivo: arcade / retro auténtico.
 - `cppLander/` — versión C++ previa del juego (base antigua). Reemplazada por el port de moonlander.
 - `esp32Lander/` — port C++ std del juego moonlander, **validado en PC** (ver "Port a ESP32").
 - `esp32LanderComposite/` — sketch Arduino del ESP32 (ver "Sketch ESP32").
+- `esp32LanderVGA/` — port **VGA paralelo** a un segundo ESP32 (ver "Port a VGA").
 
 ## Port a ESP32 (ESTADO 4/8/2026)
 
@@ -22,7 +23,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 | Archivo | Contenido |
 |---------|-----------|
-| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar |
+| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
 | `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento |
 | `game.h/cpp` | Estados, zoom + minimapa, scoring, `update()` + `draw(Renderer&)` |
 | `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush) |
@@ -44,6 +45,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `twister.h/cpp` | **Torbellino de nitrógeno de Tritón (rama `twister-circ`; física v5 + dibujo de resorte/cola 21/8/2026)**: activo en niveles de Tritón (`moonHasTwister(level)`, `moonIndex==7`, i.e. nivel 8, 16, 24…). `reset(level, terrain)` coloca un vórtice que **deambula** por el mundo (`TWISTER_DRIFT_SPEED=8 u/s`, rebota en `[40,760]`) con `strength` aleatoria y giro `swirl` ±1. **Física v5 (física real, no se toca en dibujo)**: `apply(ship,terrain,stickDeg)` se hookea en `Game::update()`; al cruzar `TWISTER_RADIUS=150` captura la nave **cabalga la pared del embudo cónico** (`coneR` = radio del cono a la altura h: `TWISTER_BASE_HALF` abajo → `TWISTER_TOP_HALF` arriba) con **zig-zag en onda triangular** `triWave(swirlAngle_)` que se **cierra al descender** (`posX = cx + dir·amp·tri`, `amp` con ease `TWISTER_CAPTURE_RAMP`), gira con `TWISTER_SPIRAL_RATE=200 °/s` y desciende `velY = TWISTER_DESCENT=45·strength`. **Giro continuo**: `rotation = wobble(t) ±60°` + joystick con autoridad reducida (cap ±80). **Escape físico por profundidad** (`depth=1−h/HEIGHT`): empuje radial sostenido > `escThr` y velocidad saliente > `escVel` durante `TWISTER_ESCAPE_TICKS` → la nave sale **lanzada** (`TWISTER_FLING`+`TWISTER_SPIN_KICK`) y el grip queda off hasta salir del radio. **Cualquier contacto con el suelo estando `captured()`** → final `"YOU CRASHED" / "TWISTER SMASHED THE SHIP"`. La tormenta y el viento se apagan en Tritón. **Dibujo (21/8/2026, diseño propio nuevo, física intacta)**: en `draw(r,terrain,viewX,viewY,viewScale,zoomedIn)` un **resorte / cola de cerdo en espiral** que **arranca fino en el suelo y se ensancha hacia arriba** (`r = 4+30·tt`) — **2 espirales** en vista normal y **3** en zoom-in (`zoomedIn`, además con **5 vueltas** vs 7 para separarlas). Cada espiral es una **hélice discontinua**: segmentos rotos por gaps pseudo-aleatorios (`prand`, determinista por frame con `phase_`), jitter radial, trazo fino + una línea tenue al lado (2/3 brillo), y **brillo que desvanece al fondo de la bobina** (`front = 0.5+0.5·cos(ang)`) para dar giro 3D. **Partículas (21/8/2026)**: motas brillantes que **viajan descendiendo por las espirales** (wrapping con `t_·speed`), más numerosas, rápidas y como **blobs con estela** en zoom (30, blob 3-4 px + estela) vs puntos finos en normal (12). Labio superior tenue, motas de giro y falda de polvo pequeña abajo. API tests: `active()`/`coreX()`/`coreY(terrain)`/`strength()`/`captured()`/`justEscaped()`. `draw` recibe `zoomedIn`. Ver WORKLOG #22 |
 | `twister_demo.cpp` | Prueba de visualización en PC: terreno generado + torbellino → PPM en `frames/` (selftest `active`; la nave entra en el radio y es succionada; nivel por defecto 8 = Tritón) |
 | `tanker.h/cpp` | **Nave cisterna aérea con repostaje en vuelo (ronda 5b refine 3: mini-juego de docking 8/8/2026)**: aparece en niveles ≥2 con `TANKER_CHANCE_PERCENT` (70 %) **y solo si el combustible está bajo** (`fuel < FUEL_MAX·TANKER_FUEL_FRACTION=0.5`; demo/attract `force=true` lo ignora). Aeronave **zeppelin**: globo elargado `lineShade`, góndola, aletas, faro, motor. Flota a `TANKER_HOVER_ALT=340 u` (dock ~307 u, entre `ZOOM_IN_ALT=200` y `ZOOM_OUT_ALT=350`) con deriva ±40 u @ 9 u/s y bob ±3 u. En Titán `baseY=TANKER_TITAN_Y=85`; excluida de Ganímedes (`moonHasRings`). Docking **probe-and-drogue** con **una manguera** (`TANKER_HOSE_LEN=20 u`) y cesta inferior (`drogueX/Y = bodyX+sway / portY+HOSE_LEN+sway`, sway ±3 u @ 1.6 rad/s). **Mini-juego de mantenimiento**: tras engancharse hay que mantener el probe dentro de `TANKER_DOCK_TOL_X=8`/`TANKER_DOCK_TOL_Y=5` durante `TANKER_DOCK_LOCK_TIME=1.0 s` para que fluya el combustible; salir de `TANKER_DOCK_BREAK_TOL_X=12`/`TANKER_DOCK_BREAK_TOL_Y=8` durante `TANKER_DOCK_BREAK_TIME=0.4 s` rompe el acople (`breakAway`). El joystick controla el offset horizontal del probe (`ship.velX` → nudge, muelle de centrado suave); el motor (Z) desengancha. Repostaje incremental `TANKER_REFUEL_RATE=200/s` hasta `FUEL_MAX`. Colisión con el casco = destrucción mutua. **Visual**: cesta triangular en vista general / tronco de cono invertido en PiP; probe con varilla fina + **flecha sólida triangular** (sin círculo brillante en punta); **anillo de estado** en el PiP (verde/amarillo/rojo); zeppelin dibujado a `viewScale·1.6` **solo en zoom-out** (hitbox sin cambios). **Visual plutónico (22/8/2026)** (rama `fuel-tanker`): globo elipsoide relleno por filas con `lineShade` (brillo 120→160) + contorno 255 + arco de resalte superior (200) + **franja oscura a media altura** (3 filas, brillo 60→80) que reemplaza a la antigua línea central resaltada; **góndola-cabina aerodinámica** con contorno `\___|` (nariz diagonal tocando el casco, panza plana, popa vertical), **rellena** como el globo (trapezoide con degradado) y **sin cables** de soporte (antes parecía colgando). Demo AI corrige offset durante dock. Ver WORKLOG #29 |
+| `parachute_demo.cpp` | Prueba de visualización en PC (23/8/2026): terreno generado + nave con **paracaídas** en 5 estadios de inflado + rampa con física real (brake→sink) → PPM en `frames/` (selftest `open=1.00 velY≈sink`) |
 
 ### Mundo y pantalla
 
@@ -101,6 +103,32 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   desplazan según haya WIND; ver Sketch ESP32); glifos `<` y `>` añadidos a la fuente 5x7.
   Config: `WIND_START_LEVEL=4`, `WIND_CHANCE_PERCENT=50`, `DEMO_LEVEL_FORCE=0` (el demo elige nivel
   al azar `1..DEMO_MAX_LEVEL`).
+- **Paracaídas dirigible (23/8/2026, one-shot por nivel)**: se despliega **C+Z** en vuelo (edge
+  trigger; en el título C+Z sigue abriendo la calibración). **Motor permitido mientras está abierto**
+  (variante B): sin motor = aterrizaje hard (sin bonus de fuel), un toque de motor al final (flare)
+  da el perfecto (+50 fuel). La apertura se **ignora bajo `PARACHUTE_MIN_ALT=80`** con aviso
+  `TOO LOW` parpadeante (el dosel no abriría a tiempo).
+  - **Física** (`Ship::update()`, campos `chute`/`chuteOpen`): el dosel se infla en
+    `PARACHUTE_OPEN_TIME=0.5 s`; frena la caída hacia `PARACHUTE_SINK=0.09` **solo si cae más rápido**
+    (`velY += (SINK-velY)*0.15*chuteOpen - gravity`; el `-gravity` hace que la velocidad terminal sea
+    exactamente el sink). El flare puede bajar de sink (perfecto posible). **Dirigible**: con la vela
+    el stick ya no rota — `Game::update()` llama `setTargetRotation(0)` (auto-nivelado) y desvía
+    lateralmente `ship.velX += sin(input.angle)*PARACHUTE_STEER*chuteOpen` (`PARACHUTE_STEER=0.0012`);
+    tope horizontal `PARACHUTE_DRIFT_MAX=0.30`. El viento actúa como **vela ×2**
+    (`PARACHUTE_WIND_GAIN=2.0`). Un rayo en modo vela revuelve el steering (en vez de la rotación)
+    durante `STORM_CONTROL_LOSS`. `crash()` y `reset()` limpian `chute`/`chuteOpen` (un nivel = un uso).
+  - **Visual** (`Ship::draw()`): paquete plegado 4×2 px sobre el casco mientras disponible;
+    desplegado = **cúpula** en arco elíptico (vértice centrado arriba, rin en los bordes) +
+    **borde festoneado** (4 chevrons) + 5 **líneas de suspensión** (`lineShade` 120) + **relleno de
+    tela** por filas (`shadedLine`, brillo 30→15, media elipse `sqrt(1-t²)`). Todo escala desde el
+    top del casco (dy=-5) con `chuteOpen` en coordenadas locales del ship; helper `shadedLine(r, cx,
+    y, halfW, b)` (línea horizontal con `pixelShade`).
+  - **HUD**: `CHUTE` sólido en `(22,220)` mientras disponible, parpadeante desplegado,
+    `TOO LOW` parpadeante 1.2 s al rechazar. Línea de título `C+Z: PARACHUTE (1/LEVEL)`.
+    El **demo no despliega el chute** en v1 (herramienta solo del jugador).
+  - Config: `PARACHUTE_OPEN_TIME=0.5f`, `PARACHUTE_SINK=0.09f`, `PARACHUTE_MIN_ALT=80.0f`,
+    `PARACHUTE_STEER=0.0012f`, `PARACHUTE_DRIFT_MAX=0.30f`, `PARACHUTE_WIND_GAIN=2.0f`. Nota en
+    `config.h` sobre la variante A (motor apagado con vela) como opción futura.
 - Minimapa 96×49 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 - **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
   - **Minimapa**: una **flechita sólida** de 3×2 px (triángulo relleno 1-3) bajo cada zona,
@@ -156,6 +184,10 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   Con `POT_DISABLED` una vez activado (`pwrStickActive=true`) **ya no se desactiva** (sin pot que
   retome), así que ajustes sucesivos continúan desde el valor actual. Sustituye al antiguo ciclo
   por pasos `{0,25,50,75,100}%` (`powerStep`).
+- **C+Z juntos (23/8/2026)**: en vuelo (`STATE_PLAYING`) es el **edge trigger del paracaídas**
+  (`game.input.chuteToggle`, flanco con `lastBothPressed`); mientras ambos están pulsados **se salta
+  el ajuste C+stick de potencia** (evita el conflicto con el steering de la vela). En el título, C+Z
+  mantenido ~0,5 s sigue abriendo la calibración (ver "Entrada"/modo de calibración).
 - **Gatillo (GPIO35) → LEGACY**: el reóstato quedó **desconectado**; el código del mapeo
   por voltaje se conserva en el `.ino` bajo `#if 0` (decisión: cambiar a pot + botón).
 - Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
@@ -224,7 +256,8 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   trazado con lambdas `SX(x)=x*1.2+26`, `SY(y)=y*1.2+56` en el área x26–145, y58–173 (spec de bajo
   nivel, trama cruzada + tramas de sombreado con `pixel`). Controles en letras pequeñas a la derecha
   en x=170
-  (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C: POWER STEPS`, `POT: POWER LEVEL`). La línea de crédito
+  (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C+STICK: POWER UP/DOWN`, `POT: POWER LEVEL`,
+  `C+Z: PARACHUTE (1/LEVEL)`). La línea de crédito
   `Copyright Alex Urzola 2026/Opencode` se dibuja **centrada debajo del título** (`y=40`, con
   `centerText`). El fondo es el de juego
   (estrellas + nave entrando **por la derecha** con deriva lenta a la izquierda
@@ -251,6 +284,28 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 - Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~525 KB flash
   (40% del app slot), RAM 109 KB (33%). **Esquema de partición `no_ota`** (ver "Flash"), app slot de 2 MB.
 - Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
+
+## Port a VGA (paralelo, rama `vga-out`)
+
+Segundo ESP32 dedicado que saca el juego por **VGA paralelo** (SVGA 640x480@60). El CRT (compuesto)
+queda intacto en su placa. Detalle completo en `docs/PLAN_VGA.md` y cableado en `docs/hardware.md`.
+
+| Archivo | Contenido |
+|---------|-----------|
+| `esp32LanderVGA.ino` | Igual que el composite (audio, nunchuck, pot, start, loop `GAME_DT`) pero con el driver VGA. `VGA_TEST_PATTERN=1` dibuja **rampa de grises + rejilla + marco** para validar grises/escalado/sync antes de pasar a `0` (juego) |
+| `src/renderer_vga.h/cpp` | `RendererVGA : RendererCanvas`. Doble buffer: `game.draw()` pinta en `fbBack` (estático 76.8 KB); `flush()` hace `waitVBlank()` y `memcpy` a `fbFront`. El **framebuffer de video es heap** (`malloc` al inicio de `setup()`, antes de audio/driver — el segmento de DRAM estático no da para dos buffers de 76.8 KB, igual que el composite) |
+| `src/esp32lib/` | **ESP32Lib de bitluni** (CC BY-SA 4.0) embebido como fuente (VGA/, Graphics/, I2S/, Tools/); se podaron los drivers VGA no usados. `VGA8BitDACI` (DAC mono) forkeado |
+| `src/esp32lib/VGA/VGA8BitDACI.*` | **Fork con frame store externo**: `setFrameStore(store,W,H)` y `allocateFrameBuffer()` mapean las filas del driver dentro del store de 320x240 (en vez de malloc 640x480 = 300 KB, no hay PSRAM). `waitVSync()` bloquea hasta el blanking vertical. `interruptPixelLine()` escala **2x horizontal** (cada 32-bit repite el píxel en las dos muestras) cuando `mode.hRes == 2*frameStoreW` y el `interrupt()` escala 2x vertical (`y>>1` para `vDiv==1`). `init(mode, hsyncPin, vsyncPin, outputPin, voltageDivider)` |
+| `src/esp32lib/I2S/I2S_ESP32.cpp` | Retocado para IDF5 del core Arduino 3.3.10: `#include "driver/dac.h"` (compat, `-iwithprefixbefore driver/deprecated` lo resuelve); `rtc_clk_apll_enable(bool)` + `rtc_clk_apll_coeff_set(odir, sdm0, sdm1, sdm2)` (firma nueva) |
+
+- **Pines**: video **GPIO25** (DAC1) → divisor 270Ω×3 en paralelo a R/G/B del VGA (monocromo),
+  HSYNC **GPIO32**, VSYNC **GPIO33**. Audio (LEDC, GPIO26) sin cambios. El board VGA es el **segundo
+  ESP32**; nunchuck + pot + start se cablean igual en esta placa (el `CONTROLS_WIRED=1`).
+- **Memoria**: compila con `no_ota` — 552 KB flash (42 %), RAM estática 112 KB (34 %), heap ~216 KB
+  (de los que 76.8 KB van al `fbFront`). Los samples de audio se leen de flash desde el ISR, así que
+  el heap queda entero para los buffers de video (misma jugada que el composite).
+- Loop igual que composite: `game.update()` cada 10 ms; `game.draw()` → `flush()` espera el blanking
+  (el ISR del driver nunca ve un frame a medias).
 
 ## Controles físicos decididos
 
@@ -280,6 +335,11 @@ Las conexiones eléctricas, esquemas, mediciones y el detalle de flash/memoria e
 | Botón start | GPIO13 |
 | Video compuesto (DAC) | GPIO25 |
 | Audio (LEDC PWM) | GPIO26 |
+
+**Board VGA (segundo ESP32)**: los mismos GPIO21/22/34/13/26 (nunchuck, pot, start, audio) + video
+VGA por **GPIO25** (DAC1 → divisor **270Ω×3** en paralelo a R/G/B, blanco 0.717 V con 75 Ω del
+monitor), HSYNC **GPIO32**, VSYNC **GPIO33**. El `100/100/220` del ejemplo de bitluni NO vale en
+mono (recorte + tinte); ver `docs/hardware.md`.
 
 La **lógica de lectura/mapeo** de estos pines (dead zone, calibración del stick, botones
 Z/C, "last-used wins" del pot) es código de juego y se documenta en la sección "Entrada".
@@ -344,8 +404,8 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   (`video_wait_frame()`), sin VSYNC explícito en el juego.
 - Dibujado: interfaz `Renderer` (pixel/line/rect/circle/text/flush). `RendererCanvas` comparte
   las primitivas; PC y ESP32 implementan `pixel()`.
-- `esp32LanderComposite/src/` es **copia** de `esp32Lander/` (mismas fuentes); mantener en sync
-  con `diff` al cambiar física/dibujado.
+- `esp32LanderComposite/src/` y `esp32LanderVGA/src/` son **copia** de `esp32Lander/` (mismas
+  fuentes); mantener en sync con `bash sync.sh` al cambiar física/dibujado.
 - Idioma del código: inglés (coherente con el port). Respuestas al usuario: español.
 - No usar librerías no verificadas antes de consultar. No añadir comentarios al código salvo que se pidan.
 - **El agente NO hace commit ni push salvo que el usuario lo pida explícitamente.** Los cambios
@@ -361,9 +421,15 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   `./demo_sim <seeds>`; render de un demo: `./demo_render <seed>` (PPM en `frames/`).
   Tormenta: `./storm_demo <seed> <level>` (terreno + nave estática + rayos, sin física,
   PPM en `frames/`; selftest `bolts>0` + `maxAlive>0`).
-- Compilar sketch: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
+  Paracaídas: `./parachute_demo <seed>` (terreno + nave con dosel en 5 estadios + rampa con
+  física real, PPM en `frames/`; selftest `open=1.00 velY≈sink`).
+- Compilar sketch composite: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
+- Compilar sketch VGA: `arduino-cli compile --fqbn esp32:esp32:esp32 --build-property build.partitions=no_ota esp32LanderVGA/esp32LanderVGA.ino`.
 - Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
-- Sync PC↔ESP32: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.
+- Sync PC↔sketches: `bash sync.sh` (copia las fuentes compartidas de `esp32Lander/` a
+  `esp32LanderComposite/src/` y `esp32LanderVGA/src/` y verifica que queden idénticas; no toca
+  los archivos propios de cada sketch: `video.*`, `renderer_esp32`, `renderer_vga`, `esp32lib/`,
+  `audio*`, `nunchuck*`). Para un diff puntual: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.
 
 ## Flash / memoria
 

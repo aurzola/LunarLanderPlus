@@ -87,13 +87,14 @@ Game::Game()
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), demoHoldAltitude(false),
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), demoHoldAltitude(false),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false), demoTankerPhase(0)
 {
     input.startPressed = false;
     input.angle = 0;
     input.thrust = 0;
     input.powerLevel = 0;
+    input.chuteToggle = false;
     terrain.init();
     storm.reset(level);
     if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
@@ -873,6 +874,7 @@ void Game::update()
     float dt = GAME_DT;
     updateWind(dt);
     if (fuelMaxTimer > 0.0f) fuelMaxTimer -= dt;
+    if (chuteTooLowTimer > 0.0f) chuteTooLowTimer -= dt;
     ship.windStrength = windEnabled ? windStrength : 0.0f;
     ship.windDir = windDir;
     ship.gravity = GRAVITY * moonGravity(level);
@@ -922,6 +924,17 @@ void Game::update()
             return;
         }
 
+        // One-shot parachute: C+Z deploys it once per level; opening too low is
+        // ignored and flashes a warning (the canopy can't open in time).
+        if (input.chuteToggle && !ship.chute) {
+            if (ship.altitude > PARACHUTE_MIN_ALT) {
+                ship.chute = true;
+                ship.chuteOpen = 0.0f;
+            } else {
+                chuteTooLowTimer = 1.2f;
+            }
+        }
+
         if (tanker.docked) {
             if (demo) runDemoAI();
 
@@ -967,22 +980,48 @@ void Game::update()
         if (demo) runDemoAI();
 
         float deg = input.angle * 180.0f / PI;
-        if (stormHitTimer > 0.0f) {
-            stormHitTimer -= dt;
-            if (stormHitTimer < 0.0f) stormHitTimer = 0.0f;
-            deg += ((float)(rand() % 2001) / 1000.0f - 1.0f) * 0.5f * 180.0f / PI;
-            ship.setTargetRotation(deg);
-            ship.setThrust(0.0f);
+        if (ship.chute) {
+            // Dirigible glide: the canopy auto-levels the ship and the stick
+            // steers laterally instead of rotating. The engine still works, so
+            // a short burst can flare the touchdown into a perfect landing. A
+            // lightning hit scrambles the steering for the loss duration.
+            ship.setTargetRotation(0.0f);
+            if (stormHitTimer > 0.0f) {
+                stormHitTimer -= dt;
+                if (stormHitTimer < 0.0f) stormHitTimer = 0.0f;
+                float sdeg = ((float)(rand() % 2001) / 1000.0f - 1.0f) * 0.5f * PI;
+                ship.velX += sinf(sdeg) * PARACHUTE_STEER * ship.chuteOpen;
+                ship.setThrust(0.0f);
+            } else {
+                ship.velX += sinf(input.angle) * PARACHUTE_STEER * ship.chuteOpen;
+                ship.setThrust(input.thrust);
+                if (storm.strikes(ship.posX, ship.posY, STORM_HIT_RADIUS)) {
+                    float lost = STORM_HIT_FUEL;
+                    fuel -= lost;
+                    ship.fuel -= lost;
+                    if (fuel < 0) fuel = 0;
+                    if (ship.fuel < 0) ship.fuel = 0;
+                    stormHitTimer = STORM_CONTROL_LOSS;
+                }
+            }
         } else {
-            ship.setTargetRotation(deg);
-            ship.setThrust(input.thrust);
-            if (storm.strikes(ship.posX, ship.posY, STORM_HIT_RADIUS)) {
-                float lost = STORM_HIT_FUEL;
-                fuel -= lost;
-                ship.fuel -= lost;
-                if (fuel < 0) fuel = 0;
-                if (ship.fuel < 0) ship.fuel = 0;
-                stormHitTimer = STORM_CONTROL_LOSS;
+            if (stormHitTimer > 0.0f) {
+                stormHitTimer -= dt;
+                if (stormHitTimer < 0.0f) stormHitTimer = 0.0f;
+                deg += ((float)(rand() % 2001) / 1000.0f - 1.0f) * 0.5f * 180.0f / PI;
+                ship.setTargetRotation(deg);
+                ship.setThrust(0.0f);
+            } else {
+                ship.setTargetRotation(deg);
+                ship.setThrust(input.thrust);
+                if (storm.strikes(ship.posX, ship.posY, STORM_HIT_RADIUS)) {
+                    float lost = STORM_HIT_FUEL;
+                    fuel -= lost;
+                    ship.fuel -= lost;
+                    if (fuel < 0) fuel = 0;
+                    if (ship.fuel < 0) ship.fuel = 0;
+                    stormHitTimer = STORM_CONTROL_LOSS;
+                }
             }
         }
         ship.update();
@@ -1206,6 +1245,7 @@ void Game::draw(Renderer &r)
         r.text(170, 144, "Z: ENGINE ON/OFF");
         r.text(170, 156, "C+STICK: POWER UP/DOWN");
         r.text(170, 168, "POT: POWER LEVEL");
+        r.text(170, 180, "C+Z: PARACHUTE (1/LEVEL)");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         geysers.draw(r, viewX, viewY, viewScale);
@@ -1400,6 +1440,16 @@ void Game::draw(Renderer &r)
                 r.text(250, 62, buf);
                 warnY = 72;
                 fastY = 82;
+            }
+
+            // Parachute status (bottom-left): solid = available, blinking =
+            // deployed, "TOO LOW" briefly flashes when a deploy was refused.
+            if (chuteTooLowTimer > 0.0f) {
+                if ((ship.counter % 40) < 26) r.text(22, 220, "TOO LOW");
+            } else if (ship.chute) {
+                if ((ship.counter % 30) < 22) r.text(22, 220, "CHUTE");
+            } else {
+                r.text(22, 220, "CHUTE");
             }
         }
 

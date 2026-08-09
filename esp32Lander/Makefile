@@ -2,7 +2,10 @@ CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -O2
 SRC = ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp geysers.cpp volcanoes.cpp atmosphere.cpp rings.cpp twister.cpp tanker.cpp
 
-all: test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo
+all: test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo
+
+parachute_demo: parachute_demo.cpp $(SRC)
+	$(CXX) $(CXXFLAGS) -o parachute_demo parachute_demo.cpp $(SRC)
 
 tanker_demo: tanker_demo.cpp $(SRC)
 	$(CXX) $(CXXFLAGS) -o tanker_demo tanker_demo.cpp $(SRC)
@@ -38,7 +41,7 @@ twister_demo: twister_demo.cpp $(SRC)
 	$(CXX) $(CXXFLAGS) -o twister_demo twister_demo.cpp $(SRC)
 
 clean:
-	rm -f test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo
+	rm -f test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo
 	rm -rf frames
 
 .PHONY: all clean

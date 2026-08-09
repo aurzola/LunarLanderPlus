@@ -82,6 +82,48 @@ porque pasaba corriente al motor del auto). **No se puede leer directo con el AD
 - Alternativa bitluni (documentada antes) NO se usa: se migró a aquaticus porque integra
   `video_wait_frame()` y doble buffer por hardware.
 
+## Salida de video VGA (segundo ESP32, rama `vga-out`)
+
+Board aparte (WROOM-32, sin PSRAM) que saca el juego por **SVGA 640x480@60** monocromo.
+El CRT compuesto queda intacto en su placa. Detalle de la arquitectura: `docs/PLAN_VGA.md`.
+
+- **Driver**: `bitluni/ESP32Lib` (CC BY-SA 4.0) embebido en `src/esp32lib/`; fork de
+  `VGA8BitDACI` con frame store externo (320x240, escalado 2x en el ISR de línea).
+- **Pines del board VGA**:
+
+| Señal | GPIO | Notas |
+|-------|------|-------|
+| Video (DAC) | GPIO25 | DAC1 → divisor 270Ω×3 en paralelo a R/G/B |
+| HSYNC | GPIO32 | digital |
+| VSYNC | GPIO33 | digital |
+| I2C nunchuck SDA/SCL | GPIO21/GPIO22 | igual que el composite |
+| Pot / Botón start / Audio | GPIO34 / GPIO13 / GPIO26 | igual que el composite |
+
+- **Circuito del conector VGA (DE-15)** — solo 7 pines:
+
+```
+GPIO25 ──[270Ω]──┬────────► VGA pin 1 (R)
+GPIO25 ──[270Ω]─┤────────► VGA pin 2 (G)
+GPIO25 ──[270Ω]─┴────────► VGA pin 3 (B)
+GPIO32 ────────────────────► VGA pin 13 (HSYNC)
+GPIO33 ────────────────────► VGA pin 14 (VSYNC)
+GND ───────────────────────► VGA pines 5/6/7/8/10
+```
+
+Las resistencias + los 75 Ω de terminación interna del monitor forman el divisor de voltaje
+(mismo voltaje a los tres colores → gris, `voltageDivider=true` en `init()`). El **270 Ω/rama**
+da `V_blanco = 3.3·75/(270+75) = 0.717 V` (spec VGA 0.7 V) y `V_negro = 0 V`; ~9.6 mA por rama
+(~29 mA total). **Importante**: usar las MISMAS resistencias en las tres ramas — el circuito
+`100/100/220` del ejemplo de bitluni es para **dos DACs** (GPIO25→R/G, GPIO26→B); con un solo
+DAC da 1.414 V en R/G (recorte, "blanco" saturado) y tinte por desbalance. Alternativas:
+280 Ω (0.697 V, exacto) o 330 Ω (0.611 V, con margen de corriente). GPIO32/33 son XTAL_32K_P/N
+en algunos DevKit — verificar que la placa no tenga el cristal de 32 kHz montado. No conectar
+el pin 9 (+5 V) ni los DDC (4/11/12/15); sync directo a 13/14 (TTL, sin terminación).
+- **Memoria**: no caben dos buffers de 76.8 KB en DRAM estática → `fbBack` es estático y
+  `fbFront` (el que lee el ISR) se `malloc`ea al inicio de `setup()` (heap ~216 KB libres).
+- **Test antes del juego**: `#define VGA_TEST_PATTERN 1` dibuja rampa de grises + rejilla +
+  marco; verificado, pasar a `0`.
+
 ## Sonido — cableado
 
 - **GPIO26 → condensador de acople en serie (1–10 µF) → RCA blanco del TV**

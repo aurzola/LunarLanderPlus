@@ -93,11 +93,15 @@ void Ship::reset(float x, float y)
     windStrength = 0;
     windDir = 1;
     gravity = GRAVITY;
+    chute = false;
+    chuteOpen = 0;
     for (int i = 0; i < 6; i++) {
         shapePosX[i] = 0;
         shapePosY[i] = 0;
     }
 }
+
+static void shadedLine(Renderer &r, float cx, float y, float halfW, int brightness);
 
 void Ship::setTargetRotation(float deg)
 {
@@ -140,7 +144,8 @@ void Ship::update()
     }
 
     if (windStrength > 0.0f) {
-        velX += windDir * windStrength * WIND_ACCEL;
+        float gain = chute ? PARACHUTE_WIND_GAIN : 1.0f;
+        velX += windDir * windStrength * WIND_ACCEL * gain;
     }
 
     posX += velX;
@@ -152,6 +157,23 @@ void Ship::update()
     else if (velY < -TOP_SPEED) velY = -TOP_SPEED;
     if (velX > TOP_SPEED) velX = TOP_SPEED;
     else if (velX < -TOP_SPEED) velX = -TOP_SPEED;
+
+    // Parachute: canopy inflates over PARACHUTE_OPEN_TIME, braking the fall
+    // toward the sink only while descending too fast (so a short engine flare
+    // can still push below the sink for a perfect landing). The canopy also
+    // caps the horizontal drift (a sail: wind gain handled above). Gravity is
+    // cancelled inside the brake so the terminal velocity really is the sink.
+    if (chute) {
+        if (chuteOpen < 1.0f) {
+            chuteOpen += GAME_DT / PARACHUTE_OPEN_TIME;
+            if (chuteOpen > 1.0f) chuteOpen = 1.0f;
+        }
+        if (velY > PARACHUTE_SINK) {
+            velY += (PARACHUTE_SINK - velY) * 0.15f * chuteOpen - gravity;
+        }
+        if (velX > PARACHUTE_DRIFT_MAX) velX = PARACHUTE_DRIFT_MAX;
+        else if (velX < -PARACHUTE_DRIFT_MAX) velX = -PARACHUTE_DRIFT_MAX;
+    }
 
     left = posX - 10.0f * scale;
     right = posX + 10.0f * scale;
@@ -267,6 +289,90 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
             }
         }
     }
+
+    // Parachute: a folded pack sits on the hull while available; when deployed
+    // an opening canopy (dome + scalloped rim + shroud lines) spreads above the
+    // ship. All points live in ship-local units so the canopy rides the ship's
+    // orientation (auto-leveled to 0 while open). The canopy scales around the
+    // hull top (dy=-5) as chuteOpen ramps 0..1.
+    const float CANOPY_W = 12.0f;   // rim half width (world u)
+    const float CANOPY_H = 11.0f;   // dome rise above the rim (world u)
+    if (!chute) {
+        float px = sx + (0.0f * cs - (-5.5f) * sn) * sc;
+        float py = sy + (0.0f * sn + (-5.5f) * cs) * sc;
+        r.rect(px - 2.0f * sc, py - 1.0f * sc, 4.0f * sc, 2.0f * sc);
+        r.line(px - 2.0f * sc, py - 1.0f * sc, px - 2.0f * sc, py + 1.0f * sc);
+        r.line(px + 2.0f * sc, py - 1.0f * sc, px + 2.0f * sc, py + 1.0f * sc);
+    } else {
+        float open = chuteOpen;
+        if (open <= 0.0f) open = 0.02f;
+        auto pt = [&](float dx, float dy, float &ox, float &oy) {
+            float wx = dx * open;
+            float wy = -5.0f + (dy + 5.0f) * open;
+            ox = sx + (wx * cs - wy * sn) * sc;
+            oy = sy + (wx * sn + wy * cs) * sc;
+        };
+
+        // Shroud lines: canopy rim down to the hull attach points.
+        for (int i = -2; i <= 2; i++) {
+            float fx = CANOPY_W * i * 0.4f;
+            float x1, y1, x2, y2;
+            pt(fx, -7.0f, x1, y1);
+            pt(fx * 0.5f, -5.2f, x2, y2);
+            r.lineShade(x1, y1, x2, y2, 120);
+        }
+
+        // Soft canopy body fill (faint, so the arcade grey reads as cloth).
+        float rimX, rimY, topX, topY;
+        pt(0, -7.0f, rimX, rimY);
+        pt(0, -18.0f, topX, topY);
+        float wRim = CANOPY_W * open * sc;
+        int rows = (int)(fabsf(topY - rimY));
+        if (rows < 1) rows = 1;
+        for (int k = 1; k < rows; k++) {
+            float t = (float)k / rows;
+            float hw = wRim * sqrtf(1.0f - t * t);
+            int b = (int)(30.0f * (1.0f - t * 0.5f) * open);
+            shadedLine(r, rimX, rimY + (topY - rimY) * t, hw, b);
+        }
+
+        // Dome edge: an elliptical arc over the rim (apex above the center,
+        // rim corners at the base). Two mirrored halves trace dx 0..+W and 0..-W.
+        int seg = 10;
+        for (int k = 0; k < seg; k++) {
+            float a0 = (float)k / seg, a1 = (float)(k + 1) / seg;
+            float xa, ya, xb, yb;
+            pt(CANOPY_W * sinf(a0 * PI * 0.5f),
+               -7.0f - CANOPY_H * cosf(a0 * PI * 0.5f), xa, ya);
+            pt(CANOPY_W * sinf(a1 * PI * 0.5f),
+               -7.0f - CANOPY_H * cosf(a1 * PI * 0.5f), xb, yb);
+            r.line(xa, ya, xb, yb);
+            pt(-CANOPY_W * sinf(a0 * PI * 0.5f),
+               -7.0f - CANOPY_H * cosf(a0 * PI * 0.5f), xa, ya);
+            pt(-CANOPY_W * sinf(a1 * PI * 0.5f),
+               -7.0f - CANOPY_H * cosf(a1 * PI * 0.5f), xb, yb);
+            r.line(xa, ya, xb, yb);
+        }
+
+        // Scalloped rim: a row of small arcs so the canopy reads as cloth.
+        int bumps = 4;
+        for (int b = 0; b < bumps; b++) {
+            float xc = -CANOPY_W + (2.0f * CANOPY_W) * (b + 0.5f) / bumps;
+            float hw = CANOPY_W / bumps;
+            float x1, y1, x2, y2, x3, y3;
+            pt(xc - hw * 0.5f, -7.0f, x1, y1);
+            pt(xc, -7.0f - 1.5f, x2, y2);
+            pt(xc + hw * 0.5f, -7.0f, x3, y3);
+            r.line(x1, y1, x2, y2);
+            r.line(x2, y2, x3, y3);
+        }
+    }
+}
+
+static void shadedLine(Renderer &r, float cx, float y, float halfW, int brightness)
+{
+    int a = (int)roundf(cx - halfW), b = (int)roundf(cx + halfW);
+    for (int x = a; x <= b; x++) r.pixelShade((float)x, y, brightness);
 }
 
 void Ship::crash(bool fuel)
@@ -277,6 +383,8 @@ void Ship::crash(bool fuel)
     exploding = true;
     fuelExplosion = fuel;
     thrustBuild = 0;
+    chute = false;
+    chuteOpen = 0;
 }
 
 void Ship::land()
