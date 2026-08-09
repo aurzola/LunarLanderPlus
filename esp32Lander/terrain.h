@@ -27,11 +27,14 @@ public:
     float getWidth() const { return tileWidth; }
     int checkLanding(float left, float right, float bottom, float rotation, float vy, float vx);
     float yAt(float x, float fallback = 500.0f) const;
+    bool onChuteSpot(float x) const { return x >= chuteZoneX1 && x <= chuteZoneX2; }
+    float chuteLabel() const { return chuteLabelX; }
 
 private:
     std::vector<TerrainLine> lines;
     std::vector<Star> stars;
     float tileWidth;
+    float chuteZoneX1, chuteZoneX2, chuteLabelX;
     void addLine(float x1, float y1, float x2, float y2);
 };
 

@@ -95,6 +95,7 @@ Game::Game()
     input.thrust = 0;
     input.powerLevel = 0;
     input.chuteToggle = false;
+    chuteAvailable = true;
     terrain.init();
     storm.reset(level);
     if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
@@ -121,6 +122,7 @@ void Game::newGame()
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
     ship.velX = 0.415f;
+    chuteAvailable = true;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
@@ -230,6 +232,7 @@ void Game::startDemo()
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, true);
     stormHitTimer = 0;
+    chuteAvailable = true;
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
@@ -854,6 +857,7 @@ void Game::checkCollisions()
         } else {
             score += (int)(15 * mult);
         }
+        if (terrain.onChuteSpot(ship.posX)) chuteAvailable = true;
         state = STATE_LANDED;
         resetTimer = CRASH_RESET_DELAY;
     } else if (result == 1) {
@@ -924,14 +928,18 @@ void Game::update()
             return;
         }
 
-        // One-shot parachute: C+Z deploys it once per level; opening too low is
-        // ignored and flashes a warning (the canopy can't open in time).
+        // One-shot parachute: C+Z deploys it once; opening too low is ignored
+        // and flashes a warning (the canopy can't open in time). It is consumed
+        // on deploy and only recovered by landing on the marked pad (the "p").
         if (input.chuteToggle && !ship.chute) {
-            if (ship.altitude > PARACHUTE_MIN_ALT) {
-                ship.chute = true;
-                ship.chuteOpen = 0.0f;
-            } else {
-                chuteTooLowTimer = 1.2f;
+            if (chuteAvailable) {
+                if (ship.altitude > PARACHUTE_MIN_ALT) {
+                    ship.chute = true;
+                    ship.chuteOpen = 0.0f;
+                    chuteAvailable = false;
+                } else {
+                    chuteTooLowTimer = 1.2f;
+                }
             }
         }
 
@@ -1428,10 +1436,6 @@ void Game::draw(Renderer &r)
                 r.text(250, 52, buf);
             }
 
-#if defined(ARDUINO)
-            snprintf(buf, sizeof buf, "MEM %uK", (unsigned)(ESP.getFreeHeap() / 1024));
-            r.text(22, 62, buf);
-#endif
             if (demo) r.text(22, 72, "DEMO");
             bool windShown = windEnabled;
             if (windShown) {
@@ -1442,14 +1446,17 @@ void Game::draw(Renderer &r)
                 fastY = 82;
             }
 
-            // Parachute status (bottom-left): solid = available, blinking =
-            // deployed, "TOO LOW" briefly flashes when a deploy was refused.
-            if (chuteTooLowTimer > 0.0f) {
-                if ((ship.counter % 40) < 26) r.text(22, 220, "TOO LOW");
-            } else if (ship.chute) {
-                if ((ship.counter % 30) < 22) r.text(22, 220, "CHUTE");
-            } else {
-                r.text(22, 220, "CHUTE");
+            // Parachute status (top-left, above the L<level> line): solid =
+            // available, blinking = deployed, "TOO LOW" briefly flashes when a
+            // deploy was refused. Nothing is shown once the chute is spent.
+            if (chuteAvailable) {
+                if (chuteTooLowTimer > 0.0f) {
+                    if ((ship.counter % 40) < 26) r.text(22, 12, "TOO LOW");
+                } else if (ship.chute) {
+                    if ((ship.counter % 30) < 22) r.text(22, 12, "CHUTE");
+                } else {
+                    r.text(22, 12, "CHUTE");
+                }
             }
         }
 

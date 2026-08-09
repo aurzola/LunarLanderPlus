@@ -291,12 +291,14 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
     }
 
     // Parachute: a folded pack sits on the hull while available; when deployed
-    // an opening canopy (dome + scalloped rim + shroud lines) spreads above the
-    // ship. All points live in ship-local units so the canopy rides the ship's
-    // orientation (auto-leveled to 0 while open). The canopy scales around the
-    // hull top (dy=-5) as chuteOpen ramps 0..1.
-    const float CANOPY_W = 12.0f;   // rim half width (world u)
-    const float CANOPY_H = 11.0f;   // dome rise above the rim (world u)
+    // a modern steerable (ram-air) canopy spreads well above the ship — wide,
+    // flat-ish wing with two shroud lines per side converging at each hull
+    // corner (the classic steerable V). Points are ship-local so the canopy
+    // rides the ship's orientation (auto-leveled to 0 while open). The canopy
+    // scales around the hull top (dy=-5) as chuteOpen ramps 0..1.
+    const float CANOPY_W = 18.0f;    // rim half width (world u)
+    const float CANOPY_H = 9.0f;     // dome rise above the rim (world u)
+    const float CANOPY_RIM = -16.0f; // canopy bottom edge, well clear of the hull
     if (!chute) {
         float px = sx + (0.0f * cs - (-5.5f) * sn) * sc;
         float py = sy + (0.0f * sn + (-5.5f) * cs) * sc;
@@ -313,19 +315,27 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
             oy = sy + (wx * sn + wy * cs) * sc;
         };
 
-        // Shroud lines: canopy rim down to the hull attach points.
-        for (int i = -2; i <= 2; i++) {
-            float fx = CANOPY_W * i * 0.4f;
-            float x1, y1, x2, y2;
-            pt(fx, -7.0f, x1, y1);
-            pt(fx * 0.5f, -5.2f, x2, y2);
-            r.lineShade(x1, y1, x2, y2, 120);
+        // Shroud lines: two lines per side running from each rim end down to
+        // the hull corner (steerable canopy risers).
+        {
+            float axL, ayL, axR, ayR;
+            pt(-5.0f, -2.6f, axL, ayL);
+            pt(5.0f, -2.6f, axR, ayR);
+            for (int s = -1; s <= 1; s += 2) {
+                float x1, y1, x2, y2;
+                pt(CANOPY_W * s, CANOPY_RIM, x1, y1);
+                pt(CANOPY_W * 0.55f * s, CANOPY_RIM, x2, y2);
+                float ax = (s < 0) ? axL : axR;
+                float ay = (s < 0) ? ayL : ayR;
+                r.lineShade(x1, y1, ax, ay, 120);
+                r.lineShade(x2, y2, ax, ay, 120);
+            }
         }
 
         // Soft canopy body fill (faint, so the arcade grey reads as cloth).
         float rimX, rimY, topX, topY;
-        pt(0, -7.0f, rimX, rimY);
-        pt(0, -18.0f, topX, topY);
+        pt(0, CANOPY_RIM, rimX, rimY);
+        pt(0, CANOPY_RIM - CANOPY_H, topX, topY);
         float wRim = CANOPY_W * open * sc;
         int rows = (int)(fabsf(topY - rimY));
         if (rows < 1) rows = 1;
@@ -336,21 +346,31 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
             shadedLine(r, rimX, rimY + (topY - rimY) * t, hw, b);
         }
 
-        // Dome edge: an elliptical arc over the rim (apex above the center,
-        // rim corners at the base). Two mirrored halves trace dx 0..+W and 0..-W.
+        // Ram-air cells: faint vertical dividers under the dome.
+        int cells = 6;
+        for (int c = 1; c < cells; c++) {
+            float fx = -CANOPY_W + 2.0f * CANOPY_W * c / cells;
+            float x1, y1, x2, y2;
+            pt(fx, CANOPY_RIM, x1, y1);
+            pt(fx * 0.92f, CANOPY_RIM - CANOPY_H * 0.7f, x2, y2);
+            r.lineShade(x1, y1, x2, y2, 40);
+        }
+
+        // Dome edge: a wide, flat elliptical arc (paraglider profile) over the
+        // rim. Two mirrored halves trace dx 0..+W and 0..-W.
         int seg = 10;
         for (int k = 0; k < seg; k++) {
             float a0 = (float)k / seg, a1 = (float)(k + 1) / seg;
             float xa, ya, xb, yb;
             pt(CANOPY_W * sinf(a0 * PI * 0.5f),
-               -7.0f - CANOPY_H * cosf(a0 * PI * 0.5f), xa, ya);
+               CANOPY_RIM - CANOPY_H * cosf(a0 * PI * 0.5f), xa, ya);
             pt(CANOPY_W * sinf(a1 * PI * 0.5f),
-               -7.0f - CANOPY_H * cosf(a1 * PI * 0.5f), xb, yb);
+               CANOPY_RIM - CANOPY_H * cosf(a1 * PI * 0.5f), xb, yb);
             r.line(xa, ya, xb, yb);
             pt(-CANOPY_W * sinf(a0 * PI * 0.5f),
-               -7.0f - CANOPY_H * cosf(a0 * PI * 0.5f), xa, ya);
+               CANOPY_RIM - CANOPY_H * cosf(a0 * PI * 0.5f), xa, ya);
             pt(-CANOPY_W * sinf(a1 * PI * 0.5f),
-               -7.0f - CANOPY_H * cosf(a1 * PI * 0.5f), xb, yb);
+               CANOPY_RIM - CANOPY_H * cosf(a1 * PI * 0.5f), xb, yb);
             r.line(xa, ya, xb, yb);
         }
 
@@ -360,9 +380,9 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
             float xc = -CANOPY_W + (2.0f * CANOPY_W) * (b + 0.5f) / bumps;
             float hw = CANOPY_W / bumps;
             float x1, y1, x2, y2, x3, y3;
-            pt(xc - hw * 0.5f, -7.0f, x1, y1);
-            pt(xc, -7.0f - 1.5f, x2, y2);
-            pt(xc + hw * 0.5f, -7.0f, x3, y3);
+            pt(xc - hw * 0.5f, CANOPY_RIM, x1, y1);
+            pt(xc, CANOPY_RIM - 1.5f, x2, y2);
+            pt(xc + hw * 0.5f, CANOPY_RIM, x3, y3);
             r.line(x1, y1, x2, y2);
             r.line(x2, y2, x3, y3);
         }

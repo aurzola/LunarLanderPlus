@@ -9,7 +9,7 @@
 #include <Arduino.h>
 #endif
 
-Terrain::Terrain() : tileWidth(0) {}
+Terrain::Terrain() : tileWidth(0), chuteZoneX1(0), chuteZoneX2(0), chuteLabelX(-1) {}
 
 void Terrain::addLine(float x1, float y1, float x2, float y2)
 {
@@ -88,6 +88,10 @@ void Terrain::init()
         lines[idx].labelX = zoneCenterX;
     }
 
+    chuteLabelX = lines[landingIdx[0]].labelX;
+    chuteZoneX1 = lines[landingIdx[0]].x1;
+    chuteZoneX2 = lines[landingIdx[0] + 3].x2;
+
     float terrainTop = 9999;
     for (int i = 0; i < (int)lines.size(); i++) {
         if (lines[i].y1 < terrainTop) terrainTop = lines[i].y1;
@@ -155,15 +159,21 @@ void Terrain::generate(int level)
             px[0] * S + tileWidth, py[0] * S + OY);
 
     int li = 0;
+    int firstZoneIdx = -1;
     for (int j = 0; j < 4; j++) {
         while (li < zoneStart[j]) li++;
         int idx = li;
+        if (j == 0) firstZoneIdx = idx;
         float zoneCenterX = (lines[idx].x1 + lines[idx + 3].x2) / 2.0f;
         for (int k = idx; k < idx + 4; k++) {
             lines[k].multiplier = landingMul[j];
         }
         lines[idx].labelX = zoneCenterX;
     }
+
+    chuteLabelX = lines[firstZoneIdx].labelX;
+    chuteZoneX1 = lines[firstZoneIdx].x1;
+    chuteZoneX2 = lines[firstZoneIdx + 3].x2;
 
     float terrainTop = 9999;
     for (int i = 0; i < (int)lines.size(); i++) {
@@ -206,6 +216,7 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
                 float mx = l.labelX * viewScale + viewX;
                 float my = (l.y1 + 10.0f) * viewScale + viewY;
                 r.text(mx - 6, my, buf);
+                if (l.labelX == chuteLabelX) r.text(mx - 3, my + 8, "p");
             }
         }
     }

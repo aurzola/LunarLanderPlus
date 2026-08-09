@@ -78,6 +78,7 @@ public:
     bool twisterCrashGet() const { return twisterCrash; }
     bool tankerCrashGet() const { return tankerCrash; }
     float chuteTooLow() const { return chuteTooLowTimer; }
+    bool chuteAvailable;
 
 private:
     float viewX, viewY, viewScale;
