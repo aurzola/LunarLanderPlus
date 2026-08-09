@@ -88,7 +88,7 @@ Game::Game()
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), demoHoldAltitude(false),
-      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), demoTankerPhase(0)
+      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false), demoTankerPhase(0)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -139,6 +139,7 @@ void Game::newGame()
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    explosionInited = false;
 }
 
 void Game::restartLevel()
@@ -152,6 +153,7 @@ void Game::restartLevel()
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    explosionInited = false;
     twisterCrash = false;
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
@@ -184,6 +186,7 @@ void Game::nextLevel()
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    explosionInited = false;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -229,6 +232,7 @@ void Game::startDemo()
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    explosionInited = false;
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -1292,152 +1296,17 @@ void Game::draw(Renderer &r)
             // The hull itself melts away from the bottom up.
             ship.draw(r, viewX, viewY, viewScale, melt);
         } else if (tankerCrash) {
-            // Fuel tanker explosion: a violent fireball blooms as the ship's
-            // fragments are blasted apart by the ruptured fuel tanks.
-            float t = 1.0f - resetTimer / CRASH_RESET_DELAY;
-            if (t < 0.0f) t = 0.0f;
-            if (t > 1.0f) t = 1.0f;
+            // Fuel tanker explosion: a fixed-point particle/debris system.
             float sx = ship.posX * viewScale + viewX;
             float sy = ship.posY * viewScale + viewY;
             float sc = ship.scale * viewScale;
-            float cx = sx, cy = sy + 2.0f * sc;
-
-            // Elliptical footprint: wider than tall. Swap/tweak these if you
-            // want a vertical (mushroom-cloud) shape instead.
-            const float EXP_RX = 1.15f;
-            const float EXP_RY = 0.68f;
-
-            // --- Initial flash: brilliant white at ignition, with a subtle
-            // flicker so it doesn't read as a flat disc.
-            float flash = 1.0f - t * t * 2.5f;
-            if (flash < 0.0f) flash = 0.0f;
-            float flicker = 0.85f + 0.15f * sinf((float)ship.counter * 1.7f);
-            int flashB = (int)(255 * flash * flicker);
-            float flashR = (flash + 0.2f) * 10.0f * sc;
-            float flashRX = flashR * EXP_RX;
-            float flashRY = flashR * EXP_RY;
-            for (int yy = -(int)flashRY; yy <= (int)flashRY; yy++) {
-                float ny = (float)yy / (flashRY + 0.001f);
-                if (ny * ny > 1.0f) continue;
-                int hw = (int)(flashRX * sqrtf(1.0f - ny * ny));
-                for (int xx = -hw; xx <= hw; xx++) {
-                    float nx = (float)xx / (flashRX + 0.001f);
-                    float d = sqrtf(nx * nx + ny * ny);
-                    int b = (int)(flashB * (1.0f - d * 0.3f));
-                    if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
-                }
+            int exx = (int)(sx + 0.5f);
+            int eyy = (int)(sy + 2.0f * sc + 0.5f);
+            if (!explosionInited) {
+                explosion.inicializar(exx, eyy);
+                explosionInited = true;
             }
-
-            // --- Fireball: rapid ease-out expansion, cooling from white to orange,
-            // with a mottled edge (cheap turbulence via sine noise) so the rim
-            // isn't perfectly circular — and now elliptical instead of round.
-            float e = 1.0f - (1.0f - t) * (1.0f - t);
-            float fb = e * (30.0f * sc) + 5.0f * sc;
-            float fbRX = fb * EXP_RX;
-            float fbRY = fb * EXP_RY;
-            int coreB = (int)(240 * (0.6f + 0.4f * (1.0f - t)));
-            for (int yy = -(int)fbRY; yy <= (int)fbRY; yy++) {
-                for (int xx = -(int)fbRX; xx <= (int)fbRX; xx++) {
-                    float nx = (float)xx / (fbRX + 0.001f);
-                    float ny = (float)yy / (fbRY + 0.001f);
-                    float ang = atan2f(ny, nx);
-                    float noise = 1.0f + 0.12f * sinf(ang * 5.0f + (float)ship.counter * 0.2f)
-                                        + 0.08f * sinf(ang * 11.0f - (float)ship.counter * 0.35f);
-                    float rad2 = nx * nx + ny * ny;
-                    float radLimit = noise * noise;
-                    if (rad2 > radLimit) continue;
-                    float d = sqrtf(rad2) / noise;
-                    int b = (int)(coreB * (1.0f - d * d * 0.65f)); // d^2 falloff = hotter core
-                    if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
-                }
-            }
-
-            // --- Heat halo: a faint, wider elliptical glow around the fireball
-            // for extra bloom.
-            float haloRX = fbRX * 1.6f;
-            float haloRY = fbRY * 1.6f;
-            int haloB = (int)(60 * (1.0f - t));
-            if (haloB > 0) {
-                for (int yy = -(int)haloRY; yy <= (int)haloRY; yy++) {
-                    float ny = (float)yy / (haloRY + 0.001f);
-                    if (ny * ny > 1.0f) continue;
-                    int hw = (int)(haloRX * sqrtf(1.0f - ny * ny));
-                    for (int xx = -hw; xx <= hw; xx += 2) { // sparse for a soft look
-                        float nx = (float)xx / (haloRX + 0.001f);
-                        float d = sqrtf(nx * nx + ny * ny);
-                        int b = (int)(haloB * (1.0f - d));
-                        if (b > 0) r.pixelShade(cx + (float)xx, cy + (float)yy, b);
-                    }
-                }
-            }
-
-            // --- Shockwave ring: thicker, textured expanding elliptical rim
-            // that fades with time.
-            float br = e * (42.0f * sc) + fb;
-            float brRX = br * EXP_RX;
-            float brRY = br * EXP_RY;
-            int ringBase = (int)(180 * (1.0f - t));
-            if (ringBase > 0) {
-                int ir = (int)brRY;
-                for (int yy = -ir; yy <= ir; yy++) {
-                    float ny = (float)yy / (brRY + 0.001f);
-                    if (ny * ny > 1.0f) continue;
-                    int hw = (int)(brRX * sqrtf(1.0f - ny * ny));
-                    if (hw <= 0) continue;
-                    float ringNoise = 0.6f + 0.4f * sinf((float)ship.counter * 0.13f + (float)yy * 0.3f);
-                    int ringB = (int)(ringBase * ringNoise);
-                    if (ringB <= 0) continue;
-                    // give the ring some thickness (2px) instead of a single point
-                    for (int t2 = 0; t2 <= 1; t2++) {
-                        r.pixelShade(cx + (float)(-hw - t2), cy + (float)yy, ringB);
-                        r.pixelShade(cx + (float)(hw + t2), cy + (float)yy, ringB);
-                    }
-                }
-            }
-
-            // --- Fire ejecta: 28 particles with short trails, scattering with an
-            // upward bias (fuel rises) and the same elliptical footprint, fast at
-            // ignition, decelerating outward.
-            for (int p = 0; p < 28; p++) {
-                int seed = p * 29 + ship.counter;
-                float ang = (float)(seed * 53 % 628) * 0.01f;
-                float upward = 1.0f;
-                if (cosf(ang) < 0.0f) upward = 1.0f + fabsf(cosf(ang)) * 1.2f;
-                float spd = 1.5f + (float)(seed * 13 % 100) / 100.0f * 4.0f;
-                float life = fmodf((float)ship.counter * 0.012f + (float)(p % 50) / 50.0f, 1.0f);
-                float dist = life * spd * (22.0f + t * 10.0f) * sc * upward;
-                float px = cx + sinf(ang) * dist * EXP_RX;
-                float py = cy + cosf(ang) * dist * EXP_RY;
-                int b = (int)(230 * (1.0f - life) * (0.7f + 0.3f * (1.0f - t)));
-                if (b <= 0) continue;
-                r.pixelShade(px, py, b);
-                float trailDist = (life - 0.06f) * spd * (22.0f + t * 10.0f) * sc * upward;
-                if (trailDist > 0.0f) {
-                    float tx = cx + sinf(ang) * trailDist * EXP_RX;
-                    float ty = cy + cosf(ang) * trailDist * EXP_RY;
-                    r.pixelShade(tx, ty, b / 2);
-                }
-            }
-
-            // --- Rising smoke: fades in as the fireball cools, drifts upward and
-            // spreads, giving the explosion an aftermath instead of just vanishing.
-            if (t > 0.35f) {
-                float st = (t - 0.35f) / 0.65f;
-                for (int p = 0; p < 16; p++) {
-                    int seed = p * 71 + 17;
-                    float ang = (float)(seed * 37 % 628) * 0.01f;
-                    float spread = 0.5f + (float)(seed % 100) / 100.0f;
-                    float rise = st * (18.0f + (float)(seed % 40)) * sc;
-                    float drift = sinf(ang) * spread * st * 10.0f * sc;
-                    float px = cx + drift;
-                    float py = cy - rise;
-                    int b = (int)(70 * st * (1.0f - st));
-                    if (b > 0) r.pixelShade(px, py, b);
-                }
-            }
-
-            // Ship's exploding fragments fly outward on top of the fire glow,
-            // silhouetted against the inferno (5x scatter speed).
+            explosion.actualizarYRenderizar(r);
             ship.draw(r, viewX, viewY, viewScale);
         }
 

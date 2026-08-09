@@ -12,6 +12,7 @@
 #include "rings.h"
 #include "twister.h"
 #include "tanker.h"
+#include "explosion.h"
 #include "config.h"
 
 enum GameState {
@@ -66,6 +67,7 @@ public:
     Rings rings;
     Twister twister;
     Tanker tanker;
+    ExplosionManager explosion;
     bool windEnabled;
     float windStrength;
     int windDir;
@@ -92,6 +94,7 @@ private:
     bool ringHit;
     bool twisterCrash;
     bool tankerCrash;
+    bool explosionInited;
     int demoTankerPhase; // 0 = approach pre-position left of the drogue, 1 = slide in
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
