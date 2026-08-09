@@ -104,7 +104,7 @@ void Geysers::emit(const Vent &v)
     p.x = v.x + (randf01() - 0.5f) * 2.0f;
     p.y = v.gy - 1.0f;
     p.vx = (randf01() - 0.5f) * GEYSER_PART_SPREAD * 2.0f;
-    p.vy = GEYSER_PART_SPEED * (0.6f + randf01() * 0.8f);
+    p.vy = -GEYSER_PART_SPEED * (0.6f + randf01() * 0.8f);
     p.maxLife = GEYSER_PART_LIFE * (0.5f + randf01());
     p.life = p.maxLife;
     parts_.push_back(p);
@@ -143,7 +143,7 @@ void Geysers::update(float dt)
         if (p.life <= 0.0f) {
             parts_.erase(parts_.begin() + i);
         } else {
-            p.vy -= GEYSER_PART_GRAV * dt;
+            p.vy += GEYSER_PART_GRAV * dt;
             p.x += p.vx * dt;
             p.y += p.vy * dt;
             i++;

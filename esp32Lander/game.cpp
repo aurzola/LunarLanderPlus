@@ -716,11 +716,11 @@ void Game::setZoom(bool zoom)
         zoomedIn = true;
         viewX = -ship.posX * viewScale + SCREEN_W / 2.0f;
         viewY = -ship.posY * viewScale + SCREEN_H * 0.25f;
-        ship.scale = 0.32f;
+        ship.scale = 0.48f;
     } else {
         viewScale = SCREEN_H / 700.0f;
         zoomedIn = false;
-        ship.scale = 1.0f;
+        ship.scale = 1.5f;
         viewX = 0;
         viewY = 0;
     }
@@ -857,7 +857,7 @@ void Game::checkCollisions()
         } else {
             score += (int)(15 * mult);
         }
-        if (terrain.onChuteSpot(ship.posX)) chuteAvailable = true;
+        if (!chuteAvailable && terrain.onChuteSpot(ship.posX)) chuteAvailable = true;
         state = STATE_LANDED;
         resetTimer = CRASH_RESET_DELAY;
     } else if (result == 1) {
@@ -1436,7 +1436,7 @@ void Game::draw(Renderer &r)
                 r.text(250, 52, buf);
             }
 
-            if (demo) r.text(22, 72, "DEMO");
+            if (demo) r.text(22, 62, "DEMO");
             bool windShown = windEnabled;
             if (windShown) {
                 snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
@@ -1451,11 +1451,11 @@ void Game::draw(Renderer &r)
             // deploy was refused. Nothing is shown once the chute is spent.
             if (chuteAvailable) {
                 if (chuteTooLowTimer > 0.0f) {
-                    if ((ship.counter % 40) < 26) r.text(22, 62, "TOO LOW");
+                    if ((ship.counter % 40) < 26) r.text(22, 72, "TOO LOW");
                 } else if (ship.chute) {
-                    if ((ship.counter % 30) < 22) r.text(22, 62, "CHUTE");
+                    if ((ship.counter % 30) < 22) r.text(22, 72, "CHUTE");
                 } else {
-                    r.text(22, 62, "CHUTE");
+                    r.text(22, 72, "CHUTE");
                 }
             }
         }
@@ -1594,7 +1594,7 @@ void Game::draw(Renderer &r)
 
             float smx = (ship.posX - minTX) * ms + ox;
             float smy = (ship.posY - minTY) * ms + oy;
-            r.rect(smx - 1, smy - 1, 3, 3);
+            r.rect(smx - 1, smy - 1, 2, 2);
 
             for (int i = 0; i < (int)tl.size(); i++) {
                 if (tl[i].labelX < 0) continue;
