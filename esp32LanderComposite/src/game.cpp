@@ -892,6 +892,7 @@ void Game::update()
     if (input.startPressed && demo) {
         demo = false;
         newGame();
+        input.startPressed = false;
         return;
     }
 
@@ -900,6 +901,7 @@ void Game::update()
         ship.altitude = terrain.getLines()[0].y1 - ship.bottom;
         if (input.startPressed) {
             newGame();
+            input.startPressed = false;
         } else {
             demoTimer -= dt;
             if (demoTimer <= 0) startDemo();

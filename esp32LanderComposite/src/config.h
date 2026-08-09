@@ -39,7 +39,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;  // el demo elige nivel al azar 1..DEMO_MAX_LEVEL
-const int START_LEVEL = 1;  // el juego comienza por el nivel 1 (LUNA)
+const int START_LEVEL = 4;  // arranca en Ganímedes (anillos)
 const float DEMO_POWER_RATE = 0.4f;
 
 const int WIND_START_LEVEL = 4;

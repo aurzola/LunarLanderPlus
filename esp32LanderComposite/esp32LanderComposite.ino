@@ -49,7 +49,8 @@ static float potLevel = 0.0f;
 static int potAtCycle = 0;
 #endif
 static bool motorOn = false;
-static int lastButton = HIGH;
+static int btnDbStable = HIGH, btnDbPrev = HIGH;
+static unsigned long btnDbTime = 0;
 static int lastGameState = -1;
 static unsigned long lastIsrPrint = 0;
 static unsigned long lastNunchuckPrint = 0;
@@ -263,6 +264,15 @@ static void readInputs()
     game.input.startPressed = false;
     game.input.chuteToggle = false;
 
+    int btnRaw = digitalRead(PIN_START);
+    unsigned long nowMs = millis();
+    if (btnRaw != btnDbStable) { btnDbTime = nowMs; btnDbStable = btnRaw; }
+    bool btnFell = false;
+    if (nowMs - btnDbTime >= 30) {
+        if (btnDbPrev == HIGH && btnDbStable == LOW) btnFell = true;
+        btnDbPrev = btnDbStable;
+    }
+
 #if CONTROLS_WIRED
     nunchuck.read();
 
@@ -274,9 +284,7 @@ static void readInputs()
         if (jx > calMaxX) calMaxX = jx;
         if (jy < calMinY) calMinY = jy;
         if (jy > calMaxY) calMaxY = jy;
-        int b = digitalRead(PIN_START);
-        if (lastButton == HIGH && b == LOW) { cancelCalibration(); lastButton = b; return; }
-        lastButton = b;
+        if (btnFell) { cancelCalibration(); return; }
         if (nunchuck.buttonC() && !nunchuck.buttonZ()) confirmCalibration();
         return;
     }
@@ -335,9 +343,7 @@ static void readInputs()
     game.input.powerLevel = 0.0f;
 #endif
 
-    int b = digitalRead(PIN_START);
-    if (lastButton == HIGH && b == LOW) game.input.startPressed = true;
-    lastButton = b;
+    if (btnFell) game.input.startPressed = true;
 }
 
 void setup()
