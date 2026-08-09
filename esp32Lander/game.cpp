@@ -709,14 +709,19 @@ void Game::drawWind(Renderer &r)
     }
 }
 
-void Game::setZoom(bool zoom)
+void Game::setZoom(bool zoom, float zm)
 {
     if (zoom) {
-        viewScale = SCREEN_H / 700.0f * 5.0f;
+        viewScale = SCREEN_H / 700.0f * zm;
         zoomedIn = true;
         viewX = -ship.posX * viewScale + SCREEN_W / 2.0f;
-        viewY = -ship.posY * viewScale + SCREEN_H * 0.25f;
-        ship.scale = 0.48f;
+        // Lower zoom → ship sits lower on screen (shows more sky overhead).
+        float shipFrac = 0.25f + (1.0f - zm / 5.0f) * 0.55f;
+        viewY = -ship.posY * viewScale + SCREEN_H * shipFrac;
+        // Scale ship so it reads the same size as the 5x zoom reference.
+        ship.scale = 0.48f * 5.0f / zm;
+        if (ship.scale > 1.5f) ship.scale = 1.5f;
+        if (ship.scale < 0.48f) ship.scale = 0.48f;
     } else {
         viewScale = SCREEN_H / 700.0f;
         zoomedIn = false;
@@ -750,7 +755,8 @@ void Game::updateView()
     }
 
     if (!zoomedIn && ship.altitude < ZOOM_IN_ALT) {
-        setZoom(true);
+        float zm = moonHasRings(level) ? 2.0f : 5.0f;
+        setZoom(true, zm);
     } else if (zoomedIn && ship.altitude > ZOOM_OUT_ALT) {
         setZoom(false);
     }
