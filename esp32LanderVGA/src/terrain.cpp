@@ -199,21 +199,6 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
 
         if (sx2 < -10 || sx1 > SCREEN_W + 10) continue;
 
-        // Fill the ground mass below each segment with a solid grey tone.
-        int segX0 = (int)roundf(sx1), segX1 = (int)roundf(sx2);
-        if (segX0 > segX1) { int t = segX0; segX0 = segX1; segX1 = t; }
-        if (segX0 == segX1) {
-            float topY = sy1 < sy2 ? sy1 : sy2;
-            r.lineShade((float)segX0, topY, (float)segX0, (float)(SCREEN_H - 1), 80);
-        } else {
-            for (int px = segX0; px <= segX1; px++) {
-                if (px < 0 || px >= SCREEN_W) continue;
-                float t = (float)(px - segX0) / (float)(segX1 - segX0);
-                float segY = sy1 + t * (sy2 - sy1);
-                r.lineShade((float)px, segY, (float)px, (float)(SCREEN_H - 1), 80);
-            }
-        }
-
         r.line(sx1, sy1, sx2, sy2);
 
         if (i + 1 < (int)lines.size()) {
