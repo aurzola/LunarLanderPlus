@@ -1465,7 +1465,13 @@ void Game::draw(Renderer &r)
             snprintf(buf, sizeof buf, "L%d SCORE %d", level, score);
             r.text(22, 22, buf);
             snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
-            r.text(22, 32, buf);
+            if (ship.fuel <= 0) {
+                if ((ship.counter % 50) < 30) r.text(22, 32, buf);
+            } else if (ship.fuel < 300) {
+                if ((ship.counter % 50) < 30) r.text(22, 32, buf);
+            } else {
+                r.text(22, 32, buf);
+            }
 
             if (glitch) {
                 char gb[8];
@@ -1570,11 +1576,6 @@ void Game::draw(Renderer &r)
         }
 
         if (state == STATE_PLAYING && introTimer <= 0) {
-            if (ship.fuel <= 0) {
-                if ((ship.counter % 50) < 30) r.text(250, warnY, "OUT OF FUEL");
-            } else if (ship.fuel < 300) {
-                if ((ship.counter % 50) < 30) r.text(250, warnY, "LOW FUEL");
-            }
             if ((ship.velY > LAND_HARD_VY ||
                  ship.velX > LAND_HARD_VX || ship.velX < -LAND_HARD_VX) &&
                 (ship.counter % 50) < 30) {
