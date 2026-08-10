@@ -2,6 +2,7 @@
 #define SHIP_H
 
 #include <vector>
+#include "config.h"
 
 class Renderer;
 
@@ -10,6 +11,15 @@ struct ShipShape {
     int count;
     bool closed;
     float velX, velY;
+};
+
+struct GroundParticle {
+    float x, y;
+    float velX, velY;
+    float life;
+    float size;   // 1 = dot, 2 = plus, 3 = 3x3 rock chunk
+    float shade;  // per-particle brightness multiplier (0.7..1.0)
+    bool active;
 };
 
 class Ship {
@@ -47,7 +57,9 @@ public:
 private:
     ShipShape shapes[6];
     float shapePosX[6], shapePosY[6];
+    GroundParticle groundParticles[GROUND_PARTICLES_MAX];
     void defineShapes();
+    void initGroundParticles();
     void updateExplosion();
 };
 

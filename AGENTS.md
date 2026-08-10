@@ -23,9 +23,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 | Archivo | Contenido |
 |---------|-----------|
-| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Relleno sólido (10/8/2026)**: shapes cerrados (0=ascenso, 1=descenso) se rellenan con `fillPolygon` en gris 140/100 y contorno blanco encima; ventana con `rectShade` 160 + borde. **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
-| `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento. **Relleno del suelo (10/8/2026)**: columnas verticales bajo la superficie con `lineShade` 80 (masa sólida gris oscuro) |
-| `game.h/cpp` | Estados, zoom + minimapa, scoring, `update()` + `draw(Renderer&)` |
+| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Relleno sólido (10/8/2026)**: shapes cerrados (0=ascenso, 1=descenso) se rellenan con `fillPolygon` en gris 140/100 y contorno blanco encima; ventana con `rectShade` 160 + borde. **Polvo de impacto (rama `crash-dust`)**: al estrellarse `initGroundParticles()` levanta `GROUND_PARTICLES_MAX=40` partículas de regolito desde la línea de contacto (distribución 40/40/20 de tamaños punto/`+`/roca 3×3, brillo propio 0.7–1.0), siguen la velocidad del impacto (×2.5 en explosión de combustible), arquean con `GROUND_PARTICLE_GRAV=0.018` y se desvanecen en `GROUND_PARTICLE_LIFE=70` ticks (ver `Ship::updateExplosion()`). **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
+| `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento. **Cráter de choque (rama `crash-dust`)**: `setCrater(x, halfW)`/`clearCrater()` guardan un tramo del mundo; `draw()` **recorta la polilínea** en ese tramo (segmento entero dentro se omite, parciales se cortan por interpolación) dejando un **hueco abierto del ancho de la nave** (`CRATER_HALF_W=3.5`, ~7 u) en el punto de impacto — sin relleno ni borde, solo indica que ahí hubo un choque. `Game` lo activa en crash duro y smash de torbellino y lo limpia en `newGame`/`restartLevel`/`nextLevel`/`startDemo` |
+| `game.h/cpp` | Estados, zoom, scoring, `update()` + `draw(Renderer&)` |
 | `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush). `rectShade(x,y,w,h,b)` y `fillPolygon(xs,ys,n,b)` para relleno de polígonos con gris real (10/8/2026) |
 | `renderer_canvas.h/cpp` | Primitivas compartidas (Bresenham con caso explícito dx=0/dy=0, círculo, rect, fuente 5x7) vía `pixel()`. `rectShade`: rectángulo sólido con `pixelShade`. `fillPolygon`: scanline fill para polígonos convexos (intersecciones por fila + líneas horizontales sombreadas) |
 | `renderer_pc.h/cpp` | Renderer de validación en PC: framebuffer + PPM (extiende `RendererCanvas`) |
@@ -135,11 +135,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   - Config: `PARACHUTE_OPEN_TIME=0.5f`, `PARACHUTE_SINK=0.09f`, `PARACHUTE_MIN_ALT=80.0f`,
     `PARACHUTE_STEER=0.0012f`, `PARACHUTE_DRIFT_MAX=0.30f`, `PARACHUTE_WIND_GAIN=2.0f`. Nota en
     `config.h` sobre la variante A (motor apagado con vela) como opción futura.
-- Minimapa 96×49 en **arriba-centro (112,22)** dibujado cuando `zoomedIn` (terreno completo + marcador de nave).
 - **Indicadores de aterrizaje (7/8/2026)** (detectados por `labelX >= 0`, único por zona):
-  - **Minimapa**: una **flechita sólida** de 3×2 px (triángulo relleno 1-3) bajo cada zona,
-    centrada en su `labelX` y ~5 px bajo la superficie del pad (recortada al borde del minimapa),
-    que **parpadea on/off** con `(ship.counter/25)&1`.
   - **Vista principal** (vista normal y zoom): hilera de **cuadritos 2×2 que parpadean alternando**
     (`(k + ship.counter/20)&1`) bajo cada plataforma, centrada en el `labelX`, ~3 unidades de mundo
     bajo la superficie (pitch 5 u, 3–12 luces según el ancho) — efecto de luces de aproximación que
@@ -207,8 +203,8 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - `labelX` se setea solo en el primer segmento de cada zona → el label "Nx" se dibuja una sola vez.
 - **Muros verticales de las plataformas (8/8/2026)**: al aplanar la zona (`init()` solo aplanaba
   los segmentos `idx..idx+3`) el punto `idx+4` conservaba su `y` original → quedaba un salto de
-  altura en el mismo `x` que **no se dibujaba** (muro invisible en la vista y en el minimapa).
-  Fix: `Terrain::draw()` (y el minimapa en `game.cpp`) dibujan un **conector vertical** cuando dos
+  altura en el mismo `x` que **no se dibujaba** (muro invisible en la vista).
+  Fix: `Terrain::draw()` dibuja un **conector vertical** cuando dos
   segmentos consecutivos comparten `x2==x1` y difieren en `y`. `generate()` no tenía el bug
   (aplana el punto de frontera `zoneStart..zoneStart+4`).
 - **Niveles procedurales (5/8/2026)**: `Terrain::generate(level)` para nivel ≥ 2. Nivel 1 = terreno
@@ -455,4 +451,4 @@ pendientes y bugs activos:
   (el FB de video ya no cabía); se resolvió pasando las muestras de audio a flash (ver Sonido).
   RAM 101908 B (31%), arranque limpio verificado por serial. Pendiente re-probar en CRT.
 - **BUG PENDIENTE (demo, #23)**: a veces el juego no se renderiza completo por la **izquierda** de la pantalla — queda un espacio sin pintar o sin usar, notado principalmente en el auto-demo/attract mode. Hipótesis a investigar: la librería aquaticus escanea el framebuffer por raster esta vez; posible offset de inicio de línea horizontal (back porch del CRT) o un rect/borrado que no cubre el margen izquierdo en ciertos estados. Ver WORKLOG #23.
-- **TEMP**: `RING_FOG_BRIGHT=0` desactiva la niebla de las bandas de Ganímedes (decisión de diseño). `DEMO_LEVEL_FORCE=2` en el sketch ESP32 (demo juega nivel 2 = Ío como showcase de la cisterna); el PC va en `0` (nivel al azar 1..12). `START_LEVEL=1` (partida ordenada desde LUNA). `FOG_SCREEN_TOP=68` (cuadro de limpieza del HUD a la altura de MEM).
+- **TEMP**: `RING_FOG_BRIGHT=0` desactiva la niebla de las bandas de Ganímedes (decisión de diseño). `DEMO_LEVEL_FORCE=0` en PC y sketch (demo elige nivel al azar 1..12). `START_LEVEL=1` (partida ordenada desde LUNA). `FOG_SCREEN_TOP=68` (cuadro de limpieza del HUD a la altura de MEM).

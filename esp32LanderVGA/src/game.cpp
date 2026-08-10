@@ -88,7 +88,8 @@ Game::Game()
       zoomedIn(false), resetTimer(0), landMultiplier(1),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), demoHoldAltitude(false),
-      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false), demoTankerPhase(0)
+      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false),
+      demoTankerPhase(0)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -143,6 +144,7 @@ void Game::newGame()
     ringHit = false;
     tankerCrash = false;
     explosionInited = false;
+    terrain.clearCrater();
 }
 
 void Game::restartLevel()
@@ -158,6 +160,7 @@ void Game::restartLevel()
     tankerCrash = false;
     explosionInited = false;
     twisterCrash = false;
+    terrain.clearCrater();
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
         state = STATE_WAITING;
@@ -190,6 +193,7 @@ void Game::nextLevel()
     ringHit = false;
     tankerCrash = false;
     explosionInited = false;
+    terrain.clearCrater();
     state = STATE_PLAYING;
     ship.reset(110, 150);
     ship.fuel = f;
@@ -237,6 +241,7 @@ void Game::startDemo()
     ringHit = false;
     tankerCrash = false;
     explosionInited = false;
+    terrain.clearCrater();
     ship.reset(110, 150);
     ship.velX = 0.06f;
     setZoom(false);
@@ -873,6 +878,7 @@ void Game::checkCollisions()
     // against the ground near the vortex base.
     if (result != 0 && twister.captured()) {
         twisterCrash = true;
+        terrain.setCrater(ship.posX, CRATER_HALF_W);
         ship.crash();
         int lost = 200 + (rand() % 200);
         fuel -= lost;
@@ -910,6 +916,7 @@ void Game::checkCollisions()
         resetTimer = CRASH_RESET_DELAY;
     } else if (result == 1) {
         int lost = 200 + (rand() % 200);
+        terrain.setCrater(ship.posX, CRATER_HALF_W);
         ship.crash();
         fuel -= lost;
         ship.fuel -= lost;

@@ -9,7 +9,20 @@
 #include <Arduino.h>
 #endif
 
-Terrain::Terrain() : tileWidth(0), chuteZoneX1(0), chuteZoneX2(0), chuteLabelX(-1) {}
+Terrain::Terrain() : tileWidth(0), chuteZoneX1(0), chuteZoneX2(0), chuteLabelX(-1),
+                     craterActive(false), craterX(0), craterHalfW(0) {}
+
+void Terrain::setCrater(float x, float halfW)
+{
+    craterActive = true;
+    craterX = x;
+    craterHalfW = halfW;
+}
+
+void Terrain::clearCrater()
+{
+    craterActive = false;
+}
 
 void Terrain::addLine(float x1, float y1, float x2, float y2)
 {
@@ -190,26 +203,51 @@ void Terrain::generate(int level)
 
 void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/, bool drawStars)
 {
+    float c1 = craterActive ? craterX - craterHalfW : 0.0f;
+    float c2 = craterActive ? craterX + craterHalfW : 0.0f;
+
+    auto interp = [](float x1, float y1, float x2, float y2, float x) {
+        if (x2 == x1) return y1;
+        float t = (x - x1) / (x2 - x1);
+        return y1 + (y2 - y1) * t;
+    };
+
+    auto drawSeg = [&](float x1, float y1, float x2, float y2, const TerrainLine &l) {
+        if (x2 < x1) { float t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
+        float sx1 = x1 * viewScale + viewX;
+        float sy1 = y1 * viewScale + viewY;
+        float sx2 = x2 * viewScale + viewX;
+        float sy2 = y2 * viewScale + viewY;
+        if (sx2 < -10 || sx1 > SCREEN_W + 10) return;
+        r.line(sx1, sy1, sx2, sy2);
+        if (l.landable && l.multiplier > 1) {
+            r.line(sx1, sy1 - 1, sx2, sy2 - 1);
+        }
+    };
+
     for (int i = 0; i < (int)lines.size(); i++) {
         const TerrainLine &l = lines[i];
-        float sx1 = l.x1 * viewScale + viewX;
-        float sy1 = l.y1 * viewScale + viewY;
-        float sx2 = l.x2 * viewScale + viewX;
-        float sy2 = l.y2 * viewScale + viewY;
 
-        if (sx2 < -10 || sx1 > SCREEN_W + 10) continue;
-
-        r.line(sx1, sy1, sx2, sy2);
+        if (craterActive && l.x2 > c1 && l.x1 < c2) {
+            if (l.x1 >= c1 && l.x2 <= c2) {
+                // Whole segment erased by the crater: open gap in the surface.
+                continue;
+            }
+            if (l.x1 < c1) drawSeg(l.x1, l.y1, c1, interp(l.x1, l.y1, l.x2, l.y2, c1), l);
+            if (l.x2 > c2) drawSeg(c2, interp(l.x1, l.y1, l.x2, l.y2, c2), l.x2, l.y2, l);
+        } else {
+            drawSeg(l.x1, l.y1, l.x2, l.y2, l);
+        }
 
         if (i + 1 < (int)lines.size()) {
             const TerrainLine &n = lines[i + 1];
             if (l.x2 == n.x1 && l.y2 != n.y1) {
-                r.line(sx2, sy2, n.x1 * viewScale + viewX, n.y1 * viewScale + viewY);
+                r.line(l.x2 * viewScale + viewX, l.y2 * viewScale + viewY,
+                       n.x1 * viewScale + viewX, n.y1 * viewScale + viewY);
             }
         }
 
         if (l.landable && l.multiplier > 1) {
-            r.line(sx1, sy1 - 1, sx2, sy2 - 1);
             if (l.labelX >= 0) {
                 char buf[8];
                 snprintf(buf, sizeof buf, "%dx", l.multiplier);
