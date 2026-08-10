@@ -778,15 +778,4 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       Y=655–710 (centro–bordes), 55–210 u sobre el terreno. **Frame-skip**: la banda baja (46 rocas)
       se dibuja cada 2 frames (`mutable frameCtr_` en `Rings`, banda 0 siempre dibuja); física y
       colisiones siguen cada frame. Reduce ~50% el coste de dibujo de la banda más densa.
-       Verificación: `test_pc` 963 OK, `rings_demo` OK, sketch compila 576 KB (43%).
-  33. **Dithering Bayer 8×8 en la salida VGA (10/8/2026, rama `ship-redesign`)**: la versión VGA
-      se veía "plana y pixelada, sin grises" comparada con el CRT compuesto. Causa: `RendererVGA`
-      pintaba todo a blanco puro (255) — solo los efectos (niebla, torbellino, géiseres, etc.)
-      usaban `pixelShade`. Solución: **(a)** bajar `WHITE` de 255 a 200 en `renderer_vga.cpp`
-      para que todo el dibujo base tenga margen de dithering; **(b)** `flush()` aplica dithering
-      Bayer 8×8 in-place sobre `fbBack` (umbrales precomputados 2–254, valores 0/255 pasan sin
-      cambios) antes del `memcpy` a `fbFront` dentro de vblank. El dithering se ejecuta fuera
-      del blanking vertical → sin tearing, y el `memcpy` dentro de vblank es rápido. **No afecta
-      al CRT**: `RendererESP32` (composite) y `RendererCanvas` (compartido) no se tocan.
-      Actualizado `AGENTS.md` (sección VGA) y `WORKLOG.md`.
-
+      Verificación: `test_pc` 963 OK, `rings_demo` OK, sketch compila 576 KB (43%).

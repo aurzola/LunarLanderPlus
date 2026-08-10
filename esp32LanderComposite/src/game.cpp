@@ -1167,45 +1167,20 @@ void Game::draw(Renderer &r)
         auto SX = [](float x) { return x * 1.2f + 26.0f; };
         auto SY = [](float y) { return y * 1.2f + 56.0f; };
 
-        // Descent stage: octagonal base with V-strut landing legs drawn as
-        // structural polygons (twin members + cross-bracing for firmness).
+        // Descent stage: octagonal base and landing legs.
         r.line(SX(40), SY(55), SX(60), SY(55));
         r.line(SX(40), SY(55), SX(30), SY(80));
         r.line(SX(60), SY(55), SX(70), SY(80));
         r.line(SX(30), SY(80), SX(70), SY(80));
 
-        // Left leg V-strut: twin members with cross-brace zigzag.
-        float Lx0 = 30, Ly0 = 80, Lx1 = 5, Ly1 = 95;
-        r.line(SX(Lx0),    SY(Ly0),     SX(Lx1 - 1), SY(Ly1));
-        r.line(SX(Lx0 + 3), SY(Ly0 - 1), SX(Lx1 + 2), SY(Ly1));
-        for (int k = 0; k < 5; k++) {
-            float ta = (float)k / 5.0f, tb = ((float)k + 0.5f) / 5.0f;
-            float ax = Lx0 + (Lx1 - 1 - Lx0) * ta, ay = Ly0 + (Ly1 - Ly0) * ta;
-            float bx = Lx0 + 3 + (Lx1 + 2 - (Lx0 + 3)) * tb, by = Ly0 - 1 + (Ly1 - (Ly0 - 1)) * tb;
-            r.line(SX(ax), SY(ay), SX(bx), SY(by));
-        }
-        r.rect(SX(Lx1 - 3), SY(Ly1 - 1), 5.4f, 2.4f);
-
-        // Right leg V-strut (mirrored).
-        float Rx0 = 70, Ry0 = 80, Rx1 = 95, Ry1 = 95;
-        r.line(SX(Rx0),    SY(Ry0),     SX(Rx1 + 1), SY(Ry1));
-        r.line(SX(Rx0 - 3), SY(Ry0 - 1), SX(Rx1 - 2), SY(Ry1));
-        for (int k = 0; k < 5; k++) {
-            float ta = (float)k / 5.0f, tb = ((float)k + 0.5f) / 5.0f;
-            float ax = Rx0 + (Rx1 + 1 - Rx0) * ta, ay = Ry0 + (Ry1 - Ry0) * ta;
-            float bx = Rx0 - 3 + (Rx1 - 2 - (Rx0 - 3)) * tb, by = Ry0 - 1 + (Ry1 - (Ry0 - 1)) * tb;
-            r.line(SX(ax), SY(ay), SX(bx), SY(by));
-        }
-        r.rect(SX(Rx1 - 3), SY(Ry1 - 1), 5.4f, 2.4f);
-
-        // Center leg: twin parallel struts + rectangular footpad.
-        r.line(SX(49), SY(80), SX(49), SY(95));
-        r.line(SX(51), SY(80), SX(51), SY(95));
-        for (int k = 0; k < 4; k++) {
-            float yk = SY(84 + k * 3.0f);
-            r.line(SX(49), yk, SX(51), yk);
-        }
-        r.rect(SX(47), SY(95), 5.4f, 2.4f);
+        r.line(SX(50), SY(80), SX(50), SY(95));
+        r.circle(SX(50), SY(95), 2.4f);
+        r.line(SX(30), SY(80), SX(15), SY(90));
+        r.line(SX(15), SY(90), SX(5), SY(95));
+        r.circle(SX(5), SY(95), 1.8f);
+        r.line(SX(70), SY(80), SX(85), SY(90));
+        r.line(SX(85), SY(90), SX(95), SY(95));
+        r.circle(SX(95), SY(95), 1.8f);
 
         r.rect(SX(48), SY(55), 4.8f, 30.0f);
         r.line(SX(48), SY(57), SX(52), SY(57));

@@ -353,7 +353,7 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
 
     // In the normal/zoomed-out view the zeppelin is drawn bigger so it reads
     // as a mothership, but the physical hitbox stays unchanged.
-    float drawScale = (viewScale < 1.0f) ? viewScale * 1.9f : viewScale;
+    float drawScale = (viewScale < 1.0f) ? viewScale * 1.6f : viewScale;
     float s = viewScale; // drogue/hose/gondola use viewScale; balloon uses drawScale
     float x0 = bodyX * s + viewX;
     float y0 = bodyY * s + viewY;
