@@ -143,11 +143,11 @@ void Terrain::generate(int level)
     static const int landingMul[] = {4, 5, 5, 2};
     int zoneStart[4];
     for (int j = 0; j < 4; j++) {
-        zoneStart[j] = (NP - 12) * j / 4 + (rand() % 8);
+        zoneStart[j] = (NP - 20) * j / 4 + (rand() % 8);
         float zy = 0;
-        for (int k = zoneStart[j]; k <= zoneStart[j] + 4; k++) zy += py[k];
-        zy /= 5.0f;
-        for (int k = zoneStart[j]; k <= zoneStart[j] + 4; k++) py[k] = zy;
+        for (int k = zoneStart[j]; k <= zoneStart[j] + 6; k++) zy += py[k];
+        zy /= 7.0f;
+        for (int k = zoneStart[j]; k <= zoneStart[j] + 6; k++) py[k] = zy;
     }
 
     tileWidth = px[NP - 1] * S;
@@ -164,8 +164,8 @@ void Terrain::generate(int level)
         while (li < zoneStart[j]) li++;
         int idx = li;
         if (j == 0) firstZoneIdx = idx;
-        float zoneCenterX = (lines[idx].x1 + lines[idx + 3].x2) / 2.0f;
-        for (int k = idx; k < idx + 4; k++) {
+        float zoneCenterX = (lines[idx].x1 + lines[idx + 5].x2) / 2.0f;
+        for (int k = idx; k < idx + 6; k++) {
             lines[k].multiplier = landingMul[j];
         }
         lines[idx].labelX = zoneCenterX;
@@ -173,7 +173,7 @@ void Terrain::generate(int level)
 
     chuteLabelX = lines[firstZoneIdx].labelX;
     chuteZoneX1 = lines[firstZoneIdx].x1;
-    chuteZoneX2 = lines[firstZoneIdx + 3].x2;
+    chuteZoneX2 = lines[firstZoneIdx + 5].x2;
 
     float terrainTop = 9999;
     for (int i = 0; i < (int)lines.size(); i++) {

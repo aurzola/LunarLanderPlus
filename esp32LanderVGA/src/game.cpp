@@ -356,10 +356,15 @@ void Game::runDemoAI()
         float angle = atan2f(aX, aY) * 180.0f / PI;
         if (thrust > 1.0f) thrust = 1.0f;
 
+        if (thrust < 0.015f) thrust = 0.0f;
+
         float imp = 1.0f - demoSkill;
         float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
         angle += n * imp * 14.0f;
-        thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
+        if (thrust > 0.0f)
+            thrust = clampf(thrust + n * imp * 0.05f, 0.0f, 1.0f);
+        else
+            thrust = 0.0f;
 
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -451,10 +456,15 @@ void Game::runDemoAI()
         float angle = atan2f(aX, aY) * 180.0f / PI;
         if (thrust > 1.0f) thrust = 1.0f;
 
+        if (thrust < 0.015f) thrust = 0.0f;
+
         float imp = 1.0f - demoSkill;
         float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
         angle += n * imp * 14.0f;
-        thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
+        if (thrust > 0.0f)
+            thrust = clampf(thrust + n * imp * 0.05f, 0.0f, 1.0f);
+        else
+            thrust = 0.0f;
 
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -488,11 +498,15 @@ void Game::runDemoAI()
     if (thrust > 1.0f) thrust = 1.0f;
 
     if (ship.velY < -0.01f) thrust = 0.0f;
+    if (thrust < 0.015f) thrust = 0.0f;
 
     float imp = 1.0f - demoSkill;
     float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
     angle += n * imp * 40.0f;
-    thrust = clampf(thrust + n * imp * 0.25f, 0.0f, 1.0f);
+    if (thrust > 0.0f)
+        thrust = clampf(thrust + n * imp * 0.08f, 0.0f, 1.0f);
+    else
+        thrust = 0.0f;
 
     float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
     input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -1105,6 +1119,9 @@ void Game::update()
         ship.altitude = minAlt;
 
         updateView();
+        ship.left = ship.posX - 10.0f * ship.scale;
+        ship.right = ship.posX + 10.0f * ship.scale;
+        ship.bottom = ship.posY + 14.0f * ship.scale;
         checkCollisions();
         return;
     }
@@ -1167,20 +1184,72 @@ void Game::draw(Renderer &r)
         auto SX = [](float x) { return x * 1.2f + 26.0f; };
         auto SY = [](float y) { return y * 1.2f + 56.0f; };
 
-        // Descent stage: octagonal base and landing legs.
+        // Descent stage fill + wireframe
+        {
+            float xs[4] = {SX(40), SX(60), SX(70), SX(30)};
+            float ys[4] = {SY(55), SY(55), SY(80), SY(80)};
+            r.fillPolygon(xs, ys, 4, 100);
+        }
         r.line(SX(40), SY(55), SX(60), SY(55));
         r.line(SX(40), SY(55), SX(30), SY(80));
         r.line(SX(60), SY(55), SX(70), SY(80));
         r.line(SX(30), SY(80), SX(70), SY(80));
 
-        r.line(SX(50), SY(80), SX(50), SY(95));
-        r.circle(SX(50), SY(95), 2.4f);
-        r.line(SX(30), SY(80), SX(15), SY(90));
-        r.line(SX(15), SY(90), SX(5), SY(95));
-        r.circle(SX(5), SY(95), 1.8f);
-        r.line(SX(70), SY(80), SX(85), SY(90));
-        r.line(SX(85), SY(90), SX(95), SY(95));
-        r.circle(SX(95), SY(95), 1.8f);
+        // Left leg: V-strut twin members + cross-brace zigzag + footpad.
+        {
+            float xs[4] = {SX(30), SX(33), SX(7), SX(4)};
+            float ys[4] = {SY(80), SY(79), SY(95), SY(95)};
+            r.fillPolygon(xs, ys, 4, 110);
+        }
+        r.line(SX(30), SY(80), SX(4), SY(95));
+        r.line(SX(33), SY(79), SX(7), SY(95));
+        for (int k = 0; k < 5; k++) {
+            float ta = (float)k / 5.0f, tb = ((float)k + 0.5f) / 5.0f;
+            r.line(SX(30 + (4 - 30) * ta), SY(80 + (95 - 80) * ta),
+                   SX(33 + (7 - 33) * tb), SY(79 + (95 - 79) * tb));
+        }
+        r.rectShade(SX(1), SY(93), 7.2f, 3.0f, 80);
+        r.line(SX(1), SY(93), SX(8), SY(93));
+        r.line(SX(1), SY(93), SX(1), SY(96));
+        r.line(SX(8), SY(93), SX(8), SY(96));
+        r.line(SX(1), SY(96), SX(8), SY(96));
+
+        // Right leg: mirrored V-strut.
+        {
+            float xs[4] = {SX(67), SX(70), SX(96), SX(93)};
+            float ys[4] = {SY(79), SY(80), SY(95), SY(95)};
+            r.fillPolygon(xs, ys, 4, 110);
+        }
+        r.line(SX(70), SY(80), SX(96), SY(95));
+        r.line(SX(67), SY(79), SX(93), SY(95));
+        for (int k = 0; k < 5; k++) {
+            float ta = (float)k / 5.0f, tb = ((float)k + 0.5f) / 5.0f;
+            r.line(SX(70 + (96 - 70) * ta), SY(80 + (95 - 80) * ta),
+                   SX(67 + (93 - 67) * tb), SY(79 + (95 - 79) * tb));
+        }
+        r.rectShade(SX(91), SY(93), 7.2f, 3.0f, 80);
+        r.line(SX(91), SY(93), SX(98), SY(93));
+        r.line(SX(91), SY(93), SX(91), SY(96));
+        r.line(SX(98), SY(93), SX(98), SY(96));
+        r.line(SX(91), SY(96), SX(98), SY(96));
+
+        // Center leg: twin parallel struts + cross-braces + footpad.
+        {
+            float xs[4] = {SX(49), SX(51), SX(51), SX(49)};
+            float ys[4] = {SY(80), SY(80), SY(95), SY(95)};
+            r.fillPolygon(xs, ys, 4, 110);
+        }
+        r.line(SX(49), SY(80), SX(49), SY(95));
+        r.line(SX(51), SY(80), SX(51), SY(95));
+        for (int k = 0; k < 4; k++) {
+            float yk = SY(84 + k * 3.0f);
+            r.line(SX(49), yk, SX(51), yk);
+        }
+        r.rectShade(SX(46), SY(93), 7.2f, 3.0f, 80);
+        r.line(SX(46), SY(93), SX(53), SY(93));
+        r.line(SX(46), SY(93), SX(46), SY(96));
+        r.line(SX(53), SY(93), SX(53), SY(96));
+        r.line(SX(46), SY(96), SX(53), SY(96));
 
         r.rect(SX(48), SY(55), 4.8f, 30.0f);
         r.line(SX(48), SY(57), SX(52), SY(57));
@@ -1202,22 +1271,45 @@ void Game::draw(Renderer &r)
             r.pixel(SX(63 + (y - 56) * 0.3f), SY((float)y));
         }
 
-        // Ascent stage: body, central panel and side boxes.
+        // Ascent stage fill + wireframe
+        {
+            float xs[6] = {SX(35), SX(35), SX(45), SX(55), SX(65), SX(65)};
+            float ys[6] = {SY(55), SY(30), SY(15), SY(15), SY(30), SY(55)};
+            r.fillPolygon(xs, ys, 6, 140);
+        }
         r.line(SX(35), SY(55), SX(35), SY(30));
         r.line(SX(65), SY(55), SX(65), SY(30));
         r.line(SX(35), SY(30), SX(45), SY(15));
         r.line(SX(65), SY(30), SX(55), SY(15));
         r.line(SX(45), SY(15), SX(55), SY(15));
 
+        {
+            float xs[4] = {SX(43), SX(57), SX(60), SX(40)};
+            float ys[4] = {SY(30), SY(30), SY(50), SY(50)};
+            r.fillPolygon(xs, ys, 4, 100);
+        }
         r.line(SX(43), SY(30), SX(57), SY(30));
         r.line(SX(43), SY(30), SX(40), SY(50));
         r.line(SX(57), SY(30), SX(60), SY(50));
         r.line(SX(40), SY(50), SX(60), SY(50));
-        r.rect(SX(48), SY(35), 4.8f, 12.0f);
+        r.rectShade(SX(48), SY(35), 4.8f, 12.0f, 160);
+        r.rectShade(SX(48), SY(35), 4.8f, 12.0f, 160);
+        r.line(SX(48), SY(35), SX(52), SY(35));
+        r.line(SX(48), SY(35), SX(48), SY(47));
+        r.line(SX(52), SY(35), SX(52), SY(47));
+        r.line(SX(48), SY(47), SX(52), SY(47));
 
-        r.rect(SX(28), SY(38), 8.4f, 9.6f);
+        r.rectShade(SX(28), SY(38), 8.4f, 9.6f, 120);
+        r.line(SX(28), SY(38), SX(36), SY(38));
+        r.line(SX(28), SY(38), SX(28), SY(47));
+        r.line(SX(36), SY(38), SX(36), SY(47));
+        r.line(SX(28), SY(47), SX(36), SY(47));
         r.line(SX(28), SY(38), SX(26), SY(40));
-        r.rect(SX(65), SY(38), 8.4f, 9.6f);
+        r.rectShade(SX(65), SY(38), 8.4f, 9.6f, 120);
+        r.line(SX(65), SY(38), SX(73), SY(38));
+        r.line(SX(65), SY(38), SX(65), SY(47));
+        r.line(SX(73), SY(38), SX(73), SY(47));
+        r.line(SX(65), SY(47), SX(73), SY(47));
         r.line(SX(72), SY(38), SX(74), SY(40));
 
         for (int y = 16; y < 30; y += 2) {
@@ -1437,7 +1529,13 @@ void Game::draw(Renderer &r)
             snprintf(buf, sizeof buf, "L%d SCORE %d", level, score);
             r.text(22, 22, buf);
             snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
-            r.text(22, 32, buf);
+            if (ship.fuel <= 0) {
+                if ((ship.counter % 50) < 30) r.text(22, 32, buf);
+            } else if (ship.fuel < 300) {
+                if ((ship.counter % 50) < 30) r.text(22, 32, buf);
+            } else {
+                r.text(22, 32, buf);
+            }
 
             if (glitch) {
                 char gb[8];
@@ -1517,14 +1615,14 @@ void Game::draw(Renderer &r)
             } else if (ringHit) {
                     if (zoomedIn) {
                     float bandSy = rings.centerBandY(terrain, ship.posX) * viewScale + viewY;
-                    float yTxt = bandSy + 18.0f;
+                    float yTxt = bandSy + 36.0f;
                     if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
                     if (yTxt < 20.0f) yTxt = 20.0f;
                     centerText(yTxt, "YOU CRASHED");
                     centerText(yTxt + 12, "STRUCK BY ORBITAL DEBRIS");
                 } else {
-                    centerText(108, "YOU CRASHED");
-                    centerText(120, "STRUCK BY ORBITAL DEBRIS");
+                    centerText(116, "YOU CRASHED");
+                    centerText(128, "STRUCK BY ORBITAL DEBRIS");
                 }
             } else if (twisterCrash) {
                 centerText(90, "YOU CRASHED");
@@ -1542,11 +1640,6 @@ void Game::draw(Renderer &r)
         }
 
         if (state == STATE_PLAYING && introTimer <= 0) {
-            if (ship.fuel <= 0) {
-                if ((ship.counter % 50) < 30) r.text(250, warnY, "OUT OF FUEL");
-            } else if (ship.fuel < 300) {
-                if ((ship.counter % 50) < 30) r.text(250, warnY, "LOW FUEL");
-            }
             if ((ship.velY > LAND_HARD_VY ||
                  ship.velX > LAND_HARD_VX || ship.velX < -LAND_HARD_VX) &&
                 (ship.counter % 50) < 30) {

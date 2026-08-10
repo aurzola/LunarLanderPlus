@@ -200,50 +200,37 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
         float ox = shapePosX[s] * viewScale;
         float oy = shapePosY[s] * viewScale;
 
+        float vx[8], vy[8];
         for (int i = 0; i < sh.count; i++) {
-            float x1 = sx + (sh.dx[i] * cs - sh.dy[i] * sn) * sc + ox;
-            float y1 = sy + (sh.dx[i] * sn + sh.dy[i] * cs) * sc + oy;
+            vx[i] = sx + (sh.dx[i] * cs - sh.dy[i] * sn) * sc + ox;
+            vy[i] = sy + (sh.dx[i] * sn + sh.dy[i] * cs) * sc + oy;
+        }
+
+        if (sh.closed && melt <= 0.0f) {
+            int bright = (s == 0) ? 140 : 100;
+            r.fillPolygon(vx, vy, sh.count, bright);
+        }
+
+        for (int i = 0; i < sh.count; i++) {
             int ni = (i + 1) % sh.count;
             if (!sh.closed && i == sh.count - 1) continue;
-            float x2 = sx + (sh.dx[ni] * cs - sh.dy[ni] * sn) * sc + ox;
-            float y2 = sy + (sh.dx[ni] * sn + sh.dy[ni] * cs) * sc + oy;
 
             if (melt > 0.0f) {
-                float wob = 2.0f * sinf((float)((int)(x1 + x2)) * 0.37f + (float)counter * 0.35f);
+                float wob = 2.0f * sinf((float)((int)(vx[i] + vx[ni])) * 0.37f + (float)counter * 0.35f);
                 float mline = meltScreen + wob;
-                if (y1 <= mline && y2 <= mline) {
-                    r.line(x1, y1, x2, y2);
-                } else if (y1 <= mline || y2 <= mline) {
-                    float t = (mline - y1) / (y2 - y1);
-                    float ix = x1 + t * (x2 - x1);
-                    if (y1 <= mline) r.line(x1, y1, ix, mline);
-                    else r.line(ix, mline, x2, y2);
+                if (vy[i] <= mline && vy[ni] <= mline) {
+                    r.line(vx[i], vy[i], vx[ni], vy[ni]);
+                } else if (vy[i] <= mline || vy[ni] <= mline) {
+                    float t = (mline - vy[i]) / (vy[ni] - vy[i]);
+                    float ix = vx[i] + t * (vx[ni] - vx[i]);
+                    if (vy[i] <= mline) r.line(vx[i], vy[i], ix, mline);
+                    else r.line(ix, mline, vx[ni], vy[ni]);
                 }
                 continue;
             }
 
-            r.line(x1, y1, x2, y2);
+            r.line(vx[i], vy[i], vx[ni], vy[ni]);
         }
-    }
-
-    if (!exploding && melt <= 0.0f) {
-        auto L = [&](float lx, float ly, float rx, float ry) {
-            r.line(sx + (lx * cs - ly * sn) * sc, sy + (lx * sn + ly * cs) * sc,
-                   sx + (rx * cs - ry * sn) * sc, sy + (rx * sn + ry * cs) * sc);
-        };
-        auto R = [&](float rx, float ry, float rw, float rh) {
-            float x1 = sx + (rx * cs - ry * sn) * sc;
-            float y1 = sy + (rx * sn + ry * cs) * sc;
-            float x2 = sx + ((rx + rw) * cs - (ry + rh) * sn) * sc;
-            float y2 = sy + ((rx + rw) * sn + (ry + rh) * cs) * sc;
-            r.line(x1, y1, x2, y1);
-            r.line(x1, y1, x1, y2);
-            r.line(x2, y1, x2, y2);
-            r.line(x1, y2, x2, y2);
-        };
-
-        // Window
-        R(-1.0f, -5.5f, 2.0f, 4.0f);
     }
 
     if (thrustBuild > 0 && active) {

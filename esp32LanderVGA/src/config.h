@@ -38,7 +38,7 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 0;  // el demo elige nivel al azar 1..DEMO_MAX_LEVEL
+const int DEMO_LEVEL_FORCE = 4;  // Ganymede showcase: anillos de roca en la demo
 const int START_LEVEL = 4;  // arranca en Ganímedes (anillos)
 const float DEMO_POWER_RATE = 0.4f;
 const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)

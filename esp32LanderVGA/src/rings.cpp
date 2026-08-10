@@ -181,36 +181,8 @@ void Rings::drawFog(Renderer &r, const Terrain &t, float viewX, float viewY, flo
 
 void Rings::fillDanger(Renderer &r, const float *px, const float *py, int n) const
 {
+    r.fillPolygon(px, py, n, 170);
     tracePoly(r, px, py, n);
-    float minx = px[0], maxx = px[0], miny = py[0], maxy = py[0];
-    for (int i = 1; i < n; i++) {
-        if (px[i] < minx) minx = px[i];
-        if (px[i] > maxx) maxx = px[i];
-        if (py[i] < miny) miny = py[i];
-        if (py[i] > maxy) maxy = py[i];
-    }
-    int y0 = (int)ceilf(miny), y1 = (int)floorf(maxy);
-    float xs[8];
-    for (int yy = y0; yy <= y1; yy++) {
-        float cy = yy + 0.5f;
-        int m = 0;
-        for (int i = 0; i < n; i++) {
-            int j = (i + 1) % n;
-            float y1p = py[i], y2p = py[j];
-            if ((y1p <= cy && y2p > cy) || (y2p <= cy && y1p > cy)) {
-                if (m < 8) xs[m++] = px[i] + (px[j] - px[i]) * (cy - y1p) / (y2p - y1p);
-            }
-        }
-        if (m < 2) continue;
-        for (int a = 0; a < m - 1; a++)
-            for (int bb = a + 1; bb < m; bb++)
-                if (xs[bb] < xs[a]) { float tmp = xs[a]; xs[a] = xs[bb]; xs[bb] = tmp; }
-        for (int k = 0; k + 1 < m; k += 2) {
-            int xa = (int)ceilf(xs[k]), xb = (int)floorf(xs[k + 1]);
-            for (int xx = xa; xx <= xb; xx++)
-                if (((xx + yy) & 2) == 0) r.pixelShade((float)xx, (float)yy, 170);
-        }
-    }
 }
 
 void Rings::draw(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const
