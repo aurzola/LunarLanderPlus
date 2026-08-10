@@ -1167,7 +1167,12 @@ void Game::draw(Renderer &r)
         auto SX = [](float x) { return x * 1.2f + 26.0f; };
         auto SY = [](float y) { return y * 1.2f + 56.0f; };
 
-        // Descent stage: octagonal base and landing legs.
+        // Descent stage fill + wireframe
+        {
+            float xs[4] = {SX(40), SX(60), SX(70), SX(30)};
+            float ys[4] = {SY(55), SY(55), SY(80), SY(80)};
+            r.fillPolygon(xs, ys, 4, 100);
+        }
         r.line(SX(40), SY(55), SX(60), SY(55));
         r.line(SX(40), SY(55), SX(30), SY(80));
         r.line(SX(60), SY(55), SX(70), SY(80));
@@ -1202,22 +1207,45 @@ void Game::draw(Renderer &r)
             r.pixel(SX(63 + (y - 56) * 0.3f), SY((float)y));
         }
 
-        // Ascent stage: body, central panel and side boxes.
+        // Ascent stage fill + wireframe
+        {
+            float xs[6] = {SX(35), SX(35), SX(45), SX(55), SX(65), SX(65)};
+            float ys[6] = {SY(55), SY(30), SY(15), SY(15), SY(30), SY(55)};
+            r.fillPolygon(xs, ys, 6, 140);
+        }
         r.line(SX(35), SY(55), SX(35), SY(30));
         r.line(SX(65), SY(55), SX(65), SY(30));
         r.line(SX(35), SY(30), SX(45), SY(15));
         r.line(SX(65), SY(30), SX(55), SY(15));
         r.line(SX(45), SY(15), SX(55), SY(15));
 
+        {
+            float xs[4] = {SX(43), SX(57), SX(60), SX(40)};
+            float ys[4] = {SY(30), SY(30), SY(50), SY(50)};
+            r.fillPolygon(xs, ys, 4, 100);
+        }
         r.line(SX(43), SY(30), SX(57), SY(30));
         r.line(SX(43), SY(30), SX(40), SY(50));
         r.line(SX(57), SY(30), SX(60), SY(50));
         r.line(SX(40), SY(50), SX(60), SY(50));
-        r.rect(SX(48), SY(35), 4.8f, 12.0f);
+        r.rectShade(SX(48), SY(35), 4.8f, 12.0f, 160);
+        r.rectShade(SX(48), SY(35), 4.8f, 12.0f, 160);
+        r.line(SX(48), SY(35), SX(52), SY(35));
+        r.line(SX(48), SY(35), SX(48), SY(47));
+        r.line(SX(52), SY(35), SX(52), SY(47));
+        r.line(SX(48), SY(47), SX(52), SY(47));
 
-        r.rect(SX(28), SY(38), 8.4f, 9.6f);
+        r.rectShade(SX(28), SY(38), 8.4f, 9.6f, 120);
+        r.line(SX(28), SY(38), SX(36), SY(38));
+        r.line(SX(28), SY(38), SX(28), SY(47));
+        r.line(SX(36), SY(38), SX(36), SY(47));
+        r.line(SX(28), SY(47), SX(36), SY(47));
         r.line(SX(28), SY(38), SX(26), SY(40));
-        r.rect(SX(65), SY(38), 8.4f, 9.6f);
+        r.rectShade(SX(65), SY(38), 8.4f, 9.6f, 120);
+        r.line(SX(65), SY(38), SX(73), SY(38));
+        r.line(SX(65), SY(38), SX(65), SY(47));
+        r.line(SX(73), SY(38), SX(73), SY(47));
+        r.line(SX(65), SY(47), SX(73), SY(47));
         r.line(SX(72), SY(38), SX(74), SY(40));
 
         for (int y = 16; y < 30; y += 2) {

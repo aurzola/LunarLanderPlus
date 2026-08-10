@@ -779,3 +779,18 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       se dibuja cada 2 frames (`mutable frameCtr_` en `Rings`, banda 0 siempre dibuja); física y
       colisiones siguen cada frame. Reduce ~50% el coste de dibujo de la banda más densa.
       Verificación: `test_pc` 963 OK, `rings_demo` OK, sketch compila 576 KB (43%).
+  33. **Relleno sólido de polígonos con grises reales (10/8/2026, rama `polygon-fill`)**: la versión
+      VGA se veía "plana" porque todo se dibujaba solo con líneas blancas. Solución con grises reales
+      del DAC (sin dithering, sin patrones):
+      - **Nuevas primitivas**: `rectShade(x,y,w,h,brightness)` y `fillPolygon(xs,ys,n,brightness)`
+        (scanline fill para polígonos convexos) en `Renderer` / `RendererCanvas`.
+      - **Nave**: shapes cerrados (0=ascenso gris 140, 1=descenso gris 100) rellenos con
+        `fillPolygon`; ventana con `rectShade` 160. Contornos blancos encima.
+      - **Terreno**: columnas verticales con `lineShade` 80 bajo cada píxel de la superficie
+        (masa sólida gris oscuro bajo la silueta).
+      - **Título**: módulo Apollo Eagle relleno (descenso 100, ascenso 140, panel 100, ventana
+        160, cajas laterales 120).
+      - **No afecta al CRT en negativo**: el phosphor ya difumina; el fill añade un tono base
+        sutil que da más cuerpo. Código compartido en `RendererCanvas`.
+      Tests PC: 960 OK. Sketch VGA: 583 KB (44 %), subido a placa (`Hash of data verified`).
+

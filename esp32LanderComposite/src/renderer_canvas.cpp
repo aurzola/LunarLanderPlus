@@ -183,6 +183,49 @@ void RendererCanvas::rect(float x, float y, float w, float h)
     }
 }
 
+void RendererCanvas::rectShade(float x, float y, float w, float h, int brightness)
+{
+    int ix = (int)roundf(x), iy = (int)roundf(y);
+    int iw = (int)roundf(w), ih = (int)roundf(h);
+    for (int row = iy; row < iy + ih; row++) {
+        for (int col = ix; col < ix + iw; col++) {
+            pxShade((float)col, (float)row, brightness);
+        }
+    }
+}
+
+void RendererCanvas::fillPolygon(const float* xs, const float* ys, int n, int brightness)
+{
+    if (n < 3) return;
+    float minY = ys[0], maxY = ys[0];
+    for (int i = 1; i < n; i++) {
+        if (ys[i] < minY) minY = ys[i];
+        if (ys[i] > maxY) maxY = ys[i];
+    }
+    int iy0 = (int)ceilf(minY), iy1 = (int)floorf(maxY);
+    for (int y = iy0; y <= iy1; y++) {
+        // Find leftmost and rightmost edge intersections for this scanline.
+        float lx = 1e9f, rx = -1e9f;
+        bool hit = false;
+        for (int i = 0; i < n; i++) {
+            int j = (i + 1) % n;
+            float y0 = ys[i], y1 = ys[j];
+            if ((y0 <= (float)y && y1 > (float)y) ||
+                (y1 <= (float)y && y0 > (float)y)) {
+                float t = ((float)y - y0) / (y1 - y0);
+                float xx = xs[i] + t * (xs[j] - xs[i]);
+                if (xx < lx) lx = xx;
+                if (xx > rx) rx = xx;
+                hit = true;
+            }
+        }
+        if (!hit) continue;
+        int x0 = (int)ceilf(lx), x1 = (int)floorf(rx);
+        for (int x = x0; x <= x1; x++)
+            pxShade((float)x, (float)y, brightness);
+    }
+}
+
 void RendererCanvas::circle(float cx, float cy, float r)
 {
     int xc = (int)roundf(cx), yc = (int)roundf(cy), rr = (int)roundf(r);

@@ -12,6 +12,8 @@ public:
     void circle(float cx, float cy, float r) override;
     void text(float x, float y, const char *s) override;
     void textScaled(float x, float y, const char *s, float scale, int brightness) override;
+    void rectShade(float x, float y, float w, float h, int brightness) override;
+    void fillPolygon(const float* xs, const float* ys, int n, int brightness) override;
     void setClip(float x, float y, float w, float h) override;
     void clearClip() override;
 

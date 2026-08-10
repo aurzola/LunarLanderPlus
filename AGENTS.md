@@ -23,11 +23,11 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 | Archivo | Contenido |
 |---------|-----------|
-| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
-| `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento |
+| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Relleno sólido (10/8/2026)**: shapes cerrados (0=ascenso, 1=descenso) se rellenan con `fillPolygon` en gris 140/100 y contorno blanco encima; ventana con `rectShade` 160 + borde. **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
+| `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento. **Relleno del suelo (10/8/2026)**: columnas verticales bajo la superficie con `lineShade` 80 (masa sólida gris oscuro) |
 | `game.h/cpp` | Estados, zoom + minimapa, scoring, `update()` + `draw(Renderer&)` |
-| `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush) |
-| `renderer_canvas.h/cpp` | Primitivas compartidas (Bresenham con caso explícito dx=0/dy=0, círculo, rect, fuente 5x7) vía `pixel()` |
+| `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush). `rectShade(x,y,w,h,b)` y `fillPolygon(xs,ys,n,b)` para relleno de polígonos con gris real (10/8/2026) |
+| `renderer_canvas.h/cpp` | Primitivas compartidas (Bresenham con caso explícito dx=0/dy=0, círculo, rect, fuente 5x7) vía `pixel()`. `rectShade`: rectángulo sólido con `pixelShade`. `fillPolygon`: scanline fill para polígonos convexos (intersecciones por fila + líneas horizontales sombreadas) |
 | `renderer_pc.h/cpp` | Renderer de validación en PC: framebuffer + PPM (extiende `RendererCanvas`) |
 | `main_pc.cpp` | Demo en PC (genera snapshots PPM en `frames/`) |
 | `test_pc.cpp` | Tests de validación (asserts) |
@@ -258,7 +258,7 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   central, etapa de ascenso con panel central/ventana, cajas laterales, plato de rastreo con cardán,
   antena omnidireccional con esfera, antena helicoidal, propulsores RCS y sombras bajo las patas),
   trazado con lambdas `SX(x)=x*1.2+26`, `SY(y)=y*1.2+56` en el área x26–145, y58–173 (spec de bajo
-  nivel, trama cruzada + tramas de sombreado con `pixel`). Controles en letras pequeñas a la derecha
+  nivel, trama cruzada + tramas de sombreado con `pixel`). **Rellenos sólidos (10/8/2026)**: `fillPolygon` en etapa de descenso 100, ascenso 140 y panel central 100; ventana y cajas laterales con `rectShade` 160/120, todos con contorno blanco encima. Controles en letras pequeñas a la derecha
    en x=170
    (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C+STICK: POWER UP/DOWN`, `POT: POWER LEVEL`,
    `START: PARACHUTE (1/LEVEL)`). La línea de crédito
