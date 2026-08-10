@@ -1192,14 +1192,61 @@ void Game::draw(Renderer &r)
         r.line(SX(60), SY(55), SX(70), SY(80));
         r.line(SX(30), SY(80), SX(70), SY(80));
 
-        r.line(SX(50), SY(80), SX(50), SY(95));
-        r.circle(SX(50), SY(95), 2.4f);
-        r.line(SX(30), SY(80), SX(15), SY(90));
-        r.line(SX(15), SY(90), SX(5), SY(95));
-        r.circle(SX(5), SY(95), 1.8f);
-        r.line(SX(70), SY(80), SX(85), SY(90));
-        r.line(SX(85), SY(90), SX(95), SY(95));
-        r.circle(SX(95), SY(95), 1.8f);
+        // Left leg: V-strut twin members + cross-brace zigzag + footpad.
+        {
+            float xs[4] = {SX(30), SX(33), SX(7), SX(4)};
+            float ys[4] = {SY(80), SY(79), SY(95), SY(95)};
+            r.fillPolygon(xs, ys, 4, 110);
+        }
+        r.line(SX(30), SY(80), SX(4), SY(95));
+        r.line(SX(33), SY(79), SX(7), SY(95));
+        for (int k = 0; k < 5; k++) {
+            float ta = (float)k / 5.0f, tb = ((float)k + 0.5f) / 5.0f;
+            r.line(SX(30 + (4 - 30) * ta), SY(80 + (95 - 80) * ta),
+                   SX(33 + (7 - 33) * tb), SY(79 + (95 - 79) * tb));
+        }
+        r.rectShade(SX(1), SY(93), 7.2f, 3.0f, 80);
+        r.line(SX(1), SY(93), SX(8), SY(93));
+        r.line(SX(1), SY(93), SX(1), SY(96));
+        r.line(SX(8), SY(93), SX(8), SY(96));
+        r.line(SX(1), SY(96), SX(8), SY(96));
+
+        // Right leg: mirrored V-strut.
+        {
+            float xs[4] = {SX(67), SX(70), SX(96), SX(93)};
+            float ys[4] = {SY(79), SY(80), SY(95), SY(95)};
+            r.fillPolygon(xs, ys, 4, 110);
+        }
+        r.line(SX(70), SY(80), SX(96), SY(95));
+        r.line(SX(67), SY(79), SX(93), SY(95));
+        for (int k = 0; k < 5; k++) {
+            float ta = (float)k / 5.0f, tb = ((float)k + 0.5f) / 5.0f;
+            r.line(SX(70 + (96 - 70) * ta), SY(80 + (95 - 80) * ta),
+                   SX(67 + (93 - 67) * tb), SY(79 + (95 - 79) * tb));
+        }
+        r.rectShade(SX(91), SY(93), 7.2f, 3.0f, 80);
+        r.line(SX(91), SY(93), SX(98), SY(93));
+        r.line(SX(91), SY(93), SX(91), SY(96));
+        r.line(SX(98), SY(93), SX(98), SY(96));
+        r.line(SX(91), SY(96), SX(98), SY(96));
+
+        // Center leg: twin parallel struts + cross-braces + footpad.
+        {
+            float xs[4] = {SX(49), SX(51), SX(51), SX(49)};
+            float ys[4] = {SY(80), SY(80), SY(95), SY(95)};
+            r.fillPolygon(xs, ys, 4, 110);
+        }
+        r.line(SX(49), SY(80), SX(49), SY(95));
+        r.line(SX(51), SY(80), SX(51), SY(95));
+        for (int k = 0; k < 4; k++) {
+            float yk = SY(84 + k * 3.0f);
+            r.line(SX(49), yk, SX(51), yk);
+        }
+        r.rectShade(SX(46), SY(93), 7.2f, 3.0f, 80);
+        r.line(SX(46), SY(93), SX(53), SY(93));
+        r.line(SX(46), SY(93), SX(46), SY(96));
+        r.line(SX(53), SY(93), SX(53), SY(96));
+        r.line(SX(46), SY(96), SX(53), SY(96));
 
         r.rect(SX(48), SY(55), 4.8f, 30.0f);
         r.line(SX(48), SY(57), SX(52), SY(57));
