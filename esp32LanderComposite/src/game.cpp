@@ -361,7 +361,8 @@ void Game::runDemoAI()
         angle += n * imp * 14.0f;
         thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
 
-        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
         input.thrust = thrust;
         float pw = input.powerLevel;
         float step = DEMO_POWER_RATE * GAME_DT;
@@ -394,7 +395,8 @@ void Game::runDemoAI()
         float angle = atan2f(aX, aY) * 180.0f / PI;
         if (thrust > 1.0f) thrust = 1.0f;
 
-        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
         input.thrust = thrust;
         float pw = input.powerLevel;
         float step = DEMO_POWER_RATE * GAME_DT;
@@ -419,7 +421,7 @@ void Game::runDemoAI()
         if (tanker.docked) {
             float ox = tanker.dockOffsetX;
             float ang = (ox > 0.0f) ? -PI * 0.4f : (ox < 0.0f ? PI * 0.4f : 0.0f);
-            input.angle = ang;
+            input.angle += (ang - input.angle) * DEMO_ANGLE_SMOOTH;
             input.thrust = 0.3f;
             float pw = input.powerLevel;
             float step = DEMO_POWER_RATE * GAME_DT;
@@ -454,7 +456,8 @@ void Game::runDemoAI()
         angle += n * imp * 14.0f;
         thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
 
-        input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+        input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
         input.thrust = thrust;
         float pw = input.powerLevel;
         float step = DEMO_POWER_RATE * GAME_DT;
@@ -491,7 +494,8 @@ void Game::runDemoAI()
     angle += n * imp * 40.0f;
     thrust = clampf(thrust + n * imp * 0.25f, 0.0f, 1.0f);
 
-    input.angle = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+    float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
+    input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
     input.thrust = thrust;
     float pw = input.powerLevel;
     float step = DEMO_POWER_RATE * GAME_DT;
@@ -709,14 +713,19 @@ void Game::drawWind(Renderer &r)
     }
 }
 
-void Game::setZoom(bool zoom)
+void Game::setZoom(bool zoom, float zm)
 {
     if (zoom) {
-        viewScale = SCREEN_H / 700.0f * 5.0f;
+        viewScale = SCREEN_H / 700.0f * zm;
         zoomedIn = true;
         viewX = -ship.posX * viewScale + SCREEN_W / 2.0f;
-        viewY = -ship.posY * viewScale + SCREEN_H * 0.25f;
-        ship.scale = 0.48f;
+        // Lower zoom → ship sits lower on screen (shows more sky overhead).
+        float shipFrac = 0.25f + (1.0f - zm / 5.0f) * 0.55f;
+        viewY = -ship.posY * viewScale + SCREEN_H * shipFrac;
+        // Scale ship so it reads the same size as the 5x zoom reference.
+        ship.scale = 0.48f * 5.0f / zm;
+        if (ship.scale > 1.5f) ship.scale = 1.5f;
+        if (ship.scale < 0.48f) ship.scale = 0.48f;
     } else {
         viewScale = SCREEN_H / 700.0f;
         zoomedIn = false;
@@ -749,10 +758,35 @@ void Game::updateView()
         return;
     }
 
-    if (!zoomedIn && ship.altitude < ZOOM_IN_ALT) {
-        setZoom(true);
-    } else if (zoomedIn && ship.altitude > ZOOM_OUT_ALT) {
-        setZoom(false);
+    if (moonHasRings(level)) {
+        // Rings zoom: band-proximity OR final-approach altitude.
+        // Entering the debris band -> zoom-in to weave through the rocks.
+        // After exiting the band, if the ship is still high -> zoom-out.
+        // Near the ground, the normal altitude threshold kicks in for
+        // the final landing approach zoom (same as all other moons).
+        float bandCY = rings.centerBandY(terrain, ship.posX);
+        float bandTop = bandCY - RING_Y_JITTER - 30.0f;
+        float bandBot = bandCY + RING_Y_JITTER + 30.0f;
+        float bandTopOut = bandCY - RING_Y_JITTER - 60.0f;
+        float bandBotOut = bandCY + RING_Y_JITTER + 60.0f;
+
+        bool inBand = ship.posY >= bandTop && ship.posY <= bandBot;
+        bool nearBand = ship.posY >= bandTopOut && ship.posY <= bandBotOut;
+        bool lowAlt = ship.altitude < ZOOM_IN_ALT;
+
+        if (!zoomedIn && (inBand || lowAlt)) {
+            setZoom(true, 2.0f);
+        } else if (zoomedIn && !nearBand && ship.altitude > ZOOM_OUT_ALT) {
+            setZoom(false);
+        }
+    } else {
+        float zi = ZOOM_IN_ALT;
+        float zo = ZOOM_OUT_ALT;
+        if (!zoomedIn && ship.altitude < zi) {
+            setZoom(true);
+        } else if (zoomedIn && ship.altitude > zo) {
+            setZoom(false);
+        }
     }
 
     float sx = ship.posX * viewScale + viewX;
@@ -892,6 +926,7 @@ void Game::update()
     if (input.startPressed && demo) {
         demo = false;
         newGame();
+        input.startPressed = false;
         return;
     }
 
@@ -900,6 +935,7 @@ void Game::update()
         ship.altitude = terrain.getLines()[0].y1 - ship.bottom;
         if (input.startPressed) {
             newGame();
+            input.startPressed = false;
         } else {
             demoTimer -= dt;
             if (demoTimer <= 0) startDemo();
@@ -928,17 +964,19 @@ void Game::update()
             return;
         }
 
-        // One-shot parachute: C+Z deploys it once; opening too low is ignored
-        // and flashes a warning (the canopy can't open in time). It is consumed
-        // on deploy and only recovered by landing on the marked pad (the "p").
-        if (input.chuteToggle && !ship.chute) {
+        // One-shot parachute: Start button deploys it once; opening too low is
+        // ignored and flashes a warning (the canopy can't open in time). It is
+        // consumed on deploy and only recovered by landing on the marked pad.
+        if (input.startPressed && !ship.chute) {
             if (chuteAvailable) {
                 if (ship.altitude > PARACHUTE_MIN_ALT) {
                     ship.chute = true;
                     ship.chuteOpen = 0.0f;
                     chuteAvailable = false;
+                    input.startPressed = false;
                 } else {
                     chuteTooLowTimer = 1.2f;
+                    input.startPressed = false;
                 }
             }
         }
@@ -1253,7 +1291,7 @@ void Game::draw(Renderer &r)
         r.text(170, 144, "Z: ENGINE ON/OFF");
         r.text(170, 156, "C+STICK: POWER UP/DOWN");
         r.text(170, 168, "POT: POWER LEVEL");
-        r.text(170, 180, "C+Z: PARACHUTE (1/LEVEL)");
+        r.text(170, 180, "START: PARACHUTE (1/LEVEL)");
     } else {
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         geysers.draw(r, viewX, viewY, viewScale);
@@ -1477,10 +1515,8 @@ void Game::draw(Renderer &r)
                 centerText(90, "YOU BURNED");
                 centerText(102, "LAVA DESTROYED THE SHIP");
             } else if (ringHit) {
-                    // In zoom-in place the two lines below the lower band so
-                    // they read clearly instead of overlapping the debris.
                     if (zoomedIn) {
-                    float bandSy = rings.lowerBandY(terrain, ship.posX) * viewScale + viewY;
+                    float bandSy = rings.centerBandY(terrain, ship.posX) * viewScale + viewY;
                     float yTxt = bandSy + 18.0f;
                     if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
                     if (yTxt < 20.0f) yTxt = 20.0f;

@@ -45,8 +45,8 @@ int main(int argc, char **argv)
 
         float wx, wy;
         for (int k = 0; k < rings.ringCount() && !sawRocks; k++) {
-            for (int j = 0; j < rings.rocksInRing(k); j++) {
-                if (rings.rockVisible(t, k, j, wx, wy)) { sawRocks = true; break; }
+            for (int j = 0; j < rings.rocksInRing(); j++) {
+                if (rings.rockVisible(t, j, wx, wy)) { sawRocks = true; break; }
             }
         }
     }

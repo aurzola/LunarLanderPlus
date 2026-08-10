@@ -13,16 +13,10 @@ float randf01()
 } // namespace
 
 Rings::Rings()
-    : level_(1), enabled_(false), t_(0.0f), width_(800.0f)
+    : level_(1), enabled_(false), t_(0.0f), width_(800.0f),
+      cy_(RING_CY), drift_(RING_DRIFT),
+      smallCount_(RING_SMALL_COUNT), dangerCount_(RING_DANGER_COUNT)
 {
-    bands_[0].cy = RING_CY_HIGH;
-    bands_[0].drift = RING_DRIFT_HIGH;
-    bands_[0].smallCount = RING_SMALL_HIGH;
-    bands_[0].dangerCount = RING_DANGER_HIGH;
-    bands_[1].cy = RING_CY_LOW; // lower band: fixed concentric ellipse
-    bands_[1].drift = RING_DRIFT_LOW;
-    bands_[1].smallCount = RING_SMALL_LOW;
-    bands_[1].dangerCount = RING_DANGER_LOW;
 }
 
 void Rings::reset(int level, const Terrain &t)
@@ -34,53 +28,48 @@ void Rings::reset(int level, const Terrain &t)
 
     width_ = t.getWidth();
     if (width_ < 600.0f) width_ = 600.0f;
-    float minGap = RING_GAP_MIN;
+    cy_ = RING_CY;
+    drift_ = RING_DRIFT;
+    smallCount_ = RING_SMALL_COUNT;
+    dangerCount_ = RING_DANGER_COUNT;
 
-    for (int b = 0; b < RING_COUNT; b++) {
-        Band &band = bands_[b];
+    int total = smallCount_ + dangerCount_;
+    if (total > MAX_ROCKS) {
+        smallCount_ = MAX_ROCKS / 2;
+        dangerCount_ = MAX_ROCKS - smallCount_;
+        total = MAX_ROCKS;
+    }
 
-        // Small decorative rocks: fill the band, scattered, never collide.
-        for (int i = 0; i < band.smallCount; i++) {
-            Rock &rk = band.rocks[i];
-            rk.x = (i + 0.5f) * (width_ / (float)band.smallCount) +
-                   (randf01() * 2.0f - 1.0f) * 5.0f;
-            if (rk.x < 0.0f) rk.x = 0.0f;
-            if (rk.x >= width_) rk.x = width_ - 1.0f;
-            rk.size = RING_SMALL_MIN_R + randf01() * (RING_SMALL_MAX_R - RING_SMALL_MIN_R);
-            rk.yOff = (randf01() * 2.0f - 1.0f) * RING_Y_JITTER;
-            rk.rot = randf01() * 6.2831853f;
-            rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX;
-            rk.nVerts = 6;
-            for (int v = 0; v < rk.nVerts; v++) rk.vrad[v] = 0.8f + randf01() * 0.3f;
-        }
+    // Small decorative rocks: upper half of the band [-JITTER, 0].
+    // Fully random X positions across the world width, no grid.
+    for (int i = 0; i < smallCount_; i++) {
+        Rock &rk = rocks_[i];
+        rk.x = randf01() * width_;
+        rk.size = RING_SMALL_MIN_R + randf01() * (RING_SMALL_MAX_R - RING_SMALL_MIN_R);
+        rk.yOff = -(randf01() * RING_Y_JITTER);  // upper half: negative offset
+        rk.rot = randf01() * 6.2831853f;
+        rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX * 1.5f;
+        rk.nVerts = 4 + (rand() % 5);  // 4–8 vertices
+        for (int v = 0; v < rk.nVerts; v++) rk.vrad[v] = 0.5f + randf01() * 0.8f;
+    }
 
-        // Big dangerous rocks: grouped close together but with a passable gap.
-        int dn = band.dangerCount;
-        float cell = width_ / (float)dn;
-        for (int i = 0; i < dn; i++) {
-            Rock &rk = band.rocks[band.smallCount + i];
-            rk.x = (i + 0.5f) * cell + (randf01() * 2.0f - 1.0f) * cell * 0.16f;
-            if (rk.x < 0.0f) rk.x = 0.0f;
-            if (rk.x >= width_) rk.x = width_ - 1.0f;
-            rk.size = RING_DANGER_MIN_R + randf01() * (RING_DANGER_MAX_R - RING_DANGER_MIN_R);
-            rk.yOff = (randf01() * 2.0f - 1.0f) * RING_Y_JITTER;
-            rk.rot = randf01() * 6.2831853f;
-            rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX;
-            rk.nVerts = 6;
-            for (int v = 0; v < rk.nVerts; v++) {
-                float baseRad = (v % 2 == 0) ? 1.05f : 0.75f;
-                rk.vrad[v] = baseRad + (randf01() * 2.0f - 1.0f) * 0.25f;
-                if (rk.vrad[v] < 0.6f) rk.vrad[v] = 0.6f;
-            }
-            // Keep each danger rock clear of its neighbor so a gap remains.
-            Rock &prev = band.rocks[band.smallCount + (i + dn - 1) % dn];
-            float gapR = rk.x - prev.x;
-            if (gapR < 0.0f) gapR += width_;
-            if (gapR < minGap + rk.size + prev.size) {
-                float shrink = (minGap + rk.size + prev.size - gapR) * 0.5f;
-                if (shrink > 0.0f) rk.size -= shrink;
-                if (rk.size < RING_DANGER_MIN_R) rk.size = RING_DANGER_MIN_R;
-            }
+    // Big dangerous rocks: lower half [0, +JITTER], grid-based with heavy
+    // jitter so gaps are guaranteed but rocks still look chaotic.
+    float cell = width_ / (float)dangerCount_;
+    for (int i = 0; i < dangerCount_; i++) {
+        Rock &rk = rocks_[smallCount_ + i];
+        rk.x = (i + 0.5f) * cell + (randf01() * 2.0f - 1.0f) * cell * 0.38f;
+        if (rk.x < 0.0f) rk.x += width_;
+        if (rk.x >= width_) rk.x -= width_;
+        rk.size = RING_DANGER_MIN_R + randf01() * (RING_DANGER_MAX_R - RING_DANGER_MIN_R);
+        rk.yOff = randf01() * RING_Y_JITTER;  // lower half: positive offset
+        rk.rot = randf01() * 6.2831853f;
+        rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX * 1.5f;
+        rk.nVerts = 4 + (rand() % 5);  // 4–8 vertices
+        for (int v = 0; v < rk.nVerts; v++) {
+            float baseRad = (v % 2 == 0) ? 1.10f : 0.70f;
+            rk.vrad[v] = baseRad + (randf01() * 2.0f - 1.0f) * 0.30f;
+            if (rk.vrad[v] < 0.55f) rk.vrad[v] = 0.55f;
         }
     }
 }
@@ -89,23 +78,14 @@ void Rings::update(float dt)
 {
     if (!enabled_) return;
     t_ += dt;
-    for (int b = 0; b < RING_COUNT; b++) {
-        Band &band = bands_[b];
-        int n = band.smallCount + band.dangerCount;
-        for (int i = 0; i < n; i++) {
-            Rock &rk = band.rocks[i];
-            rk.x += band.drift * dt;
-            if (rk.x >= width_) rk.x -= width_;
-            if (rk.x < 0.0f) rk.x += width_;
-            rk.rot += rk.spin * dt;
-        }
+    int total = smallCount_ + dangerCount_;
+    for (int i = 0; i < total; i++) {
+        Rock &rk = rocks_[i];
+        rk.x += drift_ * dt;
+        if (rk.x >= width_) rk.x -= width_;
+        if (rk.x < 0.0f) rk.x += width_;
+        rk.rot += rk.spin * dt;
     }
-}
-
-int Rings::rocksInRing(int ringIndex) const
-{
-    if (ringIndex < 0 || ringIndex >= RING_COUNT) return 0;
-    return bands_[ringIndex].smallCount + bands_[ringIndex].dangerCount;
 }
 
 float Rings::terrainYAt(const Terrain &t, float x, float fallback)
@@ -121,46 +101,42 @@ float Rings::terrainYAt(const Terrain &t, float x, float fallback)
     return fallback;
 }
 
-float Rings::bandY(const Terrain &t, int b, float x) const
+float Rings::bandY(const Terrain &t, float x) const
 {
     (void)t;
-    // A ring around a moon is a smooth concentric ellipse: the arc bows upward
-    // (peaks) over the moon's center and is symmetric, with no sharp edges.
     float dx = x - RING_ELLIPSE_CX;
     float tdx = dx / RING_ELLIPSE_RAD;
     if (tdx < -1.0f) tdx = -1.0f;
     if (tdx > 1.0f) tdx = 1.0f;
     float arc = RING_CURVE_A * sqrtf(1.0f - tdx * tdx);
-    return bands_[b].cy - arc;
+    return cy_ - arc;
 }
 
-float Rings::rockY(const Terrain &t, int b, int i) const
+float Rings::rockY(const Terrain &t, int i) const
 {
-    const Rock &rk = bands_[b].rocks[i];
-    return bandY(t, b, rk.x) + rk.yOff;
+    const Rock &rk = rocks_[i];
+    return bandY(t, rk.x) + rk.yOff;
 }
 
-bool Rings::rockVisible(const Terrain &t, int ringIndex, int rockIndex, float &x, float &y) const
+bool Rings::rockVisible(const Terrain &t, int rockIndex, float &x, float &y) const
 {
     if (!enabled_) return false;
-    if (ringIndex < 0 || ringIndex >= RING_COUNT) return false;
-    if (rockIndex < 0 || rockIndex >= rocksInRing(ringIndex)) return false;
-    x = bands_[ringIndex].rocks[rockIndex].x;
-    y = rockY(t, ringIndex, rockIndex);
+    int total = smallCount_ + dangerCount_;
+    if (rockIndex < 0 || rockIndex >= total) return false;
+    x = rocks_[rockIndex].x;
+    y = rockY(t, rockIndex);
     return true;
 }
 
-bool Rings::rockDanger(int ringIndex, int rockIndex) const
+bool Rings::rockDanger(int rockIndex) const
 {
-    if (ringIndex < 0 || ringIndex >= RING_COUNT) return false;
-    if (rockIndex < bands_[ringIndex].smallCount ||
-        rockIndex >= rocksInRing(ringIndex)) return false;
+    int total = smallCount_ + dangerCount_;
+    if (rockIndex < smallCount_ || rockIndex >= total) return false;
     return true;
 }
 
 void Rings::tracePoly(Renderer &r, const float *px, const float *py, int n) const
 {
-    // Hollow rock: draw only the outline (closed polygon), no fill.
     for (int i = 0; i < n; i++) {
         int j = (i + 1) % n;
         r.line(px[i], py[i], px[j], py[j]);
@@ -169,13 +145,9 @@ void Rings::tracePoly(Renderer &r, const float *px, const float *py, int n) cons
 
 void Rings::drawFog(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const
 {
-    // Denser debris fog bands following a smooth concentric ellipse (like real
-    // rings). Soft gaussian falloff via a one-time 256-entry LUT so the inner
-    // loop never calls expf() (software-emulated, very slow on the ESP32).
     static unsigned char gauss[256];
     static bool gaussInit = false;
     if (!gaussInit) {
-        // u goes 0 (band center) .. 2 (band edge); fade = exp(-u^2 * 1.5).
         for (int i = 0; i < 256; i++) {
             float u = (float)i / 255.0f * 2.0f;
             gauss[i] = (unsigned char)(255.0f * expf(-u * u * 1.5f));
@@ -184,37 +156,31 @@ void Rings::drawFog(Renderer &r, const Terrain &t, float viewX, float viewY, flo
     }
 
     float half = RING_FOG_HALF * viewScale;
-    for (int b = 0; b < RING_COUNT; b++) {
-        for (int x = 0; x < SCREEN_W; x++) {
-            float wx = ((float)x - viewX) / viewScale;
-            float cyScaled = bandY(t, b, wx) * viewScale + viewY;
-            int gyScreen = (int)(terrainYAt(t, wx, (SCREEN_H - viewY) / viewScale + 100.0f) * viewScale + viewY);
-            int y0 = (int)(cyScaled - half * 2.0f);
-            int y1 = (int)(cyScaled + half * 2.0f);
-            if (y1 < 0 || y0 > SCREEN_H) continue;
-            if (y0 < 0) y0 = 0;
-            if (y1 > SCREEN_H) y1 = SCREEN_H;
-            // Map |y - cy| in the range [0, 2*half] onto the 0..255 LUT index.
-            float invunit = 255.0f / (2.0f * half);
-            for (int y = y0; y < y1; y++) {
-                if (y >= gyScreen - 1) break; // stay above the terrain silhouette
-                float dyf = cyScaled - (float)y;
-                if (dyf < 0.0f) dyf = -dyf;
-                int idx = (int)(dyf * invunit);
-                if (idx > 255) idx = 255;
-                unsigned char g = gauss[idx];
-                if (g == 0) continue; // outside the soft fade (skip, don't stop)
-                r.pixelShade((float)x, (float)y, (RING_FOG_BRIGHT * g) >> 8);
-            }
+    for (int x = 0; x < SCREEN_W; x++) {
+        float wx = ((float)x - viewX) / viewScale;
+        float cyScaled = bandY(t, wx) * viewScale + viewY;
+        int gyScreen = (int)(terrainYAt(t, wx, (SCREEN_H - viewY) / viewScale + 100.0f) * viewScale + viewY);
+        int y0 = (int)(cyScaled - half * 2.0f);
+        int y1 = (int)(cyScaled + half * 2.0f);
+        if (y1 < 0 || y0 > SCREEN_H) continue;
+        if (y0 < 0) y0 = 0;
+        if (y1 > SCREEN_H) y1 = SCREEN_H;
+        float invunit = 255.0f / (2.0f * half);
+        for (int y = y0; y < y1; y++) {
+            if (y >= gyScreen - 1) break;
+            float dyf = cyScaled - (float)y;
+            if (dyf < 0.0f) dyf = -dyf;
+            int idx = (int)(dyf * invunit);
+            if (idx > 255) idx = 255;
+            unsigned char g = gauss[idx];
+            if (g == 0) continue;
+            r.pixelShade((float)x, (float)y, (RING_FOG_BRIGHT * g) >> 8);
         }
     }
 }
 
 void Rings::fillDanger(Renderer &r, const float *px, const float *py, int n) const
 {
-    // Soft-pattern fill for the big dangerous rocks: a gentle dither. First
-    // the hollow outline, then a sparse interior dotting so it reads as a
-    // solid-ish rock but stays subdued (not a sharp bright blob).
     tracePoly(r, px, py, n);
     float minx = px[0], maxx = px[0], miny = py[0], maxy = py[0];
     for (int i = 1; i < n; i++) {
@@ -253,30 +219,25 @@ void Rings::draw(Renderer &r, const Terrain &t, float viewX, float viewY, float 
 
     drawFog(r, t, viewX, viewY, viewScale);
 
-    for (int b = 0; b < RING_COUNT; b++) {
-        const Band &band = bands_[b];
-        int n = band.smallCount + band.dangerCount;
-        for (int i = 0; i < n; i++) {
-            const Rock &rk = band.rocks[i];
-            float sx = rk.x * viewScale + viewX;
-            float sy = rockY(t, b, i) * viewScale + viewY;
-            if (sx < -30.0f || sx > SCREEN_W + 30.0f) continue;
-            if (sy < -30.0f || sy > SCREEN_H + 30.0f) continue;
+    int total = smallCount_ + dangerCount_;
+    for (int i = 0; i < total; i++) {
+        const Rock &rk = rocks_[i];
+        float sx = rk.x * viewScale + viewX;
+        float sy = rockY(t, i) * viewScale + viewY;
+        if (sx < -30.0f || sx > SCREEN_W + 30.0f) continue;
+        if (sy < -30.0f || sy > SCREEN_H + 30.0f) continue;
 
-            float px[MAX_VERTS], py[MAX_VERTS];
-            for (int v = 0; v < rk.nVerts; v++) {
-                float a = rk.rot + (float)v * 6.2831853f / (float)rk.nVerts;
-                float rr = rk.size * rk.vrad[v] * viewScale;
-                px[v] = sx + cosf(a) * rr;
-                py[v] = sy + sinf(a) * rr;
-            }
-            if (i >= band.smallCount) {
-                // Big dangerous rock: soft-pattern fill.
-                fillDanger(r, px, py, rk.nVerts);
-            } else {
-                // Small decorative rock: hollow only.
-                tracePoly(r, px, py, rk.nVerts);
-            }
+        float px[MAX_VERTS], py[MAX_VERTS];
+        for (int v = 0; v < rk.nVerts; v++) {
+            float a = rk.rot + (float)v * 6.2831853f / (float)rk.nVerts;
+            float rr = rk.size * rk.vrad[v] * viewScale;
+            px[v] = sx + cosf(a) * rr;
+            py[v] = sy + sinf(a) * rr;
+        }
+        if (i >= smallCount_) {
+            fillDanger(r, px, py, rk.nVerts);
+        } else {
+            tracePoly(r, px, py, rk.nVerts);
         }
     }
 }
@@ -284,16 +245,13 @@ void Rings::draw(Renderer &r, const Terrain &t, float viewX, float viewY, float 
 bool Rings::hitsShip(const Terrain &t, float sx, float sy, float shipR) const
 {
     if (!enabled_) return false;
-    for (int b = 0; b < RING_COUNT; b++) {
-        const Band &band = bands_[b];
-        for (int i = band.smallCount; i < band.smallCount + band.dangerCount; i++) {
-            const Rock &rk = band.rocks[i];
-            if (rk.size <= 0.0f) continue;
-            float dx = rk.x - sx;
-            float dy = rockY(t, b, i) - sy;
-            float hit = rk.size * RING_ROCK_HIT + shipR;
-            if (dx * dx + dy * dy < hit * hit) return true;
-        }
+    for (int i = smallCount_; i < smallCount_ + dangerCount_; i++) {
+        const Rock &rk = rocks_[i];
+        if (rk.size <= 0.0f) continue;
+        float dx = rk.x - sx;
+        float dy = rockY(t, i) - sy;
+        float hit = rk.size * RING_ROCK_HIT + shipR;
+        if (dx * dx + dy * dy < hit * hit) return true;
     }
     return false;
 }

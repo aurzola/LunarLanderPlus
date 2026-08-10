@@ -103,7 +103,7 @@ private:
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
     void updateView();
-    void setZoom(bool zoom);
+    void setZoom(bool zoom, float zm = 5.0f);
     void checkCollisions();
     void endGame();
     void startDemo();

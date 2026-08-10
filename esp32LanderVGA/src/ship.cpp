@@ -18,61 +18,57 @@ Ship::Ship()
 
 void Ship::defineShapes()
 {
-    // hexagonal body
-    shapes[0].dx[0] = -2.6f; shapes[0].dy[0] = -5.0f;
-    shapes[0].dx[1] =  2.6f; shapes[0].dy[1] = -5.0f;
-    shapes[0].dx[2] =  5.0f; shapes[0].dy[2] = -2.6f;
-    shapes[0].dx[3] =  5.0f; shapes[0].dy[3] =  2.6f;
-    shapes[0].dx[4] =  2.6f; shapes[0].dy[4] =  5.0f;
-    shapes[0].dx[5] = -2.6f; shapes[0].dy[5] =  5.0f;
-    shapes[0].dx[6] = -5.0f; shapes[0].dy[6] =  2.6f;
-    shapes[0].dx[7] = -5.0f; shapes[0].dy[7] = -2.6f;
-    shapes[0].count = 8;
+    // Shape 0 — Ascent stage: tapered body
+    shapes[0].dx[0] = -2.0f; shapes[0].dy[0] = -7.0f;
+    shapes[0].dx[1] =  2.0f; shapes[0].dy[1] = -7.0f;
+    shapes[0].dx[2] =  4.0f; shapes[0].dy[2] =  0.0f;
+    shapes[0].dx[3] = -4.0f; shapes[0].dy[3] =  0.0f;
+    shapes[0].count = 4;
     shapes[0].closed = true;
-    shapes[0].velX = 1.0f; shapes[0].velY = -2.5f;
+    shapes[0].velX = 1.0f; shapes[0].velY = -3.0f;
 
-    // cockpit rect (right side window)
-    shapes[1].dx[0] = 0.5f; shapes[1].dy[0] = -3.5f;
-    shapes[1].dx[1] = 3.0f; shapes[1].dy[1] = -3.5f;
-    shapes[1].dx[2] = 3.0f; shapes[1].dy[2] = -1.0f;
-    shapes[1].dx[3] = 0.5f; shapes[1].dy[3] = -1.0f;
+    // Shape 1 — Descent stage: trapezoid base
+    shapes[1].dx[0] = -4.0f; shapes[1].dy[0] =  0.0f;
+    shapes[1].dx[1] =  4.0f; shapes[1].dy[1] =  0.0f;
+    shapes[1].dx[2] =  5.5f; shapes[1].dy[2] =  5.0f;
+    shapes[1].dx[3] = -5.5f; shapes[1].dy[3] =  5.0f;
     shapes[1].count = 4;
     shapes[1].closed = true;
-    shapes[1].velX = 2.0f; shapes[1].velY = -1.5f;
+    shapes[1].velX = 0.5f; shapes[1].velY = 1.0f;
 
-    // left leg
-    shapes[2].dx[0] = -2.5f; shapes[2].dy[0] = 5.0f;
-    shapes[2].dx[1] = -5.0f; shapes[2].dy[1] = 10.0f;
-    shapes[2].dx[2] = -7.0f; shapes[2].dy[2] = 10.0f;
-    shapes[2].dx[3] = -3.5f; shapes[2].dy[3] = 10.0f;
+    // Shape 2 — Left landing leg + footpad
+    shapes[2].dx[0] = -4.5f; shapes[2].dy[0] =  5.0f;
+    shapes[2].dx[1] = -6.5f; shapes[2].dy[1] =  8.5f;
+    shapes[2].dx[2] = -8.0f; shapes[2].dy[2] =  8.5f;
+    shapes[2].dx[3] = -5.5f; shapes[2].dy[3] =  8.5f;
     shapes[2].count = 4;
     shapes[2].closed = false;
-    shapes[2].velX = 0.0f; shapes[2].velY = -3.0f;
+    shapes[2].velX = -1.0f; shapes[2].velY = -3.0f;
 
-    // right leg
-    shapes[3].dx[0] = 2.5f;  shapes[3].dy[0] = 5.0f;
-    shapes[3].dx[1] = 5.0f;  shapes[3].dy[1] = 10.0f;
-    shapes[3].dx[2] = 7.0f;  shapes[3].dy[2] = 10.0f;
-    shapes[3].dx[3] = 3.5f;  shapes[3].dy[3] = 10.0f;
+    // Shape 3 — Right landing leg + footpad
+    shapes[3].dx[0] =  4.5f; shapes[3].dy[0] =  5.0f;
+    shapes[3].dx[1] =  6.5f; shapes[3].dy[1] =  8.5f;
+    shapes[3].dx[2] =  8.0f; shapes[3].dy[2] =  8.5f;
+    shapes[3].dx[3] =  5.5f; shapes[3].dy[3] =  8.5f;
     shapes[3].count = 4;
     shapes[3].closed = false;
-    shapes[3].velX = 3.0f; shapes[3].velY = -1.0f;
+    shapes[3].velX = 1.0f; shapes[3].velY = -3.0f;
 
-    // left thruster nozzle
-    shapes[4].dx[0] = -1.5f; shapes[4].dy[0] = 5.0f;
-    shapes[4].dx[1] = -3.0f; shapes[4].dy[1] = 9.0f;
-    shapes[4].dx[2] = -2.5f; shapes[4].dy[2] = 10.0f;
+    // Shape 4 — Left thruster nozzle
+    shapes[4].dx[0] = -2.5f; shapes[4].dy[0] =  5.0f;
+    shapes[4].dx[1] = -4.0f; shapes[4].dy[1] =  9.0f;
+    shapes[4].dx[2] = -3.0f; shapes[4].dy[2] = 10.0f;
     shapes[4].count = 3;
     shapes[4].closed = false;
-    shapes[4].velX = 1.0f; shapes[4].velY = -1.0f;
+    shapes[4].velX = 1.0f; shapes[4].velY = -1.5f;
 
-    // right thruster nozzle
-    shapes[5].dx[0] = 1.5f;  shapes[5].dy[0] = 5.0f;
-    shapes[5].dx[1] = 3.0f;  shapes[5].dy[1] = 9.0f;
-    shapes[5].dx[2] = 2.5f;  shapes[5].dy[2] = 10.0f;
+    // Shape 5 — Right thruster nozzle
+    shapes[5].dx[0] =  2.5f; shapes[5].dy[0] =  5.0f;
+    shapes[5].dx[1] =  4.0f; shapes[5].dy[1] =  9.0f;
+    shapes[5].dx[2] =  3.0f; shapes[5].dy[2] = 10.0f;
     shapes[5].count = 3;
     shapes[5].closed = false;
-    shapes[5].velX = 2.5f; shapes[5].velY = -1.0f;
+    shapes[5].velX = 2.5f; shapes[5].velY = -1.5f;
 }
 
 void Ship::reset(float x, float y)
@@ -195,7 +191,7 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
     // Melt front rises from the footpads (dy=+14) to the top (dy=-5).
     float meltScreen = 0.0f;
     if (melt > 0.0f) {
-        float meltWorld = posY + (14.0f - melt * 19.0f) * scale;
+        float meltWorld = posY + (10.0f - melt * 17.0f) * scale;
         meltScreen = meltWorld * viewScale + viewY;
     }
 
@@ -228,6 +224,26 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
 
             r.line(x1, y1, x2, y2);
         }
+    }
+
+    if (!exploding && melt <= 0.0f) {
+        auto L = [&](float lx, float ly, float rx, float ry) {
+            r.line(sx + (lx * cs - ly * sn) * sc, sy + (lx * sn + ly * cs) * sc,
+                   sx + (rx * cs - ry * sn) * sc, sy + (rx * sn + ry * cs) * sc);
+        };
+        auto R = [&](float rx, float ry, float rw, float rh) {
+            float x1 = sx + (rx * cs - ry * sn) * sc;
+            float y1 = sy + (rx * sn + ry * cs) * sc;
+            float x2 = sx + ((rx + rw) * cs - (ry + rh) * sn) * sc;
+            float y2 = sy + ((rx + rw) * sn + (ry + rh) * cs) * sc;
+            r.line(x1, y1, x2, y1);
+            r.line(x1, y1, x1, y2);
+            r.line(x2, y1, x2, y2);
+            r.line(x1, y2, x2, y2);
+        };
+
+        // Window
+        R(-1.0f, -5.5f, 2.0f, 4.0f);
     }
 
     if (thrustBuild > 0 && active) {
