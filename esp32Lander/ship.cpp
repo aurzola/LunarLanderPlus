@@ -233,29 +233,6 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
         }
     }
 
-    if (!exploding && melt <= 0.0f) {
-        auto L = [&](float lx, float ly, float rx, float ry) {
-            r.line(sx + (lx * cs - ly * sn) * sc, sy + (lx * sn + ly * cs) * sc,
-                   sx + (rx * cs - ry * sn) * sc, sy + (rx * sn + ry * cs) * sc);
-        };
-        auto R = [&](float rx, float ry, float rw, float rh, int fillBright) {
-            float x1 = sx + (rx * cs - ry * sn) * sc;
-            float y1 = sy + (rx * sn + ry * cs) * sc;
-            float x2 = sx + ((rx + rw) * cs - (ry + rh) * sn) * sc;
-            float y2 = sy + ((rx + rw) * sn + (ry + rh) * cs) * sc;
-            float xMin = x1 < x2 ? x1 : x2, xMax = x1 > x2 ? x1 : x2;
-            float yMin = y1 < y2 ? y1 : y2, yMax = y1 > y2 ? y1 : y2;
-            r.rectShade(xMin, yMin, xMax - xMin, yMax - yMin, fillBright);
-            r.line(x1, y1, x2, y1);
-            r.line(x1, y1, x1, y2);
-            r.line(x2, y1, x2, y2);
-            r.line(x1, y2, x2, y2);
-        };
-
-        // Window
-        R(-1.0f, -5.5f, 2.0f, 4.0f, 160);
-    }
-
     if (thrustBuild > 0 && active) {
         float flameLen = thrustBuild * 24.0f;
         float fx1 = sx + (-1.5f * cs - 5.0f * sn) * sc;
