@@ -32,7 +32,6 @@ void Rings::reset(int level, const Terrain &t)
     drift_ = RING_DRIFT;
     smallCount_ = RING_SMALL_COUNT;
     dangerCount_ = RING_DANGER_COUNT;
-    float minGap = RING_GAP_MIN;
 
     int total = smallCount_ + dangerCount_;
     if (total > MAX_ROCKS) {
@@ -42,45 +41,35 @@ void Rings::reset(int level, const Terrain &t)
     }
 
     // Small decorative rocks: upper half of the band [-JITTER, 0].
+    // Fully random X positions across the world width, no grid.
     for (int i = 0; i < smallCount_; i++) {
         Rock &rk = rocks_[i];
-        rk.x = (i + 0.5f) * (width_ / (float)smallCount_) +
-               (randf01() * 2.0f - 1.0f) * 5.0f;
-        if (rk.x < 0.0f) rk.x = 0.0f;
-        if (rk.x >= width_) rk.x = width_ - 1.0f;
+        rk.x = randf01() * width_;
         rk.size = RING_SMALL_MIN_R + randf01() * (RING_SMALL_MAX_R - RING_SMALL_MIN_R);
         rk.yOff = -(randf01() * RING_Y_JITTER);  // upper half: negative offset
         rk.rot = randf01() * 6.2831853f;
-        rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX;
-        rk.nVerts = 6;
-        for (int v = 0; v < rk.nVerts; v++) rk.vrad[v] = 0.8f + randf01() * 0.3f;
+        rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX * 1.5f;
+        rk.nVerts = 4 + (rand() % 5);  // 4–8 vertices
+        for (int v = 0; v < rk.nVerts; v++) rk.vrad[v] = 0.5f + randf01() * 0.8f;
     }
 
-    // Big dangerous rocks: lower half [0, +JITTER], packed with a passable gap.
+    // Big dangerous rocks: lower half [0, +JITTER], grid-based with heavy
+    // jitter so gaps are guaranteed but rocks still look chaotic.
     float cell = width_ / (float)dangerCount_;
     for (int i = 0; i < dangerCount_; i++) {
         Rock &rk = rocks_[smallCount_ + i];
-        rk.x = (i + 0.5f) * cell + (randf01() * 2.0f - 1.0f) * cell * 0.16f;
-        if (rk.x < 0.0f) rk.x = 0.0f;
-        if (rk.x >= width_) rk.x = width_ - 1.0f;
+        rk.x = (i + 0.5f) * cell + (randf01() * 2.0f - 1.0f) * cell * 0.38f;
+        if (rk.x < 0.0f) rk.x += width_;
+        if (rk.x >= width_) rk.x -= width_;
         rk.size = RING_DANGER_MIN_R + randf01() * (RING_DANGER_MAX_R - RING_DANGER_MIN_R);
         rk.yOff = randf01() * RING_Y_JITTER;  // lower half: positive offset
         rk.rot = randf01() * 6.2831853f;
-        rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX;
-        rk.nVerts = 6;
+        rk.spin = (randf01() * 2.0f - 1.0f) * RING_SPIN_MAX * 1.5f;
+        rk.nVerts = 4 + (rand() % 5);  // 4–8 vertices
         for (int v = 0; v < rk.nVerts; v++) {
-            float baseRad = (v % 2 == 0) ? 1.05f : 0.75f;
-            rk.vrad[v] = baseRad + (randf01() * 2.0f - 1.0f) * 0.25f;
-            if (rk.vrad[v] < 0.6f) rk.vrad[v] = 0.6f;
-        }
-        // Keep each danger rock clear of its neighbour so a gap remains.
-        Rock &prev = rocks_[smallCount_ + (i + dangerCount_ - 1) % dangerCount_];
-        float gapR = rk.x - prev.x;
-        if (gapR < 0.0f) gapR += width_;
-        if (gapR < minGap + rk.size + prev.size) {
-            float shrink = (minGap + rk.size + prev.size - gapR) * 0.5f;
-            if (shrink > 0.0f) rk.size -= shrink;
-            if (rk.size < RING_DANGER_MIN_R) rk.size = RING_DANGER_MIN_R;
+            float baseRad = (v % 2 == 0) ? 1.10f : 0.70f;
+            rk.vrad[v] = baseRad + (randf01() * 2.0f - 1.0f) * 0.30f;
+            if (rk.vrad[v] < 0.55f) rk.vrad[v] = 0.55f;
         }
     }
 }

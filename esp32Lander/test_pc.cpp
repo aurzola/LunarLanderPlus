@@ -1002,30 +1002,30 @@ static int testParachute()
     r.reset(400, 60);
     CHECK(!r.chute && r.chuteOpen == 0.0f);
 
-    // Deploy through the game: high in the descent an edge toggle deploys.
+    // Deploy through the game: high in the descent the Start button deploys.
     Game g;
     g.newGame();
     for (int i = 0; i < 300; i++) g.update();
     CHECK(g.state == STATE_PLAYING);
     CHECK(g.ship.altitude > PARACHUTE_MIN_ALT);
-    g.input.chuteToggle = true;
+    g.input.startPressed = true;
     g.update();
     CHECK(g.ship.chute);
 
-    // One-shot: a second toggle while already deployed does nothing.
-    g.input.chuteToggle = true;
+    // One-shot: a second press while already deployed does nothing.
+    g.input.startPressed = true;
     g.update();
     CHECK(g.ship.chute);
 
-    // Deploy refused too low: with the altitude gate under MIN_ALT the toggle
-    // keeps the chute stowed and flashes the warning.
+    // Deploy refused too low: below PARACHUTE_MIN_ALT the button flashes a
+    // warning without opening the canopy.
     Game g2;
     g2.newGame();
     g2.tanker.done = true;
     for (int i = 0; i < 300; i++) g2.update();
     CHECK(g2.state == STATE_PLAYING);
     g2.ship.altitude = PARACHUTE_MIN_ALT - 20.0f;
-    g2.input.chuteToggle = true;
+    g2.input.startPressed = true;
     g2.update();
     CHECK(!g2.ship.chute);
     CHECK(g2.chuteTooLow() > 0.0f);

@@ -40,7 +40,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `volcano_demo.cpp` | Prueba de visualización en PC: terreno generado + volcanes → PPM en `frames/` (selftest `active` + `maxAlive>0`; nivel por defecto 2 = Ío) |
 | `atmosphere.h/cpp` | **Atmósfera de Titán (19/8/2026; rediseño 22/8/2026)**: activa en niveles de Titán (`moonHasTitan(level)`, `moonIndex==5`, i.e. nivel 6, 14, 22, 30…). `reset(level)` + `update(dt)` + `drawSky`. **Niebla (rediseño 22/8/2026)**: adopta el mismo estilo de Ganímedes/rings — `FOG_BAND_COUNT=3` **bandas elípticas concéntricas** (`centerAt(i,x)` = arco `sqrt(1-t²)` + deriva vertical viva) con **degradado gaussiano por LUT de 256 entradas** (creado una vez, no expf por píxel) y `FOG_BRIGHT=44`. **`hidesShip(x,y)`** oculta la nave al cruzar cada banda. Halo sobre la silueta + clamp `FOG_SCREEN_TOP` para no invadir el HUD. **Física**: arrastre `velX *= ATMOS_DRAG=0.9992` + corriente descendente `velY += ATMOS_DOWN=0.00008`. Viento reactivado; tormenta apagada (`storm.setEnabled(false)`). Ver WORKLOG #20 |
 | `titan_demo.cpp` | Prueba de visualización en PC: terreno generado + atmósfera → PPM en `frames/` (nivel por defecto 6 = Titán) |
-| `rings.h/cpp` | **Anillos de roca de Ganímedes (rediseño 22/8/2026; ajuste altura y frame-skip 25/8/2026)**: activos en niveles de Ganímedes (`moonHasRings(level)`, `moonIndex==3`, i.e. nivel 4, 12, 20, 28…). No son anillos orbitando un centro: son **2 bandas elípticas concéntricas** que siguen la curvatura de la luna (`bandY` usa arco `sqrt(1-t²)` con centro compartido `RING_ELLIPSE_CX/RAD`, NIEBLA por banda descartada tras pruebas → `RING_FOG_BRIGHT=0`). Banda alta `RING_CY_HIGH=360` (32 rocas: 24 pequeñas + 8 peligrosas, se cruza en la 1ª aproximación zoom-out), banda baja `RING_CY_LOW=710` (46 rocas: 30 pequeñas + 16 peligrosas, a ~655 u en el centro → se cruza al activarse el zoom-in, `alt<200`). Cada banda mezcla **rocas pequeñas decorativas** (`RING_SMALL_*`, radio 1.2–3, huecas, NO colisionan) y **rocas grandes peligrosas** (`RING_DANGER_*`, radio 7–13, rellenas con patrón/dither, colisionan con `RING_SHOCK_HIT·size + RING_SHIP_RADIUS`). Contorno de 6 vértices irregulares; dispersión vertical `RING_Y_JITTER=45` (no en fila). `RING_GAP_MIN` garantiza hueco pasable. `update(dt)` deriva en x con wrap (ambas bandas cada frame). **Frame-skip (25/8/2026)**: la banda baja (46 rocas) se dibuja cada 2 frames (`frameCtr_` mutable, banda 0 siempre dibuja); la física y colisiones siguen cada frame. Colisión solo con rocas grandes → final `"YOU CRASHED" / "STRUCK BY ORBITAL DEBRIS"` (texto centrado en zoom-out, debajo de la banda en zoom-in). API: `rocksInRing(i)`/`rockVisible(t,i,k,x,y)`/`rockDanger(i,k)`/`hitsShip(...)`. Ver WORKLOG #21 |
+| `rings.h/cpp` | **Anillos de roca de Ganímedes (rediseño 22/8/2026; banda única + gradiente 9/8/2026)**: activos en niveles de Ganímedes (`moonHasRings(level)`, `moonIndex==3`, i.e. nivel 4, 12, 20, 28…). **Una sola banda** (`RING_COUNT=1`, `RING_CY=420`, `RING_DRIFT=-5`) con **gradiente de densidad**: mitad superior = 30 rocas pequeñas decorativas (radio 1.2–3.8, huecas, 4–8 vértices, sin colisión) en `[-RING_Y_JITTER, 0]`; mitad inferior = 24 rocas grandes peligrosas (radio 5.0–13.0, rellenas con dither, 4–8 vértices, colisionan con `RING_ROCK_HIT·size + RING_SHIP_RADIUS`) en `[0, +RING_Y_JITTER]`. Dispersión vertical `RING_Y_JITTER=38` (banda apretada). `RING_GAP_MIN=34` garantiza paso. `RING_ROCK_HIT=0.55`, `RING_SHIP_RADIUS=6.5`. Pequeñas con X aleatorio (máxima entropía), peligrosas en grilla con jitter ±38%. Elipse `RING_ELLIPSE_CX=400/RAD=520`, arco `CURVE_A=55`. `draw(r,t,vx,vy,vs)` sin frame-skip (1 sola banda, ~54 rocas). **Zoom en Ganímedes (9/8/2026)**: doble trigger — al entrar en la banda (`posY` en `[bandTop, bandBot]`) → zoom-in (2x), y también al bajar cerca del suelo (`alt < ZOOM_IN_ALT=200`) → zoom-in de acercamiento final. `RING_FOG_BRIGHT=0` (niebla desactivada). API: `rocksInRing()`/`rockVisible(t,i,x,y)`/`rockDanger(i)`/`hitsShip(...)`/`centerBandY(t,x)`. Colisión con rocas grandes → `"YOU CRASHED" / "STRUCK BY ORBITAL DEBRIS"`. Ver WORKLOG #21, #31 |
 | `rings_demo.cpp` | Prueba de visualización en PC: terreno generado + anillos → PPM en `frames/` (selftest `active` + `rocksVisible>0`; nivel por defecto 4 = Ganímedes) |
 | `twister.h/cpp` | **Torbellino de nitrógeno de Tritón (rama `twister-circ`; física v5 + dibujo de resorte/cola 21/8/2026)**: activo en niveles de Tritón (`moonHasTwister(level)`, `moonIndex==7`, i.e. nivel 8, 16, 24…). `reset(level, terrain)` coloca un vórtice que **deambula** por el mundo (`TWISTER_DRIFT_SPEED=8 u/s`, rebota en `[40,760]`) con `strength` aleatoria y giro `swirl` ±1. **Física v5 (física real, no se toca en dibujo)**: `apply(ship,terrain,stickDeg)` se hookea en `Game::update()`; al cruzar `TWISTER_RADIUS=150` captura la nave **cabalga la pared del embudo cónico** (`coneR` = radio del cono a la altura h: `TWISTER_BASE_HALF` abajo → `TWISTER_TOP_HALF` arriba) con **zig-zag en onda triangular** `triWave(swirlAngle_)` que se **cierra al descender** (`posX = cx + dir·amp·tri`, `amp` con ease `TWISTER_CAPTURE_RAMP`), gira con `TWISTER_SPIRAL_RATE=200 °/s` y desciende `velY = TWISTER_DESCENT=45·strength`. **Giro continuo**: `rotation = wobble(t) ±60°` + joystick con autoridad reducida (cap ±80). **Escape físico por profundidad** (`depth=1−h/HEIGHT`): empuje radial sostenido > `escThr` y velocidad saliente > `escVel` durante `TWISTER_ESCAPE_TICKS` → la nave sale **lanzada** (`TWISTER_FLING`+`TWISTER_SPIN_KICK`) y el grip queda off hasta salir del radio. **Cualquier contacto con el suelo estando `captured()`** → final `"YOU CRASHED" / "TWISTER SMASHED THE SHIP"`. La tormenta y el viento se apagan en Tritón. **Dibujo (21/8/2026, diseño propio nuevo, física intacta)**: en `draw(r,terrain,viewX,viewY,viewScale,zoomedIn)` un **resorte / cola de cerdo en espiral** que **arranca fino en el suelo y se ensancha hacia arriba** (`r = 4+30·tt`) — **2 espirales** en vista normal y **3** en zoom-in (`zoomedIn`, además con **5 vueltas** vs 7 para separarlas). Cada espiral es una **hélice discontinua**: segmentos rotos por gaps pseudo-aleatorios (`prand`, determinista por frame con `phase_`), jitter radial, trazo fino + una línea tenue al lado (2/3 brillo), y **brillo que desvanece al fondo de la bobina** (`front = 0.5+0.5·cos(ang)`) para dar giro 3D. **Partículas (21/8/2026)**: motas brillantes que **viajan descendiendo por las espirales** (wrapping con `t_·speed`), más numerosas, rápidas y como **blobs con estela** en zoom (30, blob 3-4 px + estela) vs puntos finos en normal (12). Labio superior tenue, motas de giro y falda de polvo pequeña abajo. API tests: `active()`/`coreX()`/`coreY(terrain)`/`strength()`/`captured()`/`justEscaped()`. `draw` recibe `zoomedIn`. Ver WORKLOG #22 |
 | `twister_demo.cpp` | Prueba de visualización en PC: terreno generado + torbellino → PPM en `frames/` (selftest `active`; la nave entra en el radio y es succionada; nivel por defecto 8 = Tritón) |
@@ -72,6 +72,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   segmento: las plataformas quedan ~19–31 de ancho vs caja de la nave 6.4 (antes el segmento
   plano único medía 6.8 → crash por desbordar el borde con rot/vy válidos).
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
+  **En Ganímedes (`moonHasRings`)**: zoom de banda al entrar al anillo de rocas (`posY` en
+  `[bandCY±jitter±30]`) + zoom de altitud al bajar (`alt<200`); `setZoom(true, 2.0f)` (2× en vez
+  de 5×). Histeresis de ±30 u en entrada / ±60 u en salida de la banda para evitar flickering.
 - **Viento (física desde 9/8/2026)**: se activa desde `WIND_START_LEVEL` (**4**) y **aleatoriamente
   por nivel** (50 % de probabilidad por nivel ≥ 4, `WIND_CHANCE_PERCENT`); ráfagas y dirección
   aleatorias. **Twister ↔ viento excluyentes (20/8/2026)**: `windEnabled` lleva además
@@ -103,8 +106,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   desplazan según haya WIND; ver Sketch ESP32); glifos `<` y `>` añadidos a la fuente 5x7.
   Config: `WIND_START_LEVEL=4`, `WIND_CHANCE_PERCENT=50`, `DEMO_LEVEL_FORCE=0` (el demo elige nivel
   al azar `1..DEMO_MAX_LEVEL`).
-- **Paracaídas dirigible (23/8/2026, one-shot por nivel)**: se despliega **C+Z** en vuelo (edge
-  trigger; en el título C+Z sigue abriendo la calibración). **Motor permitido mientras está abierto**
+- **Paracaídas dirigible (23/8/2026, one-shot por nivel)**: se despliega con el **botón Start**
+  en vuelo (no interfiere con arrancar el juego porque en `STATE_PLAYING` despliega el chute y en
+  `STATE_WAITING` arranca la partida). **Motor permitido mientras está abierto**
   (variante B): sin motor = aterrizaje hard (sin bonus de fuel), un toque de motor al final (flare)
   da el perfecto (+50 fuel). La apertura se **ignora bajo `PARACHUTE_MIN_ALT=80`** con aviso
   `TOO LOW` parpadeante (el dosel no abriría a tiempo).
@@ -124,7 +128,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
     top del casco (dy=-5) con `chuteOpen` en coordenadas locales del ship; helper `shadedLine(r, cx,
     y, halfW, b)` (línea horizontal con `pixelShade`).
   - **HUD**: `CHUTE` sólido en `(22,220)` mientras disponible, parpadeante desplegado,
-    `TOO LOW` parpadeante 1.2 s al rechazar. Línea de título `C+Z: PARACHUTE (1/LEVEL)`.
+    `TOO LOW` parpadeante 1.2 s al rechazar. Línea de título `START: PARACHUTE (1/LEVEL)`.
     El **demo no despliega el chute** en v1 (herramienta solo del jugador).
   - Config: `PARACHUTE_OPEN_TIME=0.5f`, `PARACHUTE_SINK=0.09f`, `PARACHUTE_MIN_ALT=80.0f`,
     `PARACHUTE_STEER=0.0012f`, `PARACHUTE_DRIFT_MAX=0.30f`, `PARACHUTE_WIND_GAIN=2.0f`. Nota en
@@ -184,10 +188,10 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   Con `POT_DISABLED` una vez activado (`pwrStickActive=true`) **ya no se desactiva** (sin pot que
   retome), así que ajustes sucesivos continúan desde el valor actual. Sustituye al antiguo ciclo
   por pasos `{0,25,50,75,100}%` (`powerStep`).
-- **C+Z juntos (23/8/2026)**: en vuelo (`STATE_PLAYING`) es el **edge trigger del paracaídas**
-  (`game.input.chuteToggle`, flanco con `lastBothPressed`); mientras ambos están pulsados **se salta
-  el ajuste C+stick de potencia** (evita el conflicto con el steering de la vela). En el título, C+Z
-  mantenido ~0,5 s sigue abriendo la calibración (ver "Entrada"/modo de calibración).
+- **C+Z juntos (23/8/2026)**: mientras ambos están pulsados **se salta el ajuste C+stick de
+  potencia** (evita el conflicto). En el título, C+Z mantenido ~0,5 s abre la calibración (ver
+  "Entrada"/modo de calibración). **El paracaídas ya no usa C+Z**; ahora lo despliega el **botón
+  Start** durante el vuelo (`Game::update()` consume `startPressed` en `STATE_PLAYING`).
 - **Gatillo (GPIO35) → LEGACY**: el reóstato quedó **desconectado**; el código del mapeo
   por voltaje se conserva en el `.ino` bajo `#if 0` (decisión: cambiar a pot + botón).
 - Botón start (GPIO13, INPUT_PULLUP, flanco) → `startPressed`. **No hay autostart**: la
@@ -255,9 +259,9 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   antena omnidireccional con esfera, antena helicoidal, propulsores RCS y sombras bajo las patas),
   trazado con lambdas `SX(x)=x*1.2+26`, `SY(y)=y*1.2+56` en el área x26–145, y58–173 (spec de bajo
   nivel, trama cruzada + tramas de sombreado con `pixel`). Controles en letras pequeñas a la derecha
-  en x=170
-  (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C+STICK: POWER UP/DOWN`, `POT: POWER LEVEL`,
-  `C+Z: PARACHUTE (1/LEVEL)`). La línea de crédito
+   en x=170
+   (`STICK: ROTATION`, `Z: ENGINE ON/OFF`, `C+STICK: POWER UP/DOWN`, `POT: POWER LEVEL`,
+   `START: PARACHUTE (1/LEVEL)`). La línea de crédito
   `Copyright Alex Urzola 2026/Opencode` se dibuja **centrada debajo del título** (`y=40`, con
   `centerText`). El fondo es el de juego
   (estrellas + nave entrando **por la derecha** con deriva lenta a la izquierda

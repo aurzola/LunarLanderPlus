@@ -41,6 +41,7 @@ const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;  // el demo elige nivel al azar 1..DEMO_MAX_LEVEL
 const int START_LEVEL = 4;  // arranca en Ganímedes (anillos)
 const float DEMO_POWER_RATE = 0.4f;
+const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)
 
 const int WIND_START_LEVEL = 4;
 const int WIND_CHANCE_PERCENT = 50;
@@ -156,16 +157,16 @@ const float RING_DRIFT = -5.0f;      // horizontal drift (world u/s)
 const int RING_SMALL_COUNT = 30;     // decorative small rocks, upper half: [-JITTER, 0]
 const int RING_DANGER_COUNT = 24;    // dangerous rocks, lower half: [0, +JITTER]
 const float RING_SMALL_MIN_R = 1.2f; // small rock radius range (never collide)
-const float RING_SMALL_MAX_R = 3.0f;
-const float RING_DANGER_MIN_R = 7.0f; // big rock radius range (collides)
+const float RING_SMALL_MAX_R = 3.8f;
+const float RING_DANGER_MIN_R = 5.0f; // big rock radius range (collides)
 const float RING_DANGER_MAX_R = 13.0f;
-const float RING_Y_JITTER = 75.0f;    // vertical scatter (single thick band),
+const float RING_Y_JITTER = 38.0f;    // vertical scatter (tighter single band),
                                       // upper half small rocks, lower half danger
 const float RING_SPIN_MAX = 0.6f;      // rock rotation speed (rad/s)
-const float RING_GAP_MIN = 22.0f;      // gap between danger rocks (u); grouped so
+const float RING_GAP_MIN = 34.0f;      // gap between danger rocks (u); grouped so
                                        // they are tighter but still passable
-const float RING_SHIP_RADIUS = 8.0f;   // ship collision circle radius
-const float RING_ROCK_HIT = 0.7f;      // danger collision radius = RING_ROCK_HIT*size
+const float RING_SHIP_RADIUS = 6.5f;   // ship collision circle radius
+const float RING_ROCK_HIT = 0.55f;     // danger collision radius = RING_ROCK_HIT*size
 // Concentric elliptical arc the rings follow (like real rings around a moon):
 // a smooth bow peaking over the moon's center, no sharp edges. Both rings
 // share the same ellipse center (concentric), only their ring radius differs.
