@@ -356,10 +356,15 @@ void Game::runDemoAI()
         float angle = atan2f(aX, aY) * 180.0f / PI;
         if (thrust > 1.0f) thrust = 1.0f;
 
+        if (thrust < 0.015f) thrust = 0.0f;
+
         float imp = 1.0f - demoSkill;
         float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
         angle += n * imp * 14.0f;
-        thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
+        if (thrust > 0.0f)
+            thrust = clampf(thrust + n * imp * 0.05f, 0.0f, 1.0f);
+        else
+            thrust = 0.0f;
 
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -451,10 +456,15 @@ void Game::runDemoAI()
         float angle = atan2f(aX, aY) * 180.0f / PI;
         if (thrust > 1.0f) thrust = 1.0f;
 
+        if (thrust < 0.015f) thrust = 0.0f;
+
         float imp = 1.0f - demoSkill;
         float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
         angle += n * imp * 14.0f;
-        thrust = clampf(thrust + n * imp * 0.12f, 0.0f, 1.0f);
+        if (thrust > 0.0f)
+            thrust = clampf(thrust + n * imp * 0.05f, 0.0f, 1.0f);
+        else
+            thrust = 0.0f;
 
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -488,11 +498,15 @@ void Game::runDemoAI()
     if (thrust > 1.0f) thrust = 1.0f;
 
     if (ship.velY < -0.01f) thrust = 0.0f;
+    if (thrust < 0.015f) thrust = 0.0f;
 
     float imp = 1.0f - demoSkill;
     float n = (float)(rand() % 1001) / 1000.0f - 0.5f;
     angle += n * imp * 40.0f;
-    thrust = clampf(thrust + n * imp * 0.25f, 0.0f, 1.0f);
+    if (thrust > 0.0f)
+        thrust = clampf(thrust + n * imp * 0.08f, 0.0f, 1.0f);
+    else
+        thrust = 0.0f;
 
     float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
     input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
