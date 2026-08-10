@@ -1119,6 +1119,9 @@ void Game::update()
         ship.altitude = minAlt;
 
         updateView();
+        ship.left = ship.posX - 10.0f * ship.scale;
+        ship.right = ship.posX + 10.0f * ship.scale;
+        ship.bottom = ship.posY + 14.0f * ship.scale;
         checkCollisions();
         return;
     }
@@ -1612,14 +1615,14 @@ void Game::draw(Renderer &r)
             } else if (ringHit) {
                     if (zoomedIn) {
                     float bandSy = rings.centerBandY(terrain, ship.posX) * viewScale + viewY;
-                    float yTxt = bandSy + 18.0f;
+                    float yTxt = bandSy + 36.0f;
                     if (yTxt > SCREEN_H - 30.0f) yTxt = SCREEN_H - 30.0f;
                     if (yTxt < 20.0f) yTxt = 20.0f;
                     centerText(yTxt, "YOU CRASHED");
                     centerText(yTxt + 12, "STRUCK BY ORBITAL DEBRIS");
                 } else {
-                    centerText(108, "YOU CRASHED");
-                    centerText(120, "STRUCK BY ORBITAL DEBRIS");
+                    centerText(116, "YOU CRASHED");
+                    centerText(128, "STRUCK BY ORBITAL DEBRIS");
                 }
             } else if (twisterCrash) {
                 centerText(90, "YOU CRASHED");

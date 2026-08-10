@@ -793,4 +793,28 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       - **No afecta al CRT en negativo**: el phosphor ya difumina; el fill añade un tono base
         sutil que da más cuerpo. Código compartido en `RendererCanvas`.
       Tests PC: 960 OK. Sketch VGA: 583 KB (44 %), subido a placa (`Hash of data verified`).
+  34. **Relleno sólido de las rocas de Ganímedes (10/8/2026, rama `polygon-fill`)**: las rocas grandes
+      peligrosas del anillo (`Rings::fillDanger`) se rellenaban con **dither** (`pixelShade` 170 en
+      1 de cada 4 px, patrón `(x+y)&2`), heredado de la época de líneas blancas. Se sustituye por
+      **relleno sólido** `fillPolygon` a brillo 170 + contorno blanco encima (`tracePoly` después del
+      relleno para que el borde quede siempre visible), mismo estilo que la nave (#33). Las rocas
+      pequeñas decorativas siguen huecas. `fillDanger` queda en dos líneas (se elimina el scanline
+      local; lo hace `RendererCanvas::fillPolygon`). Sync a ambos sketches (`sync.sh` OK).
+      Verificación: `test_pc` 951 OK, `rings_demo` OK (PPM; max_run de 170 = 7 px → relleno sólido,
+      con dither sería ~1). Docs: `AGENTS.md` actualizado.
+  35. **Terreno procedural: zonas de aterrizaje más anchas + fix de caja de la nave en returns
+      tempranos (10/8/2026, rama `polygon-fill`)**: 
+      - `Terrain::generate()`: cada zona landable aplanaba 5 puntos (`zoneStart..zoneStart+4`, 4
+        segmentos → ~19–31 u). Ahora aplanan **7 puntos** (`zoneStart..zoneStart+6`, 6 segmentos →
+        ~28–46 u, típico 30–40; medido con un tool de ancho de zonas sobre 5 semillas × niveles
+        2/7/12). `zoneStart` pasa de `(NP-12)*j/4` a `(NP-20)*j/4` para que las zonas no pisen la
+        frontera de wrap. Aterrizar es más indulgente en niveles ≥ 2 (caja de la nave 6.4).
+      - `Game::update()`: los dos `return` tempranos del `STATE_PLAYING` (intro de nivel y el
+        path de choque con anillo antes de `checkCollisions()`) **recalculan `ship.left/right/
+        bottom`** para que `checkLanding`/`altitude` usen la caja fresca (antes quedaba la de un
+        tick anterior → colisiones/altura potencialmente erróneas durante la intro).
+      - Texto de crash del anillo bajado para no pisar la banda: zoom-out 108/120 → **116/128**,
+        zoom-in offset +18 → **+36**.
+      Verificación: `test_pc` 951 OK, `rings_demo` OK, demo_sim (win-rate estable). Docs:
+      `AGENTS.md` actualizado (plataformas ~28–46 u).
 
