@@ -33,13 +33,14 @@ const float LAND_HARD_VX = 0.15f;
 const float LAND_MAX_ROTATION = 5.0f;
 
 const float CRASH_RESET_DELAY = 4.0f;
+const float CRATER_HALF_W = 3.5f;  // half-width of the crash hole in terrain, ~ship width
 const float TANKER_CRASH_DURATION = 3.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
-const int DEMO_LEVEL_FORCE = 4;  // Ganymede showcase: anillos de roca en la demo
-const int START_LEVEL = 4;  // arranca en Ganímedes (anillos)
+const int DEMO_LEVEL_FORCE = 0;  // 0 = demo elige nivel al azar 1..DEMO_MAX_LEVEL
+const int START_LEVEL = 1;  // partida ordenada desde LUNA
 const float DEMO_POWER_RATE = 0.4f;
 const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)
 
@@ -289,5 +290,13 @@ const float PARACHUTE_MIN_ALT = 80.0f;     // u, deploy ignored below this
 const float PARACHUTE_STEER = 0.0012f;     // lateral glide accel from the stick (u/tick)
 const float PARACHUTE_DRIFT_MAX = 0.30f;   // horizontal cap while open (u/tick)
 const float PARACHUTE_WIND_GAIN = 2.0f;    // canopy sail: wind drift multiplier
+
+// Ground dust kicked up when the ship crashes into the terrain: particles
+// erupt from the footpad contact line, follow the ship's impact velocity
+// (in sync with the explosion pieces), arc back down under a gentle gravity
+// and fade out. Drawn as small dots (+) that read as kicked-up regolith.
+const int GROUND_PARTICLES_MAX = 40;
+const float GROUND_PARTICLE_LIFE = 70.0f;  // ticks (0.70 s at GAME_DT=0.01)
+const float GROUND_PARTICLE_GRAV = 0.018f; // per tick (world u/tick^2)
 
 #endif

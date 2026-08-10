@@ -817,4 +817,28 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
         zoom-in offset +18 → **+36**.
       Verificación: `test_pc` 951 OK, `rings_demo` OK, demo_sim (win-rate estable). Docs:
       `AGENTS.md` actualizado (plataformas ~28–46 u).
+  36. **Choque: polvo de regolito + cráter en el terreno (25/8/2026, rama `crash-dust`)**:
+      - **Polvo de impacto** (`Ship`): al estrellarse `initGroundParticles()` levanta 40
+        partículas desde la línea de contacto de las patas (`posY + 14·scale`), con distribución
+        40/40/20 de tamaños punto / `+` de 5 px / roca 3×3 rellena, brillo propio 0.7–1.0, que
+        siguen la velocidad del impacto (`velX·0.4 + jitter`, `velY` ascendente con la caída del
+        ship; ×2.5 en explosión de combustible), arquean con `GROUND_PARTICLE_GRAV=0.018` y se
+        desvanecen en `GROUND_PARTICLE_LIFE=70` ticks (fade 200→0 según `life`). Se dibujan en
+        `Ship::draw()` cuando `exploding`; se limpian en `reset()`. Config: `GROUND_PARTICLES_MAX`,
+        `GROUND_PARTICLE_LIFE`, `GROUND_PARTICLE_GRAV`.
+      - **Cráter de choque** (`Terrain`): `setCrater(x, halfW)` guarda el punto de impacto y
+        `draw()` **recorta la polilínea** en ese tramo: segmento entero dentro del cráter se omite,
+        parciales se cortan por interpolación (helper `interp`), dejando un **hueco abierto** de
+        `CRATER_HALF_W=3.5` u (~7 u = ancho de la nave) sin relleno ni borde — solo indica que ahí
+        hubo un choque. `Game` lo activa en crash duro (`result==1`) y smash del torbellino y lo
+        limpia (`terrain.clearCrater()`) en `newGame`/`restartLevel`/`nextLevel`/`startDemo`.
+      - **Config de demo/partida**: `DEMO_LEVEL_FORCE=0` (demo elige nivel al azar 1..12, ya no el
+        showcase forzado) y `START_LEVEL=1` (partida ordenada desde LUNA). Sincronizado a ambos
+        sketches con `sync.sh`.
+      - **Limpieza de AGENTS.md**: se eliminaron secciones obsoletas — el **minimapa 96×49**
+        (arriba-centro 112,22) que ya no se dibuja en el código, el relleno del suelo por columnas
+        `lineShade` 80 (eliminado en `a285373` "Remove terrain fill") y la flechita de minimapa de
+        los indicadores de aterrizaje; se actualizó el TEMP de demo (`DEMO_LEVEL_FORCE`).
+      Verificación: `make && ./test_pc` 951 OK, render PC del cráter (rotura visible en la
+      polilínea, comprobada por diff de PPM), `sync.sh` OK, sketch compila 579 KB (44 %).
 

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include "ship.h"
 #include "config.h"
@@ -95,6 +96,7 @@ void Ship::reset(float x, float y)
         shapePosX[i] = 0;
         shapePosY[i] = 0;
     }
+    for (int i = 0; i < GROUND_PARTICLES_MAX; i++) groundParticles[i].active = false;
 }
 
 static void shadedLine(Renderer &r, float cx, float y, float halfW, int brightness);
@@ -230,6 +232,39 @@ void Ship::draw(Renderer &r, float viewX, float viewY, float viewScale, float me
             }
 
             r.line(vx[i], vy[i], vx[ni], vy[ni]);
+        }
+    }
+
+    if (exploding) {
+        for (int i = 0; i < GROUND_PARTICLES_MAX; i++) {
+            const GroundParticle &p = groundParticles[i];
+            if (!p.active) continue;
+            float px = p.x * viewScale + viewX;
+            float py = p.y * viewScale + viewY;
+            float t = p.life / GROUND_PARTICLE_LIFE;
+            if (t < 0.0f) t = 0.0f;
+            if (t > 1.0f) t = 1.0f;
+            int b = (int)(200.0f * t * p.shade);
+            int c = (int)(255.0f * t * p.shade);
+            if (p.size >= 3.0f) {
+                r.pixelShade(px - 1.0f, py - 1.0f, b);
+                r.pixelShade(px, py - 1.0f, b);
+                r.pixelShade(px + 1.0f, py - 1.0f, b);
+                r.pixelShade(px - 1.0f, py, b);
+                r.pixelShade(px + 1.0f, py, b);
+                r.pixelShade(px - 1.0f, py + 1.0f, b);
+                r.pixelShade(px, py + 1.0f, b);
+                r.pixelShade(px + 1.0f, py + 1.0f, b);
+                r.pixelShade(px, py, c);
+            } else if (p.size >= 2.0f) {
+                r.pixelShade(px - 1.0f, py, b);
+                r.pixelShade(px + 1.0f, py, b);
+                r.pixelShade(px, py - 1.0f, b);
+                r.pixelShade(px, py + 1.0f, b);
+                r.pixelShade(px, py, c);
+            } else {
+                r.pixelShade(px, py, c);
+            }
         }
     }
 
@@ -398,6 +433,24 @@ static void shadedLine(Renderer &r, float cx, float y, float halfW, int brightne
     for (int x = a; x <= b; x++) r.pixelShade((float)x, y, brightness);
 }
 
+void Ship::initGroundParticles()
+{
+    float gy = posY + 14.0f * scale;
+    float mul = fuelExplosion ? 2.5f : 1.0f;
+    for (int i = 0; i < GROUND_PARTICLES_MAX; i++) {
+        GroundParticle &p = groundParticles[i];
+        p.x = posX + ((rand() % 200) - 100) / 100.0f;
+        p.y = gy;
+        p.velX = (velX * 0.4f + ((rand() % 2400) - 1200) / 1000.0f) * mul;
+        p.velY = -(((rand() % 750) + 150) / 1000.0f + velY * 0.5f) * mul;
+        int sz = rand() % 10;
+        p.size = (sz < 4) ? 1.0f : (sz < 8) ? 2.0f : 3.0f;
+        p.shade = 0.7f + (float)(rand() % 30) / 100.0f;
+        p.life = GROUND_PARTICLE_LIFE - (float)(rand() % 12);
+        p.active = true;
+    }
+}
+
 void Ship::crash(bool fuel)
 {
     rotation = 0;
@@ -408,6 +461,7 @@ void Ship::crash(bool fuel)
     thrustBuild = 0;
     chute = false;
     chuteOpen = 0;
+    initGroundParticles();
 }
 
 void Ship::land()
@@ -418,10 +472,18 @@ void Ship::land()
 
 void Ship::updateExplosion()
 {
-    // Fuel explosion: pieces scatter violently but not instant (2.5x normal).
     float mul = fuelExplosion ? 2.5f : 1.0f;
     for (int i = 0; i < 6; i++) {
         shapePosX[i] += shapes[i].velX * 0.1f * mul;
         shapePosY[i] += shapes[i].velY * 0.1f * mul;
+    }
+    for (int i = 0; i < GROUND_PARTICLES_MAX; i++) {
+        GroundParticle &p = groundParticles[i];
+        if (!p.active) continue;
+        p.velY += GROUND_PARTICLE_GRAV;
+        p.x += p.velX;
+        p.y += p.velY;
+        p.life -= 1.0f;
+        if (p.life <= 0.0f) p.active = false;
     }
 }
