@@ -235,6 +235,7 @@ const float TANKER_TITAN_Y = 85.0f;      // Titan: fixed world-y, clear of the f
 const float TANKER_FUEL_FRACTION = 0.5f; // spawn only when fuel < FUEL_MAX * this
 const float TANKER_HULL_W = 22.0f;
 const float TANKER_HULL_H = 6.0f;
+const float TANKER_DRAW_SCALE = 1.25f; // whole tanker (balloon + accessories) reads bigger in every view
 const float TANKER_PLATFORM_W = 24.0f;
 const float TANKER_DRIFT_SPEED = 9.0f;
 const float TANKER_DRIFT_RANGE = 40.0f;
@@ -297,6 +298,6 @@ const float PARACHUTE_WIND_GAIN = 2.0f;    // canopy sail: wind drift multiplier
 // and fade out. Drawn as small dots (+) that read as kicked-up regolith.
 const int GROUND_PARTICLES_MAX = 40;
 const float GROUND_PARTICLE_LIFE = 70.0f;  // ticks (0.70 s at GAME_DT=0.01)
-const float GROUND_PARTICLE_GRAV = 0.018f; // per tick (world u/tick^2)
+const float GROUND_PARTICLE_GRAV = 0.012f; // per tick (world u/tick^2)
 
 #endif

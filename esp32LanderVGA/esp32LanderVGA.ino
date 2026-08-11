@@ -434,7 +434,7 @@ void setup()
     Serial.printf("[vga] fbFront=%p\n", (void *)fbFront);
 
     // Audio samples live in flash (PROGMEM) and are read straight from there
-    // by the ISR, so Audio::begin() only needs a small beep buffer.
+    // by the ISR, so no sample RAM is consumed on the heap.
     Audio::begin();
 
     // VGA driver: the 640x480 output reads the 320x240 frame store with 2x

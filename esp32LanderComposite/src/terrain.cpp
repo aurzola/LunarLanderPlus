@@ -4,6 +4,7 @@
 #include "terrain.h"
 #include "renderer.h"
 #include "config.h"
+#include "moons.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -89,14 +90,18 @@ void Terrain::init()
     static const int landingMul[] = {4, 5, 5, 2};
     for (int i = 0; i < 4; i++) {
         int idx = landingIdx[i];
+        // Pad width varies with score multiplier: higher multiplier = narrower
+        // (harder) pad. 5x->3, 4x->4, 2x->5 lines. The narrowest pad (idx 106,
+        // ~14u) still fits the ship box (~9.6u at 5x zoom) with margin.
+        int segs = (landingMul[i] == 5) ? 3 : (landingMul[i] == 2 ? 5 : 4);
         float ly = lines[idx].y1;
-        for (int k = idx; k < idx + 4 && k < (int)lines.size(); k++) {
+        for (int k = idx; k < idx + segs && k < (int)lines.size(); k++) {
             lines[k].y1 = ly;
             lines[k].y2 = ly;
             lines[k].landable = true;
             lines[k].multiplier = landingMul[i];
         }
-        int last = idx + 3 < (int)lines.size() ? idx + 3 : (int)lines.size() - 1;
+        int last = idx + segs - 1 < (int)lines.size() ? idx + segs - 1 : (int)lines.size() - 1;
         float zoneCenterX = (lines[idx].x1 + lines[last].x2) / 2.0f;
         lines[idx].labelX = zoneCenterX;
     }
@@ -154,13 +159,20 @@ void Terrain::generate(int level)
     }
 
     static const int landingMul[] = {4, 5, 5, 2};
+    // Pad width varies with score multiplier: higher multiplier = narrower
+    // (harder) pad. Lines per pad: mult4->5, mult5->4, mult2->6. Ganymede
+    // lands at 2x zoom (ship box ~24u) so its pads are 2 lines wider; other
+    // moons land at 5x (box ~9.6u).
+    bool ganymede = moonHasRings(level);
+    static const int padLines[] = {5, 4, 4, 6};
     int zoneStart[4];
     for (int j = 0; j < 4; j++) {
+        int segs = padLines[j] + (ganymede ? 2 : 0);
         zoneStart[j] = (NP - 20) * j / 4 + (rand() % 8);
         float zy = 0;
-        for (int k = zoneStart[j]; k <= zoneStart[j] + 6; k++) zy += py[k];
-        zy /= 7.0f;
-        for (int k = zoneStart[j]; k <= zoneStart[j] + 6; k++) py[k] = zy;
+        for (int k = zoneStart[j]; k <= zoneStart[j] + segs; k++) zy += py[k];
+        zy /= (float)(segs + 1);
+        for (int k = zoneStart[j]; k <= zoneStart[j] + segs; k++) py[k] = zy;
     }
 
     tileWidth = px[NP - 1] * S;
@@ -174,11 +186,12 @@ void Terrain::generate(int level)
     int li = 0;
     int firstZoneIdx = -1;
     for (int j = 0; j < 4; j++) {
+        int segs = padLines[j] + (ganymede ? 2 : 0);
         while (li < zoneStart[j]) li++;
         int idx = li;
         if (j == 0) firstZoneIdx = idx;
-        float zoneCenterX = (lines[idx].x1 + lines[idx + 5].x2) / 2.0f;
-        for (int k = idx; k < idx + 6; k++) {
+        float zoneCenterX = (lines[idx].x1 + lines[idx + segs - 1].x2) / 2.0f;
+        for (int k = idx; k < idx + segs; k++) {
             lines[k].multiplier = landingMul[j];
         }
         lines[idx].labelX = zoneCenterX;
@@ -186,7 +199,7 @@ void Terrain::generate(int level)
 
     chuteLabelX = lines[firstZoneIdx].labelX;
     chuteZoneX1 = lines[firstZoneIdx].x1;
-    chuteZoneX2 = lines[firstZoneIdx + 5].x2;
+    chuteZoneX2 = lines[firstZoneIdx + padLines[0] + (ganymede ? 1 : 0)].x2;
 
     float terrainTop = 9999;
     for (int i = 0; i < (int)lines.size(); i++) {

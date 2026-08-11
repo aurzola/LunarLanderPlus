@@ -154,6 +154,65 @@ static int testLevels()
     return 0;
 }
 
+static int testLandingBonus()
+{
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    for (int i = 0; i < (int)(LEVEL_INTRO_TIME / GAME_DT) + 1; i++) g.update();
+
+    // Classic level-1 terrain: mult-4 pad at lines 34..37.
+    auto placeShip = [&](float vy) {
+        const std::vector<TerrainLine> &tl = g.terrain.getLines();
+        float px = tl[0].x1, padY = tl[0].y1;
+        for (size_t i = 0; i + 3 < tl.size(); i++) {
+            if (tl[i].landable && tl[i + 1].landable && tl[i + 2].landable &&
+                tl[i + 3].landable && tl[i].y1 == tl[i + 3].y1) {
+                px = (tl[i].x1 + tl[i + 3].x2) / 2.0f;
+                padY = tl[i].y1;
+                break;
+            }
+        }
+        g.ship.reset(px, padY - 4.48f);
+        g.ship.scale = 0.32f;
+        g.ship.velX = 0.0f;
+        g.ship.velY = vy;
+        g.ship.rotation = 0.0f;
+        g.ship.targetRotation = 0.0f;
+        g.ship.fuel = 900.0f;
+        g.fuel = 900.0f;
+        g.input.thrust = 0.0f;
+        g.input.angle = 0.0f;
+        g.state = STATE_PLAYING;
+        g.introTimer = 0.0f;
+    };
+
+    // Perfect touchdown: velY well below the threshold. The +50 fuel is NOT
+    // granted at the landing spot (the player is focused there) — it shows up
+    // as 950 in the FUEL counter at the start of the next level.
+    placeShip(0.05f);
+    g.update();
+    CHECK(g.state == STATE_LANDED);
+    CHECK(fabsf(g.ship.fuel - 900.0f) < 1.0f);
+    CHECK(g.landPerfectGet());
+    for (int i = 0; i < 600 && g.state == STATE_LANDED; i++) g.update();
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(fabsf(g.ship.fuel - 950.0f) < 1.0f);
+
+    // Hard-but-safe touchdown: velY between the thresholds -> no fuel bonus.
+    placeShip(0.10f);
+    g.update();
+    CHECK(g.state == STATE_LANDED);
+    CHECK(fabsf(g.ship.fuel - 900.0f) < 1.0f);
+    CHECK(!g.landPerfectGet());
+    for (int i = 0; i < 600 && g.state == STATE_LANDED; i++) g.update();
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(fabsf(g.ship.fuel - 900.0f) < 1.0f);
+
+    return 0;
+}
+
 static int testDemo()
 {
     srand(1234);
@@ -1043,6 +1102,8 @@ int main()
     r = testGame();
     if (r) return r;
     r = testLevels();
+    if (r) return r;
+    r = testLandingBonus();
     if (r) return r;
     r = testDemo();
     if (r) return r;

@@ -85,7 +85,7 @@ Game::Game()
       demo(false), demoTimer(DEMO_START_DELAY),
       windEnabled(false), windStrength(0), windDir(1),
       viewX(0), viewY(0), viewScale(1.0f),
-      zoomedIn(false), resetTimer(0), landMultiplier(1),
+      zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), demoHoldAltitude(false),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false),
@@ -902,12 +902,16 @@ void Game::checkCollisions()
         }
 
         ship.land();
-        if (ship.velY < LAND_PERFECT_VY) {
+        // Decide the landing outcome ONCE at touchdown: velY keeps evolving
+        // while the landing message is shown (gravity, parachute braking), so
+        // the bonus and the on-screen verdict must share this fixed value.
+        landPerfect = ship.velY < LAND_PERFECT_VY;
+        if (landPerfect) {
             score += (int)(50 * mult);
-            fuel += 50;
-            ship.fuel += 50;
-            if (fuel > FUEL_MAX) fuel = FUEL_MAX;
-            if (ship.fuel > FUEL_MAX) ship.fuel = FUEL_MAX;
+            // The +50 fuel is NOT applied here: the player is focused on the
+            // landing spot, not the HUD. It lands at the next level start,
+            // where the reward is clearly visible in the FUEL counter.
+            landFuelBonus = 50;
         } else {
             score += (int)(15 * mult);
         }
@@ -1139,10 +1143,24 @@ void Game::update()
         if (resetTimer <= 0) {
             if (demo) {
                 endDemoToTitle();
+                landFuelBonus = 0;
+            } else if (state == STATE_LANDED) {
+                // Perfect-landing fuel bonus is granted here, at the level
+                // transition: the player is relaxed and sees 300 -> 350 in
+                // the FUEL counter of the next level.
+                if (landFuelBonus > 0) {
+                    ship.fuel += (float)landFuelBonus;
+                    if (ship.fuel > FUEL_MAX) ship.fuel = FUEL_MAX;
+                    fuel = ship.fuel;
+                    landFuelBonus = 0;
+                }
+                if (ship.fuel <= 0) {
+                    endGame();
+                } else {
+                    nextLevel();
+                }
             } else if (ship.fuel <= 0) {
                 endGame();
-            } else if (state == STATE_LANDED) {
-                nextLevel();
             } else {
                 restartLevel();
             }
@@ -1608,12 +1626,11 @@ void Game::draw(Renderer &r)
         };
 
         if (state == STATE_LANDED) {
-            if (ship.velY < LAND_PERFECT_VY) {
+            if (landPerfect) {
                 centerText(90, "CONGRATULATIONS");
                 centerText(102, "PERFECT LANDING");
             } else {
-                centerText(90, "HARD LANDING");
-                centerText(102, "HOPELESSLY MAROONED");
+                centerText(96, "GOOD LANDING");
             }
         } else if (state == STATE_CRASHED) {
             if (lavaBurn) {

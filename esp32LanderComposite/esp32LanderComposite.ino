@@ -370,8 +370,8 @@ void setup()
     }
 
     // Audio samples live in flash (PROGMEM) and are read straight from there
-    // by the ISR, so Audio::begin() only needs a small beep buffer — the
-    // 76.8 KB video frame buffer still gets the large contiguous heap block.
+    // by the ISR, so no sample RAM is consumed on the heap — the 76.8 KB
+    // video frame buffer still gets the large contiguous heap block.
     Audio::begin();
 
     video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP);

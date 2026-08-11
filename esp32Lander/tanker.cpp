@@ -351,10 +351,12 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
     (void)ship;
     if (!active || done) return;
 
-    // In the normal/zoomed-out view the zeppelin is drawn bigger so it reads
-    // as a mothership, but the physical hitbox stays unchanged.
+    // The zeppelin is drawn bigger in the normal/zoomed-out view (mothership
+    // feel), and the whole tanker gets an extra uniform boost so balloon AND
+    // accessories scale together. The physical hitbox stays unchanged.
+    float s = viewScale; // world -> screen mapping (positions)
     float drawScale = (viewScale < 1.0f) ? viewScale * 1.6f : viewScale;
-    float s = viewScale; // drogue/hose/gondola use viewScale; balloon uses drawScale
+    drawScale *= TANKER_DRAW_SCALE;
     float x0 = bodyX * s + viewX;
     float y0 = bodyY * s + viewY;
 
@@ -391,14 +393,14 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
         r.lineShade(x0 - (float)bandW, y0 + (float)bb, x0 + (float)bandW, y0 + (float)bb, b);
     }
 
-    float gx = x0 - 1.0f * s, gy = y0 + RY;
+    float gx = x0 - 1.0f * drawScale, gy = y0 + RY;
 
     // Cabin-like gondola: aerodynamic "\___|" shape attached to the hull,
     // filled like the balloon instead of hanging on cables.
-    float gNoseTopX = gx - 3.0f * s;   // top of the nose diagonal (touches hull)
-    float gNoseBotX = gx - 1.0f * s;   // foot of the diagonal
-    float gRearX    = gx + 3.0f * s;   // vertical stern
-    float gBotY     = gy + 2.2f * s;   // belly line
+    float gNoseTopX = gx - 3.0f * drawScale;   // top of the nose diagonal (touches hull)
+    float gNoseBotX = gx - 1.0f * drawScale;   // foot of the diagonal
+    float gRearX    = gx + 3.0f * drawScale;   // vertical stern
+    float gBotY     = gy + 2.2f * drawScale;   // belly line
 
     // Fill the gondola, tapering the left edge from nose down to the belly.
     int gTopY = (int)roundf(gy), gBotYi = (int)roundf(gBotY);
@@ -414,40 +416,41 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
     r.line(gRearX, gBotY, gRearX, gy);         // | stern, hugging the hull
 
     // window / light detail
-    r.line(gx - 1.0f * s, gy + 1.0f * s, gx + 1.2f * s, gy + 1.0f * s);
-    r.pixelShade(gx, gy + 1.2f * s, 230);
+    r.line(gx - 1.0f * drawScale, gy + 1.0f * drawScale,
+           gx + 1.2f * drawScale, gy + 1.0f * drawScale);
+    r.pixelShade(gx, gy + 1.2f * drawScale, 230);
 
-    float tail = x0 + RX - 1.0f * s;
-    r.line(tail, y0 - 1.0f * s, tail + 4.5f * s, y0 - 4.0f * s);
-    r.line(tail, y0 + 1.0f * s, tail + 4.5f * s, y0 + 4.0f * s);
-    r.line(tail, y0 - 1.0f * s, tail + 4.5f * s, y0);
-    r.line(tail, y0 + 1.0f * s, tail + 4.5f * s, y0);
+    float tail = x0 + RX - 1.0f * drawScale;
+    r.line(tail, y0 - 1.0f * drawScale, tail + 4.5f * drawScale, y0 - 4.0f * drawScale);
+    r.line(tail, y0 + 1.0f * drawScale, tail + 4.5f * drawScale, y0 + 4.0f * drawScale);
+    r.line(tail, y0 - 1.0f * drawScale, tail + 4.5f * drawScale, y0);
+    r.line(tail, y0 + 1.0f * drawScale, tail + 4.5f * drawScale, y0);
 
-    r.line(x0 + 4.0f * s, y0 - RY, x0 + 4.0f * s, y0 - RY - 2.5f * s);
-    if ((counter / 25) & 1) r.pixelShade(x0 + 4.0f * s, y0 - RY - 2.5f * s, 230);
-    else r.pixelShade(x0 + 4.0f * s, y0 - RY - 2.5f * s, 80);
+    r.line(x0 + 4.0f * drawScale, y0 - RY, x0 + 4.0f * drawScale, y0 - RY - 2.5f * drawScale);
+    if ((counter / 25) & 1) r.pixelShade(x0 + 4.0f * drawScale, y0 - RY - 2.5f * drawScale, 230);
+    else r.pixelShade(x0 + 4.0f * drawScale, y0 - RY - 2.5f * drawScale, 80);
 
     int fl = engineFlicker(counter, 3);
     r.pixelShade(x0 + RX, y0, 200 + fl / 4);
-    r.pixelShade(x0 + RX + 1.0f * s, y0 - 1.0f * s, fl);
-    r.pixelShade(x0 + RX + 1.0f * s, y0 + 1.0f * s, fl);
+    r.pixelShade(x0 + RX + 1.0f * drawScale, y0 - 1.0f * drawScale, fl);
+    r.pixelShade(x0 + RX + 1.0f * drawScale, y0 + 1.0f * drawScale, fl);
 
     // Refueling hose (probe-and-drogue): a flexible polyline runs from the
     // underside hull port down to the drogue basket. The drogue's back glows
     // brighter while the connection is live.
     float hs = 160.0f;
     if (docked) hs = 240.0f;
-    drawHose(r, x0 + 2.0f * s, portY * s + viewY,
-             drogueX() * s + viewX, drogueY() * s + viewY, s);
-    r.pixelShade((drogueX() - 1.0f) * s + viewX, drogueY() * s + viewY, (int)hs);
-    r.pixelShade(drogueX() * s + viewX + 1.0f * s, (drogueY() + 1.0f) * s + viewY, (int)(hs * 0.6f));
+    drawHose(r, x0 + 2.0f * drawScale, portY * s + viewY,
+             drogueX() * s + viewX, drogueY() * s + viewY, drawScale);
+    r.pixelShade(drogueX() * s + viewX - drawScale, drogueY() * s + viewY, (int)hs);
+    r.pixelShade(drogueX() * s + viewX + drawScale, (drogueY() + 1.0f) * s + viewY, (int)(hs * 0.6f));
 
-    drawDrogue(r, drogueX() * s + viewX, drogueY() * s + viewY, s);
+    drawDrogue(r, drogueX() * s + viewX, drogueY() * s + viewY, drawScale);
 
     if (docked && fuelFlowing) {
         // Fuel flowing through the connected hose: bright drops running toward
         // the module's probe (which sits in the drogue basket).
-        float hx0 = x0 + 2.0f * s;
+        float hx0 = x0 + 2.0f * drawScale;
         float hy0 = portY * s + viewY;
         float hx1 = drogueX() * s + viewX;
         float hy1 = drogueY() * s + viewY;
@@ -457,7 +460,7 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
             float animT = fmodf(t + (float)counter * 0.03f, 1.0f);
             float dropX = hx0 + (hx1 - hx0) * animT;
             float dropY = hy0 + (hy1 - hy0) * animT;
-            float j = ((float)(i % 3) - 1.0f) * 1.5f * s;
+            float j = ((float)(i % 3) - 1.0f) * 1.5f * drawScale;
             int b = (int)(210.0f * (1.0f - animT * 0.5f));
             if (b > 0) r.pixelShade(dropX + j, dropY, b);
         }

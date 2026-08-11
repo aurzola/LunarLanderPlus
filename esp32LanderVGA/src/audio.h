@@ -3,7 +3,6 @@
 namespace Audio {
 
 void begin();
-void debugBeep();
 void setThrust(float level);
 void setWind(float level);
 void playExplosion();

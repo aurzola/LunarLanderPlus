@@ -11,7 +11,6 @@
 #define AUDIO_SAMPLE_RATE 16000
 #define AUDIO_PWM_FREQ 312500
 #define AUDIO_PWM_RESOLUTION 8
-#define BEEP_LEN 8000
 
 // Per-tick volume easing step (INTEGER, IRAM-safe): moves current level by
 // ~1/24 of the gap each sample (~30 ms attack/release at 16 kHz, no FPU).
@@ -35,7 +34,6 @@ static uint8_t *thrustBuf = NULL;
 static uint8_t *explBuf = NULL;
 static uint8_t *windBuf = NULL;
 static uint8_t *boltBuf = NULL;
-static uint8_t *beepBuf = NULL;
 static const uint8_t *tankerExplBuf = NULL;
 
 static volatile uint16_t thrustPos = 0;
@@ -43,8 +41,6 @@ static volatile int thrustPrev = 0;
 static volatile uint16_t explPos = 0xFFFF;
 static volatile uint16_t windPos = 0;
 static volatile uint16_t boltPos = 0xFFFF;
-static volatile uint16_t beepPos = BEEP_LEN;
-static volatile uint16_t beepLen = 0;
 static volatile uint32_t burnPos = 0xFFFFFFFF;
 static volatile uint32_t burnNoise = 0xABCDEF01u;
 static volatile uint32_t tankerExplPos = 0xFFFFFFFF;
@@ -111,10 +107,6 @@ static void IRAM_ATTR audioIsr() {
         boltPos++;
         if (boltPos >= LIGHTNING_SOUND_LEN) boltPos = 0xFFFF;
     }
-    if (beepPos < beepLen) {
-        v += (int32_t)beepBuf[beepPos] - 128;
-        beepPos++;
-    }
 
     if (burnPos < BURN_LEN_SAMPLES) {
         uint32_t ph = burnPos;
@@ -176,35 +168,17 @@ void Audio::begin() {
     // Samples stay in FLASH (PROGMEM, memory-mapped) and are read straight
     // from there by the ISR. The game never writes flash at runtime, so the
     // data cache in the ISR is safe, and no heap is consumed for sample RAM —
-    // the 76.8 KB video frame buffer needs that memory. Only the beep (tiny)
-    // is generated into a small RAM buffer.
+    // the 76.8 KB video frame buffer needs that memory.
     thrustBuf = (uint8_t *)THRUST_SOUND;
     explBuf = (uint8_t *)EXPLOSION_SOUND;
     windBuf = (uint8_t *)WIND_SOUND;
     boltBuf = (uint8_t *)LIGHTNING_SOUND;
     tankerExplBuf = TANKER_EXPLOSION_SOUND;
-    beepBuf = (uint8_t *)malloc(BEEP_LEN);
-    if (beepBuf == NULL) {
-        Serial.println("[audio] FATAL: no memory for beep buffer");
-        while (1) { }
-    }
-
-    for (int i = 0; i < BEEP_LEN; i++) {
-        float t = (float)i / (float)AUDIO_SAMPLE_RATE;
-        float s = 0.5f + 0.4f * sinf(2.0f * PI * 440.0f * t);
-        beepBuf[i] = (uint8_t)(s * 255.0f);
-    }
 
     audioTimer = timerBegin(AUDIO_SAMPLE_RATE);
     timerAttachInterrupt(audioTimer, audioIsr);
     timerAlarm(audioTimer, 1, true, 0);
-    Serial.println("[audio] timer started, debugBeep follows");
-    debugBeep();
-}
-
-void Audio::debugBeep() {
-    beepLen = BEEP_LEN;
-    beepPos = 0;
+    Serial.println("[audio] timer started");
 }
 
 void Audio::setThrust(float level) {

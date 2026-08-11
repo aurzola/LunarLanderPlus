@@ -77,6 +77,7 @@ public:
     bool ringHitGet() const { return ringHit; }
     bool twisterCrashGet() const { return twisterCrash; }
     bool tankerCrashGet() const { return tankerCrash; }
+    bool landPerfectGet() const { return landPerfect; }
     float chuteTooLow() const { return chuteTooLowTimer; }
     bool chuteAvailable;
 
@@ -85,6 +86,8 @@ private:
     bool zoomedIn;
     float resetTimer;
     int landMultiplier;
+    bool landPerfect;
+    int landFuelBonus;
     float demoSkill;
     float demoTargetX;
     float demoTargetY;

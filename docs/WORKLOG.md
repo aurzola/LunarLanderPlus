@@ -841,4 +841,92 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
         los indicadores de aterrizaje; se actualizó el TEMP de demo (`DEMO_LEVEL_FORCE`).
       Verificación: `make && ./test_pc` 951 OK, render PC del cráter (rotura visible en la
       polilínea, comprobada por diff de PPM), `sync.sh` OK, sketch compila 579 KB (44 %).
+  37. **Escala unificada de la cisterna (26/8/2026, rama `fuel-tanker`)**: hasta ahora el globo
+      se dibujaba con `drawScale = viewScale·(1.6 si zoom-out)` pero los accesorios (góndola,
+      aletas, faro, motor, manguera, cesta y gotas de combustible) usaban `viewScale` a secas —
+      en zoom-out la cisterna parecía desproporcionada (globo grande, accesorios diminutos) y en
+      zoom-in quedaba pequeña. Fix: un **factor global `TANKER_DRAW_SCALE=1.25`** aplicado a
+      `drawScale` para TODO el dibujo (`drawScale = viewScale·(1.6 si zoom-out)·1.25`), manteniendo
+      los accesorios proporcionales al globo en ambas vistas. Las posiciones en mundo (física de
+      docking, `portY`, `drogue`) NO cambian: solo crece el dibujo. Verificado con bench de render
+      PC (bbox del tanque completo: zoom-out 16→20 px y zoom-in 50→63 px de ancho = ×1.25 exacto;
+      píxeles >90: 55→106 y 644→1073). `config.h` + `tanker.cpp` + AGENTS.md; `make && ./test_pc`
+       951 OK, `sync.sh` OK, sketch compila 579 KB (44 %).
+   38. **IDEA PENDIENTE — Port a consolas retro (27/8/2026, diferido)**: se evaluó portar el juego a
+       las consolas disponibles del usuario (NES, SNES, Mega Drive, Wii, GameCube, PS2, Xbox 360).
+       El core es C++ std puro con `Renderer` abstracto → portar = "escribir un `Renderer` + entrada
+       + audio". **Ranking por facilidad**: (1) **Wii** — 729 MHz/88 MB, framebuffer 1:1
+       (devkitPPC+libogc), y el **nunchuck es el mando nativo** (joystick=ángulo, Z=motor, C=potencia,
+       Start=paracaídas) → coincide con los controles actuales; sin hardmod (LetterBomb+HC vía SD).
+       (2) **Xbox 360** — el más potente (3.2 GHz/512 MB) pero requiere consola **RGH-moddeada**.
+       (3) **GameCube** — mismo toolchain que Wii (devkitPPC/libogc), sin hardmod (SD Media Launcher/
+       Swiss), sin nunchuck (remapeo a pad GC); ~90% del trabajo de Wii. (4) **PS2** — PS2SDK,
+       framebuffer, FreeHDBoot; fricción GS/DMA + remapeo a DualShock. (5) **Mega Drive** — SGDK pero
+       **sin framebuffer** → reescritura de render a tiles/sprites. (6) **SNES** — devkitSNES, PPU/
+       modo 7. (7) **NES** — no realista (6502, 1.79 MHz, 2 KB RAM). **Decisión**: se aplaza; primero
+        se pule la versión ESP32 actual (hay muchas mejoras pendientes). Si se retoma → **Wii primero**
+        (camino Wii→GC casi regalado). NO implementado.
+   39. **Polvo de choque: velocidad de lanzamiento igualada a los trozos + gravedad lunar (27/8/2026)**: el
+       usuario reportó que las partículas de la explosión contra el terreno salían mucho más rápido que
+       los trozos de la nave. Comparación real (mismas unidades): trozos 0.05–0.30 u/tick vs partículas
+       0.15–1.20 u/tick (jitter horizontal ±1.2). Además la gravedad de las partículas era una constante
+       fija `GROUND_PARTICLE_GRAV=0.018` (36× la de la nave), sin escalar por la luna. Fix:
+       - `initGroundParticles()`: jitter horizontal `(rand()%2400)-1200` → `(rand()%700)-350` (±0.35);
+         empuje vertical `(rand()%750)+150` → `(rand()%250)+80` (0.08–0.33). Las partículas quedan en el
+         mismo rango que los trozos (0.08–0.35 u/tick).
+       - `updateExplosion()`: `p.velY += GROUND_PARTICLE_GRAV * (gravity/GRAVITY)` — el arco se escala por
+         la gravedad de la luna (la nave ya la propaga en `game.cpp`). Encélado/Tritón flotan ~30 % más.
+       - `GROUND_PARTICLE_GRAV` 0.018 → **0.012** (arco más suave; con el escalado, Io ≈ 0.0132 ≈ antes).
+        Verificación: `make && ./test_pc` 951 OK, `sync.sh` OK, sketch compila 579 KB (44 %). Pendiente
+        re-probar en CRT.
+   40. **Pads de ancho variable por puntaje (1/9/2026)**: el usuario pidió que los landing spots de mayor
+       puntaje sean **más estrechos (difíciles)** que los de menor puntaje, pero nunca imposibles.
+       Antes todas las zonas aplanaban el mismo número de segmentos (4 en clásico, 6 en procedural).
+       Fix en `terrain.cpp`:
+       - **Clásico (`init()`, nivel 1 = Luna)**: 5x→3, 4x→4, 2x→5 segmentos. Medido: pads de
+         13.5 / 18.9 (5x), 20.2 (4x) y 37.8 u (2x). El más angosto (13.5 u) supera la caja de la nave
+         en aterrizaje (~9.6 u = `±10·ship.scale` con scale 0.48 en zoom 5×) con ~4 u de holgura.
+       - **Procedural (`generate(level)`)**: 5x→4, 4x→5, 2x→6 segmentos (20–42 u; el 5x más angosto
+         20.2 u vs caja 9.6). En **Ganímedes** (`moonHasRings`) cada pad suma **2 segmentos** (6/7/8)
+         porque se aterriza en zoom 2× con caja ~24 u (`setZoom(true, 2.0f)` → scale 1.2) — los pads
+         quedan 35–54 u, siempre por encima de la caja.
+       - `zoneCenterX`, labels, multiplicadores y `chuteZone` se recalculan con el ancho real de cada
+         zona (antes asumían 4/6 líneas fijas). El label "Nx" queda centrado en el pad ya estrechado.
+       - Sin cambios en `checkLanding()` (usa la zona `landable` contigua real).
+        Verificación: `make && ./test_pc` 957 OK, medición propia de anchos por seed (gradiente
+        5x < 4x < 2x en clásico y procedural, y 6/7/8 en Ganímedes), `./demo_sim` win-rate 45 % → 33 %
+        (60 seeds; los pads altos ahora cuestan más, esperado), `sync.sh` OK, compila composite 579 KB
+        (44 %) y VGA 585 KB (44 %).
+   41. **Veredicto de aterrizaje fijo al tocar (1/9/2026)**: el usuario reportó que a veces decía
+       `PERFECT LANDING` pero no daba el +50 de gasolina. Causa real: en `STATE_LANDED` la física
+       **sigue corriendo** (`game.cpp` `ship.update()` durante el mensaje). El bonus se decidía una vez
+       en el touchdown, pero el mensaje **re-evaluaba `ship.velY` cada frame** (condición
+       `ship.velY < LAND_PERFECT_VY` en el draw). Con el **paracaídas desplegado** (sink 0.09 ≥ 0.075,
+       → aterrizaje hard sin +50), el frenado de la vela seguía bajando `velY` durante el mensaje y a
+       los ~0.3 s cruzaba 0.075 → la pantalla mostraba `CONGRATULATIONS / PERFECT LANDING` aunque el
+       bonus nunca se había dado. Fix:
+       - Nuevo campo privado `landPerfect` (`game.h`) + getter `landPerfectGet()`. Se fija **una sola
+         vez** al entrar en `result==2`: `landPerfect = ship.velY < LAND_PERFECT_VY;` y el bonus (+50
+         fuel, `50×mult`) usa ese mismo valor.
+       - El mensaje de `STATE_LANDED` usa `landPerfect`: perfecto → `CONGRATULATIONS / PERFECT
+         LANDING`; aterrizaje seguro no perfecto → **`GOOD LANDING`** (se quitaron `HARD LANDING` /
+         `HOPELESSLY MAROONED`, que además eran engañosos: un aterrizaje suave con vela a sink 0.09
+         decía "marooned" sin más fuel). Ahora "PERFECT LANDING" **solo sale si se dio el +50**.
+       - Nuevo test `testLandingBonus()`: tocar el pad clásico (mult 4) con `velY=0.05` → `STATE_LANDED`
+          + fuel 900→950 + `landPerfect`; con `velY=0.10` → `STATE_LANDED` + fuel sin cambio + `!landPerfect`.
+        Verificación: `make && ./test_pc` 963 OK, `sync.sh` OK, compila composite 579 KB (44 %) y
+        VGA 585 KB (44 %).
+        **Ajuste (2/9/2026)**: el usuario pidió ver la recompensa: "no veo la recompensa, tengo el ojo
+        en el landing spot". El +50 de fuel ya no se suma en el touchdown (donde la vista está en la
+        plataforma, no en el HUD): el touchdown guarda `landFuelBonus = landPerfect ? 50 : 0` y el
+        `resetTimer` de la transición `STATE_LANDED` lo aplica a `ship.fuel` (tope `FUEL_MAX`) justo
+        antes de `nextLevel()`. Así aterrizas con 300 y ves **350** en el contador `FUEL` del nivel
+        siguiente, ya relajado. El bonus de score (`50×mult`) sigue en el touchdown. Aterrizar perfecto
+        con fuel 0 sigue salvando la partida (el +50 se aplica antes del chequeo `ship.fuel<=0`).
+        Test actualizado: `testLandingBonus()` ahora verifica fuel 900 en el touchdown y 950 tras pasar
+        de nivel (loop de `update()` hasta salir de `STATE_LANDED`); el pad se busca sobre el terreno
+        actual (clásico o procedural) con 4 segmentos `landable` contiguos. Verificación: `make &&
+        ./test_pc` **967 OK**, `sync.sh` OK, compila composite 579 KB (44 %) y VGA 585 KB (44 %).
+
+
 
