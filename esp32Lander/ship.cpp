@@ -441,8 +441,8 @@ void Ship::initGroundParticles()
         GroundParticle &p = groundParticles[i];
         p.x = posX + ((rand() % 200) - 100) / 100.0f;
         p.y = gy;
-        p.velX = (velX * 0.4f + ((rand() % 2400) - 1200) / 1000.0f) * mul;
-        p.velY = -(((rand() % 750) + 150) / 1000.0f + velY * 0.5f) * mul;
+        p.velX = (velX * 0.4f + ((rand() % 700) - 350) / 1000.0f) * mul;
+        p.velY = -(((rand() % 250) + 80) / 1000.0f + velY * 0.5f) * mul;
         int sz = rand() % 10;
         p.size = (sz < 4) ? 1.0f : (sz < 8) ? 2.0f : 3.0f;
         p.shade = 0.7f + (float)(rand() % 30) / 100.0f;
@@ -480,7 +480,7 @@ void Ship::updateExplosion()
     for (int i = 0; i < GROUND_PARTICLES_MAX; i++) {
         GroundParticle &p = groundParticles[i];
         if (!p.active) continue;
-        p.velY += GROUND_PARTICLE_GRAV;
+        p.velY += GROUND_PARTICLE_GRAV * (gravity / GRAVITY);
         p.x += p.velX;
         p.y += p.velY;
         p.life -= 1.0f;

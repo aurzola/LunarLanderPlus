@@ -20,6 +20,7 @@ public:
 
     void reset(int level, const Terrain &t);
     bool active() const { return enabled_; }
+    void setEnabled(bool e) { enabled_ = e; }
     void update(float dt);
     bool apply(Ship &s, const Terrain &t, float stickDeg = 0.0f);
     bool captured() const { return captured_; }

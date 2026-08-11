@@ -23,7 +23,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 
 | Archivo | Contenido |
 |---------|-----------|
-| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Relleno sólido (10/8/2026)**: shapes cerrados (0=ascenso, 1=descenso) se rellenan con `fillPolygon` en gris 140/100 y contorno blanco encima; ventana con `rectShade` 160 + borde. **Polvo de impacto (rama `crash-dust`)**: al estrellarse `initGroundParticles()` levanta `GROUND_PARTICLES_MAX=40` partículas de regolito desde la línea de contacto (distribución 40/40/20 de tamaños punto/`+`/roca 3×3, brillo propio 0.7–1.0), siguen la velocidad del impacto (×2.5 en explosión de combustible), arquean con `GROUND_PARTICLE_GRAV=0.018` y se desvanecen en `GROUND_PARTICLE_LIFE=70` ticks (ver `Ship::updateExplosion()`). **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
+| `ship.h/cpp` | Nave hexagonal (6 shapes: cuerpo, cabina, patas, toberas). Física, rotación suave, `draw(Renderer&, viewX, viewY, viewScale)`. Explosión al chocar. **Relleno sólido (10/8/2026)**: shapes cerrados (0=ascenso, 1=descenso) se rellenan con `fillPolygon` en gris 140/100 y contorno blanco encima; ventana con `rectShade` 160 + borde. **Polvo de impacto (rama `crash-dust`)**: al estrellarse `initGroundParticles()` levanta `GROUND_PARTICLES_MAX=40` partículas de regolito desde la línea de contacto (distribución 40/40/20 de tamaños punto/`+`/roca 3×3, brillo propio 0.7–1.0), siguen la velocidad del impacto (×2.5 en explosión de combustible), arquean con `GROUND_PARTICLE_GRAV=0.012` **escalada por la gravedad de la luna** (`·gravity/GRAVITY`, 27/8/2026: antes constante 0.018; en Encélado/Tritón el polvo flota ~30 % más) y se desvanecen en `GROUND_PARTICLE_LIFE=70` ticks (ver `Ship::updateExplosion()`). Velocidad de lanzamiento **igualada al rango de los trozos de la nave** (0.08–0.35 u/tick, 27/8/2026: jitter horizontal ±0.35, empuje vertical 0.08–0.33; antes ±1.2 / 0.15–0.9). **Paracaídas (23/8/2026)**: campos `chute`/`chuteOpen`, física de frenado hacia `PARACHUTE_SINK` y dibujo del dosel (ver sección "Paracaídas") |
 | `terrain.h/cpp` | Terreno fijo (154 puntos, S=1.35, OY=130), zonas de aterrizaje con multiplicadores y `labelX` (label único por zona), estrellas, colisión línea-segmento. **Cráter de choque (rama `crash-dust`)**: `setCrater(x, halfW)`/`clearCrater()` guardan un tramo del mundo; `draw()` **recorta la polilínea** en ese tramo (segmento entero dentro se omite, parciales se cortan por interpolación) dejando un **hueco abierto del ancho de la nave** (`CRATER_HALF_W=3.5`, ~7 u) en el punto de impacto — sin relleno ni borde, solo indica que ahí hubo un choque. `Game` lo activa en crash duro y smash de torbellino y lo limpia en `newGame`/`restartLevel`/`nextLevel`/`startDemo` |
 | `game.h/cpp` | Estados, zoom, scoring, `update()` + `draw(Renderer&)` |
 | `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush). `rectShade(x,y,w,h,b)` y `fillPolygon(xs,ys,n,b)` para relleno de polígonos con gris real (10/8/2026) |
@@ -44,7 +44,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `rings_demo.cpp` | Prueba de visualización en PC: terreno generado + anillos → PPM en `frames/` (selftest `active` + `rocksVisible>0`; nivel por defecto 4 = Ganímedes) |
 | `twister.h/cpp` | **Torbellino de nitrógeno de Tritón (rama `twister-circ`; física v5 + dibujo de resorte/cola 21/8/2026)**: activo en niveles de Tritón (`moonHasTwister(level)`, `moonIndex==7`, i.e. nivel 8, 16, 24…). `reset(level, terrain)` coloca un vórtice que **deambula** por el mundo (`TWISTER_DRIFT_SPEED=8 u/s`, rebota en `[40,760]`) con `strength` aleatoria y giro `swirl` ±1. **Física v5 (física real, no se toca en dibujo)**: `apply(ship,terrain,stickDeg)` se hookea en `Game::update()`; al cruzar `TWISTER_RADIUS=150` captura la nave **cabalga la pared del embudo cónico** (`coneR` = radio del cono a la altura h: `TWISTER_BASE_HALF` abajo → `TWISTER_TOP_HALF` arriba) con **zig-zag en onda triangular** `triWave(swirlAngle_)` que se **cierra al descender** (`posX = cx + dir·amp·tri`, `amp` con ease `TWISTER_CAPTURE_RAMP`), gira con `TWISTER_SPIRAL_RATE=200 °/s` y desciende `velY = TWISTER_DESCENT=45·strength`. **Giro continuo**: `rotation = wobble(t) ±60°` + joystick con autoridad reducida (cap ±80). **Escape físico por profundidad** (`depth=1−h/HEIGHT`): empuje radial sostenido > `escThr` y velocidad saliente > `escVel` durante `TWISTER_ESCAPE_TICKS` → la nave sale **lanzada** (`TWISTER_FLING`+`TWISTER_SPIN_KICK`) y el grip queda off hasta salir del radio. **Cualquier contacto con el suelo estando `captured()`** → final `"YOU CRASHED" / "TWISTER SMASHED THE SHIP"`. La tormenta y el viento se apagan en Tritón. **Dibujo (21/8/2026, diseño propio nuevo, física intacta)**: en `draw(r,terrain,viewX,viewY,viewScale,zoomedIn)` un **resorte / cola de cerdo en espiral** que **arranca fino en el suelo y se ensancha hacia arriba** (`r = 4+30·tt`) — **2 espirales** en vista normal y **3** en zoom-in (`zoomedIn`, además con **5 vueltas** vs 7 para separarlas). Cada espiral es una **hélice discontinua**: segmentos rotos por gaps pseudo-aleatorios (`prand`, determinista por frame con `phase_`), jitter radial, trazo fino + una línea tenue al lado (2/3 brillo), y **brillo que desvanece al fondo de la bobina** (`front = 0.5+0.5·cos(ang)`) para dar giro 3D. **Partículas (21/8/2026)**: motas brillantes que **viajan descendiendo por las espirales** (wrapping con `t_·speed`), más numerosas, rápidas y como **blobs con estela** en zoom (30, blob 3-4 px + estela) vs puntos finos en normal (12). Labio superior tenue, motas de giro y falda de polvo pequeña abajo. API tests: `active()`/`coreX()`/`coreY(terrain)`/`strength()`/`captured()`/`justEscaped()`. `draw` recibe `zoomedIn`. Ver WORKLOG #22 |
 | `twister_demo.cpp` | Prueba de visualización en PC: terreno generado + torbellino → PPM en `frames/` (selftest `active`; la nave entra en el radio y es succionada; nivel por defecto 8 = Tritón) |
-| `tanker.h/cpp` | **Nave cisterna aérea con repostaje en vuelo (ronda 5b refine 3: mini-juego de docking 8/8/2026)**: aparece en niveles ≥2 con `TANKER_CHANCE_PERCENT` (70 %) **y solo si el combustible está bajo** (`fuel < FUEL_MAX·TANKER_FUEL_FRACTION=0.5`; demo/attract `force=true` lo ignora). Aeronave **zeppelin**: globo elargado `lineShade`, góndola, aletas, faro, motor. Flota a `TANKER_HOVER_ALT=340 u` (dock ~307 u, entre `ZOOM_IN_ALT=200` y `ZOOM_OUT_ALT=350`) con deriva ±40 u @ 9 u/s y bob ±3 u. En Titán `baseY=TANKER_TITAN_Y=85`; excluida de Ganímedes (`moonHasRings`). Docking **probe-and-drogue** con **una manguera** (`TANKER_HOSE_LEN=20 u`) y cesta inferior (`drogueX/Y = bodyX+sway / portY+HOSE_LEN+sway`, sway ±3 u @ 1.6 rad/s). **Mini-juego de mantenimiento**: tras engancharse hay que mantener el probe dentro de `TANKER_DOCK_TOL_X=8`/`TANKER_DOCK_TOL_Y=5` durante `TANKER_DOCK_LOCK_TIME=1.0 s` para que fluya el combustible; salir de `TANKER_DOCK_BREAK_TOL_X=12`/`TANKER_DOCK_BREAK_TOL_Y=8` durante `TANKER_DOCK_BREAK_TIME=0.4 s` rompe el acople (`breakAway`). El joystick controla el offset horizontal del probe (`ship.velX` → nudge, muelle de centrado suave); el motor (Z) desengancha. Repostaje incremental `TANKER_REFUEL_RATE=200/s` hasta `FUEL_MAX`. Colisión con el casco = destrucción mutua. **Visual**: cesta triangular en vista general / tronco de cono invertido en PiP; probe con varilla fina + **flecha sólida triangular** (sin círculo brillante en punta); **anillo de estado** en el PiP (verde/amarillo/rojo); zeppelin dibujado a `viewScale·1.6` **solo en zoom-out** (hitbox sin cambios). **Visual plutónico (22/8/2026)** (rama `fuel-tanker`): globo elipsoide relleno por filas con `lineShade` (brillo 120→160) + contorno 255 + arco de resalte superior (200) + **franja oscura a media altura** (3 filas, brillo 60→80) que reemplaza a la antigua línea central resaltada; **góndola-cabina aerodinámica** con contorno `\___|` (nariz diagonal tocando el casco, panza plana, popa vertical), **rellena** como el globo (trapezoide con degradado) y **sin cables** de soporte (antes parecía colgando). Demo AI corrige offset durante dock. Ver WORKLOG #29 |
+| `wormhole.h/cpp` | **Agujero de gusano en el cielo (rama `event-horizon`; 2/9/2026 visual, hookup en Game 2026; física en dos zonas 12/9/2026)**: `reset(cx,cy)` activa un vórtice espiral (disco de acreción) que **se traga la nave**. Máquina de fases `WH_IDLE → WH_EMERGING (1.2 s, la espiral gira desde un punto) → WH_ACTIVE (persistente) → WH_SWALLOW (destello) → WH_DYING (0.8 s) → WH_IDLE`. **Dibujo** (`draw(r,viewX,viewY,viewScale)`): 3 brazos espirales **logarítmicos** (`r = OUTER·(CORE/OUTER)^tt`, de `WORMHOLE_OUTER_R=200` a `WORMHOLE_CORE_R=16` u) aplastados en Y (`SQUASH=0.5`) para leer como **elipse** (no círculo), para leer como disco inclinado, polilíneas con jitter `prand` y brillo que **aumenta hacia el núcleo** (`b≈45+185·tt^1.5`); **núcleo oscuro** (`fillPolygon` brillo 0 a 1.4×coreR) que se traga estrellas y las vueltas internas; **anillo fotónico** (`circle` blanco + halo tenue) dejando el interior vacío; ~20 partículas que cabalgan los brazos y migran al núcleo. **Física en dos zonas** (`apply(Ship&)` → bool): fuera de `WORMHOLE_CAPTURE_R=100` (= mitad del radio de acción) el campo es un **empuje radial puro** `a = WORMHOLE_PULL_MAX·(1−d/GRAB_R)` (`PULL_MAX=0.0028` ≈ 1.55× empuje máx) y la nave **puede escapar** acelerando en dirección contraria al centro (colisiones normales, retorna `false`); al cruzar `CAPTURE_R` la nave queda **capturada sin escape posible**: el agujero la hace girar en **vórtice guionado** (como el `pullShip` antiguo) — órbita en espiral hacia el núcleo (`rr = SWALLOW_R + (captureRad−SWALLOW_R)·(1−p)`, `ang = startAng + spin·p·VORTEX_TURNS·TAU`, `VORTEX_T=2.5 s`, 3 vueltas), **se encoge** (`scale` →25 %) y **apunta la nariz al núcleo** (`setTargetRotation(atan2(−cos,sin))` aplanado a ±90°); retorna `true` siempre (el `Game` **salta `checkCollisions()`** durante el vórtice). `d < SWALLOW_R=30` → tragado inmediato. **Hookup en `Game`**: `spawnWormhole(bool force)` en `newGame`/`nextLevel` (nivel ≥ `WORMHOLE_START_LEVEL=2`, chance `WORMHOLE_CHANCE_PERCENT=25`) **solo en lunas sin efecto ambiental** (`moonEffectFree()`, LUNA/EUROPA/CALLISTO) y en cualquier posición del cielo (`cx` aleatorio, `cy∈[150,280]` con clamp `WORMHOLE_SKY_CLEAR` sobre el terreno); `isolateForWormhole()` apaga los demás efectos y el tanque mientras esté presente. Mientras `captured()` el `Game` **congela el zoom** (para no pisar el `ship.scale` que se encoge) y **corta el thrust** del jugador. Al `swallowed()` en `STATE_PLAYING` → **`wormholeJump()`**: luna aleatoria distinta (`level=9+nidx`, `nidx≠moonIndex`), terreno nuevo, respawn entre cielo y terreno **sin intro de nivel** (`introTimer=0`; el nivel arranca ya jugando) con **fade-in de la nave** (`ship.scale` 0→1.5 durante `WORMHOLE_WARP_IN_T=1.2 s`; la rampa corre en el update normal tras `updateView()`, que congela el zoom mientras `warpInT>0` para que `setZoom` no pise `ship.scale`), **fuel conservado**. **Banner de teletransporte (12/8/2026)**: al aparecer en la luna destino se muestra 4 s (`WORMHOLE_RECYCLED_T`, `config.h`) el texto `CONGRATULATIONS,` / `YOU'VE BEEN RECYCLED!` (mayúsculas, dos líneas, centrado en `(90,102)`, **mismo estilo plano que los mensajes de aterrizaje/crash** — `r.text`, sin negrita/fade); `recycledTimer` se arma en `wormholeJump()`, decrece en `update()` y se resetea en `newGame`/`restartLevel`/`startDemo` (getter `recycledBanner()`; test en `test_pc.cpp`). También aparece en el demo (el autopilot también teletransporta). **En el attract demo (10/9/2026; secuencia completa 12/9/2026)**: el **primer nivel del demo SIEMPRE** abre el showcase (`DEMO_WORMHOLE_FIRST`; `startDemo` re-tira el nivel hasta que pueda alojarlo — excluye LUNA nivel 1 y Tritón 8) con wormhole en **cualquier punto aleatorio del cielo** (mismas reglas de colocación que una partida real; `setupDemoTarget()` reposiciona la nave junto al hueco, fuera de la zona de no-retorno pero dentro de la de empuje, y la lanza hacia él → tragada garantizada) y **ningún otro efecto** (viento/tormenta/géiseres/volcanes/atmósfera/anillos/torbellino apagados con `setEnabled(false)`); al `swallowed()` el demo **también hace el teletransporte completo** (`wormholeJump()` + `setupDemoTarget()` re-apunta el autopilot): la nave reaparece en otra luna **sin intro de nivel**, con fade-in mientras ya se juega, y el demo sigue volando ahí hasta aterrizar/estrellarse y solo entonces vuelve al título (`endDemoToTitle()` en `STATE_LANDED`/`STATE_CRASHED`). El `setupDemoTarget()` re-elegido tras un teleport ya no se usa en demo. Draw del wormhole **encima de la nave** (el núcleo oscuro la oculta al tragarse). API tests: `active()`, `captured()`, `phase()`, `swallowed()`, `coreX()`, `coreY()`. **PENDIENTE (audio)**: one-shot de warp en `wormholeJump()` — el teleport ya funciona sin él |
+| `wormhole_demo.cpp` | Prueba de visualización en PC: terreno generado + agujero en el cielo (x 260–560, y 150–200) + nave que siente el empuje radial y, al cruzar la mitad del radio, es capturada y espiralada en vórtice hacia el núcleo → PPM en `frames/` (selftest: fase `EMERGING`→`ACTIVE`, `captured()` y `swallowed()` al final) |
+| `tanker.h/cpp` | **Nave cisterna aérea con repostaje en vuelo (ronda 5b refine 3: mini-juego de docking 8/8/2026)**: aparece en niveles ≥2 con `TANKER_CHANCE_PERCENT` (70 %) **y solo si el combustible está bajo** (`fuel < FUEL_MAX·TANKER_FUEL_FRACTION=0.5`; regla **incondicional desde 10/9/2026** — antes el `force=true` del demo/attract la saltaba, ahora nunca aparece con tanque lleno). Aeronave **zeppelin**: globo elargado `lineShade`, góndola, aletas, faro, motor. Flota a `TANKER_HOVER_ALT=340 u` (dock ~307 u, entre `ZOOM_IN_ALT=200` y `ZOOM_OUT_ALT=350`) con deriva ±40 u @ 9 u/s y bob ±3 u. En Titán `baseY=TANKER_TITAN_Y=250` (10/9/2026: **entre las dos bandas de niebla**, la 1ª en ~205 y la 2ª en ~343+, más cerca de la 1ª; antes `=85`, arriba del todo); excluida de Ganímedes (`moonHasRings`). Docking **probe-and-drogue** con **una manguera** (`TANKER_HOSE_LEN=20 u`) y cesta inferior (`drogueX/Y = bodyX+sway / portY+HOSE_LEN+sway`, sway ±3 u @ 1.6 rad/s). **Mini-juego de mantenimiento**: tras engancharse hay que mantener el probe dentro de `TANKER_DOCK_TOL_X=8`/`TANKER_DOCK_TOL_Y=5` durante `TANKER_DOCK_LOCK_TIME=1.0 s` para que fluya el combustible; salir de `TANKER_DOCK_BREAK_TOL_X=12`/`TANKER_DOCK_BREAK_TOL_Y=8` durante `TANKER_DOCK_BREAK_TIME=0.4 s` rompe el acople (`breakAway`). El joystick controla el offset horizontal del probe (`ship.velX` → nudge, muelle de centrado suave); el motor (Z) desengancha. Repostaje incremental `TANKER_REFUEL_RATE=200/s` hasta `FUEL_MAX`. Colisión con el casco = destrucción mutua. **Visual**: cesta triangular en vista general / tronco de cono invertido en PiP; probe con varilla fina + **flecha sólida triangular** (sin círculo brillante en punta); **anillo de estado** en el PiP (verde/amarillo/rojo); zeppelin dibujado a `viewScale·1.6` **solo en zoom-out** (hitbox sin cambios).   **Visual plutónico (22/8/2026)** (rama `fuel-tanker`): globo elipsoide relleno por filas con `lineShade` (brillo 120→160) + contorno 255 + arco de resalte superior (200) + **franja oscura a media altura** (3 filas, brillo 60→80) que reemplaza a la antigua línea central resaltada; **góndola-cabina aerodinámica** con contorno `\___|` (nariz diagonal tocando el casco, panza plana, popa vertical), **rellena** como el globo (trapezoide con degradado) y **sin cables** de soporte (antes parecía colgando). **Escala unificada (26/8/2026)**: globo + accesorios (góndola, aletas, faro, motor, manguera, cesta y gotas de combustible) se dibujan todos con `drawScale = viewScale·(1.6 si zoom-out)·TANKER_DRAW_SCALE` (`TANKER_DRAW_SCALE=1.25`), un factor global que agranda la cisterna **en todas las vistas** manteniendo los accesorios proporcionados; las posiciones en mundo (física de docking, `portY`/`drogue`) no cambian. Verificado: bbox del tanque crece ×1.25 exacto en zoom-out y zoom-in. Demo AI corrige offset durante dock. Ver WORKLOG #29 |
 | `parachute_demo.cpp` | Prueba de visualización en PC (23/8/2026): terreno generado + nave con **paracaídas** en 5 estadios de inflado + rampa con física real (brake→sink) → PPM en `frames/` (selftest `open=1.00 velY≈sink`) |
 
 ### Mundo y pantalla
@@ -68,11 +70,26 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 - `setThrust()`: lerp `thrustBuild += (power - thrustBuild) * 0.4`.
 - Aterrizaje (config.h): perfecto `vy<0.075`, hard `<0.15`, tolerancia de rotación
   `LAND_MAX_ROTATION=5.0` (antes exacta `rotation==0`). `VX` no se valida.
+  **Veredicto fijo al tocar (1/9/2026)**: el resultado se decide **una sola vez en el touchdown**
+  (`landPerfect = ship.velY < LAND_PERFECT_VY` al entrar en `result==2`). El mensaje en `STATE_LANDED`
+  usa `landPerfect` y ya no
+  re-evalúa `ship.velY`, que seguía cambiando durante el mensaje (gravedad y frenado del
+  paracaídas hacían que un aterrizaje con vela a sink 0.09 mostrara `PERFECT LANDING` sin haber
+  dado el +50). Ahora: perfecto → `CONGRATULATIONS / PERFECT LANDING`; aterrizaje seguro no
+  perfecto → `GOOD LANDING`. **El +50 de fuel se entrega al INICIO del siguiente nivel**
+  (2/9/2026): el touchdown guarda `landFuelBonus=50` y el `resetTimer` de la transición
+  (`STATE_LANDED`) lo suma a `ship.fuel` (tope `FUEL_MAX`) justo antes de `nextLevel()`, así la
+  recompensa se ve en el contador `FUEL` del nivel siguiente (300 → 350) donde el jugador ya está
+  relajado viendo el HUD, no en el aterrizaje donde tiene el ojo en el landing spot. El bonus de
+  score (`50×mult`) sí se da en el touchdown. Aterrizar con fuel 0 en perfecto sigue salvando la
+  partida (el +50 se aplica antes del chequeo `ship.fuel<=0` → `endGame`).
 - `checkLanding()` usa la **zona completa** (segmentos `landable` contiguos) en vez de un solo
-  segmento: en terreno clásico (nivel 1) las plataformas son de 4 segmentos (~19–31 de ancho) vs
-  caja de la nave 6.4 (antes el segmento plano único medía 6.8 → crash por desbordar el borde con
-  rot/vy válidos). En terreno procedural (nivel ≥ 2) las zonas son **más anchas**: 6 segmentos
-  aplanados (~28–46 u de ancho, típico 30–40).
+  segmento: en terreno clásico (nivel 1) las plataformas varían de ancho con el multiplicador
+  (5x→3, 4x→4, 2x→5 segmentos; ~13.5/20/38 u) vs caja de la nave ~9.6 u en aterrizaje (escala 0.48
+  en zoom 5x; antes el segmento plano único medía 6.8 → crash por desbordar el borde con
+  rot/vy válidos). En terreno procedural (nivel ≥ 2) también varían (5x→4, 4x→5, 2x→6 segmentos,
+  ~20–42 u) y en Ganímedes son 2 segmentos más anchos (6/7/8) porque se aterriza con zoom 2×
+  (caja ~24 u); el pad más estrecho siempre queda holgado sobre la caja.
 - Zoom: entra `alt<200`, sale `alt>350`; `viewScale` con zoom = `SCREEN_H/700*5`.
   **En Ganímedes (`moonHasRings`)**: zoom de banda al entrar al anillo de rocas (`posY` en
   `[bandCY±jitter±30]`) + zoom de altitud al bajar (`alt<200`); `setZoom(true, 2.0f)` (2× en vez
@@ -104,8 +121,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
     (`bend = windDir*windStrength*flameLen*sc*0.7`, base inclinada ×0.3) + rastro atenuado
     (`pixelShade` 90→0). `Ship` recibe `windStrength`/`windDir` desde `Game::update()` cada frame
     (0 en niveles < `WIND_START_LEVEL`).
-  HUD: `WIND nn>` (o `<`) en `(250,62)`, debajo de `G` (los avisos `LOW FUEL`/`TOO FAST` se
-  desplazan según haya WIND; ver Sketch ESP32); glifos `<` y `>` añadidos a la fuente 5x7.
+  HUD: `WIND nn>` (o `<`) en `(250,62)`, debajo de `G` (con viento, el aviso
+  `REFUELING`/`DOCKING` de la cisterna pasa a `(250,72)`; sin viento queda en `(250,62)`; ver Sketch
+  ESP32); glifos `<` y `>` añadidos a la fuente 5x7.
   Config: `WIND_START_LEVEL=4`, `WIND_CHANCE_PERCENT=50`, `DEMO_LEVEL_FORCE=0` (el demo elige nivel
   al azar `1..DEMO_MAX_LEVEL`).
 - **Paracaídas dirigible (23/8/2026, one-shot por nivel)**: se despliega con el **botón Start**
@@ -198,7 +216,10 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 ### Terreno
 
 - 154 puntos hardcodeados del original moonlander, escalados `x*S`, `y*S+OY`, con wrap-around.
-- Zonas de aterrizaje: índices `{34, 63, 106, 133}` con multiplicadores `{4, 5, 5, 2}`, 4 segmentos c/u.
+- Zonas de aterrizaje: índices `{34, 63, 106, 133}` con multiplicadores `{4, 5, 5, 2}`. **Ancho
+  variable con el multiplicador (1/9/2026)**: 5x→3, 4x→4, 2x→5 segmentos en clásico (~13.5/20/38 u);
+  procedural 5x→4, 4x→5, 2x→6 (y +2 en Ganímedes por el zoom 2×). El pad de mayor puntaje es el más
+  estrecho pero siempre deja holgura sobre la caja de la nave (9.6 u normal / 24 u Ganímedes).
   `checkLanding()` trata cada grupo de segmentos `landable` contiguos como una plataforma entera.
 - `labelX` se setea solo en el primer segmento de cada zona → el label "Nx" se dibuja una sola vez.
 - **Muros verticales de las plataformas (8/8/2026)**: al aplanar la zona (`init()` solo aplanaba
@@ -209,8 +230,9 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   (aplana el punto de frontera `zoneStart..zoneStart+4`).
 - **Niveles procedurales (5/8/2026)**: `Terrain::generate(level)` para nivel ≥ 2. Nivel 1 = terreno
   clásico (`init()`). Generación: random walk con deriva acotada (±40) + colinas sinusoidales
-  (  `freq`/`phase` por nivel) + 2 pasadas de suavizado; 150 puntos, ancho ~900. 4 zonas planas de 6
-  segmentos (multiplicadores `{4,5,5,2}`), anchos ~28–46 (caja de la nave 6.4). Dificultad: amplitud
+  (  `freq`/`phase` por nivel) + 2 pasadas de suavizado; 150 puntos, ancho ~900. 4 zonas planas
+  (multiplicadores `{4,5,5,2}`), anchos **inversos al multiplicador** (1/9/2026): 5x→4, 4x→5,
+  2x→6 segmentos (~20/30/36 u; +2 en Ganímedes). Dificultad: amplitud
   del random walk `4+level` (tope 12). Semilla `srand(esp_random())` en `setup()` del `.ino`.
 
 ## Sketch ESP32 (`esp32LanderComposite/`)
@@ -233,13 +255,14 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   (pot o paso de C). **`G x.xx` (15/8/2026)**: multiplicador de gravedad de la luna
   (`ship.gravity / GRAVITY`) en `(250,52)`, debajo de `VY` (con glitch al impacto de rayo).
   **`WIND nn>`/`<` (11/8/2026)** en `(250,62)`, debajo de `G`, solo si
-  `game.windEnabled` (viento aleatorio por nivel ≥ 4). Los avisos de la derecha **se desplazan según haya WIND** para no
-  dejar franja en blanco: si WIND está mostrado, `LOW FUEL`/`OUT OF FUEL` van en `(250,72)` y `TOO
-  FAST` en `(250,82)`; si no, quedan en `(250,62)` y `(250,72)`.
+  `game.windEnabled` (viento aleatorio por nivel ≥ 4). Con viento el aviso
+  `REFUELING`/`DOCKING` de la cisterna pasa a `(250,72)`; sin viento queda en `(250,62)`.
   Aviso parpadeante `LOW FUEL` (o `OUT OF FUEL`) alineado con los indicadores de la derecha.
-  **Aviso `TOO FAST` (7/8/2026)**: parpadeante (debajo de `LOW FUEL`) cuando la
-  velocidad de descenso `velY > LAND_HARD_VY` o la velocidad horizontal `|velX| > LAND_HARD_VX`
-  (no se podría aterrizar con seguridad).
+  **Etiquetas `VX`/`VY` con flashing (12/8/2026, sustituye al aviso `TOO FAST`)**: mientras se
+  juega (`STATE_PLAYING` y fuera de la intro), la etiqueta `VY` parpadea (`counter%50>=30`, se omite
+  el texto) cuando `velY > LAND_HARD_VY` y la etiqueta `VX` hace lo mismo cuando
+  `|velX| > LAND_HARD_VX` — la velocidad no permitiría aterrizar con seguridad. No hay banner
+  `TOO FAST`.
   **No hay etiqueta `LVL`** (el nivel se anuncia con la intro).
 - **Intro de nivel (5/8/2026)**: al iniciar partida o nivel (`introTimer = LEVEL_INTRO_TIME=2.4 s`)
   se congela la física y se dibuja `LEVEL N` centrado, **grande y en negrita** (`textScaled`,
@@ -279,8 +302,9 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   (`ship.fuel` se conserva en `nextLevel()`/`restartLevel()`, que antes lo reiniciaban vía
   `Ship::reset()`). El juego **NO termina al quedarse sin combustible en pleno vuelo**: se puede
   acabar el nivel (aterrizar sin motor). Al aterrizar: si `ship.fuel<=0` (tras el bonus de
-  aterrizaje perfecto) → `endGame()` (`OUT OF FUEL`/`GAME OVER` y vuelta a la intro); si hay
-  combustible → `nextLevel()`. Aterrizaje perfecto sigue dando +50 (con tope `FUEL_MAX`).
+  aterrizaje perfecto, que se aplica al pasar de nivel) → `endGame()` (`OUT OF FUEL`/`GAME OVER` y
+  vuelta a la intro); si hay combustible → `nextLevel()`. Aterrizaje perfecto sigue dando +50 (con
+  tope `FUEL_MAX`), visible en el `FUEL` del nivel siguiente.
 - Video lib: `renderer_esp32` escribe en el framebuffer de `video_get_frame_buffer_address()`.
   El render lo hace la librería (DAC → GPIO25 → RCA del TV). B/N usa luma alta (255).
 - Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~525 KB flash
@@ -371,6 +395,12 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   `sounds/lightning.wav` (19.2 k, one-shot) — mono 8-bit / 16 kHz. Generados por
   `sounds/gen_storm_sounds.py` (viento y rayo; los reales de motor/explosión no se tocan) y
   combinados por `sounds/convert_wav.py`.
+  **`sounds/mission_control_radio.py` (10/8/2026)**: efecto offline de "radio de mission
+  control Apollo" para clips de voz (wav/mp3 → 8-bit mono 16 kHz): banda de voz 250–3200 Hz
+  (FFT con bordes suaves), overdrive `tanh`, siseo limitado en banda con compuerta (squelch)
+  que sigue la envolvente de la voz; opciones `--noise`, `--drive`, `--echo` (eco de
+  retransmisión tierra-luna, ~2.55 s). Sin tonos Quindar (se quitaron a pedido). Salida lista
+  para `convert_wav.py`. Validado con voz sintética (formato, squelch 0.04↔0.46 RMS).
 - Origen de los sonidos: **reales**, extraídos de `tblazevic/moonlander` (clon arcade JS)
   `audio/rocket.mp3` (loop de motor) + `audio/crash.mp3`. Pipeline en `sounds/real_sounds.py`
   (extrae el segmento 2 s más estable del mp3, hace **loop sin clic** cruzando la continuación
@@ -393,8 +423,8 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   (`WIND_GAIN=140`, tope `WIND_MAX=160` sobre 256) y **proporcional a la velocidad del viento**
   (`setWind(windStrength)`). El rayo es un one-shot (crack + trueno) al formarse cada rayo.
   Validado: `test_pc` 50 checks, sketch compila 503 KB / RAM 7%, monitor serial estable (sin reset).
-- Debug (serial): `debugBeep()` emite un pitido 440 Hz (0.5 s) al arrancar para confirmar el
-  audio; `debugIsrCount()` imprime `[audio] isr=%u` 1×/s (~16156 ISR/s → 16 kHz reales).
+- Debug (serial): `debugIsrCount()` imprime `[audio] isr=%u` 1×/s (~16156 ISR/s → 16 kHz reales).
+  El pitido de arranque (`debugBeep`) se eliminó (27/8/2026).
 - Cableado: **GPIO26 → condensador de acople en serie (1–10 µF) → RCA blanco del TV**
   (quita el DC; lógica de 3.3 V). Verificado con parlante + amplificador.
 
@@ -415,6 +445,12 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   el comando `/flash` (que hace el commit como parte de su flujo documentado en
   `.opencode/commands/flash.md`; "hacer flash" ≠ "que el agente commitee por su cuenta").
   Subir a la placa (upload) sí está permitido para probar en CRT sin commitear.
+- **Todo trabajo de implementación termina SIEMPRE subiendo a la placa (upload)**, sin que el
+  usuario tenga que pedirlo: el paso final de cualquier tarea es `sync.sh` → compilar → upload al
+  ESP32 **por defecto de la versión CRT** (`esp32LanderComposite/`, puerto `/dev/ttyUSB0`). No
+  preguntar "¿lo subo?" — subir directamente al terminar. Solo se omite (y se avisa) si no hay
+  placa conectada, el build falla o el usuario pidió explícitamente no subir. El sketch VGA se
+  sube únicamente cuando el cambio toque `esp32LanderVGA/` y el usuario lo indique.
 
 ## Comandos útiles
 
@@ -425,6 +461,8 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   PPM en `frames/`; selftest `bolts>0` + `maxAlive>0`).
   Paracaídas: `./parachute_demo <seed>` (terreno + nave con dosel en 5 estadios + rampa con
   física real, PPM en `frames/`; selftest `open=1.00 velY≈sink`).
+  Agujero de gusano: `./wormhole_demo <seed> <level>` (terreno + espiral en el cielo que se traga
+  la nave, PPM en `frames/`; selftest fases `EMERGING`→`PULLING`→`SWALLOW` + `swallowed()`).
 - Compilar sketch composite: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
 - Compilar sketch VGA: `arduino-cli compile --fqbn esp32:esp32:esp32 --build-property build.partitions=no_ota esp32LanderVGA/esp32LanderVGA.ino`.
 - Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
@@ -445,8 +483,9 @@ pendientes y bugs activos:
 
 - **Pendiente de prueba en CRT (gráficos/efectos)**: nunchuck (#8). Anillos de Ganímedes (#21) y atmósfera de Titán (#20) ya rediseñados (bandas elípticas concéntricas, sin niebla en Ganímedes), validados parcialmente. Vueltas en proceso: anillos de Ganímedes + niebla de Titán (rama `twister-circ`, 22/8/2026). Torbellino de Tritón (#22): dibujo de resorte + partículas validado en CRT (21/8/2026).
 - **PENDIENTE (feature)**: boca de volcán con patrón "U" aserrado (#18, ver `volcanoes.cpp` `Volcanoes::draw()`).
-- **PENDIENTE (idea, audio, para luego)**: **voz de mission control** oída a través de "canal de radio" (efecto de voz distante, filtrada tipo radio FM/arrancada a KM de distancia). Sin diseño cerrado; se integraría en la sección Sonido (probablemente con la voz como un one-shot largo o muestras cortas por frase, por el estilo de los one-shots actuales: explosión/quemado/rayo). Requeriría además del pipeline ESP32. NO implementado; decidir cuando se aborde.
+- **PENDIENTE (idea, audio, para luego)**: **voz de mission control** oída a través de "canal de radio" (efecto de voz distante, filtrada tipo radio FM/arrancada a KM de distancia). Sin diseño cerrado; se integraría en la sección Sonido (probablemente con la voz como un one-shot largo o muestras cortas por frase, por el estilo de los one-shots actuales: explosión/quemado/rayo). Requeriría además del pipeline ESP32. **El efecto offline ya existe** (`sounds/mission_control_radio.py`, 10/8/2026): convierte cualquier voz wav/mp3 al carácter de radio Apollo (banda 250–3200 Hz + overdrive + squelch). Falta: generar las frases, integrar a `convert_wav.py` y al mezclador del sketch.
 - **PENDIENTE (idea, arquitectura, para luego)**: **usar el otro core (0)**. Hoy Arduino-esp32 ya corre sobre FreeRTOS: `setup()/loop()` son una tarea pinneada al **core 1**, el core 0 va mayormente idle (esp_timer; WiFi sólo si se usara). El audio actual es un ISR de timer gptimer a 16 kHz que mezcla en IRAM y escribe el duty del LEDC, e interrumpe al core del juego unos microsegundos por muestra. Posible mejora legítima: mover la **mezcla de samples** (thrust+wind+explosión+voz) a una **tarea dedicada en el core 0** con ring buffer, dejando al ISR solo `pop + escribir duty`; así el core 1 no paga nada de audio y se podría subir la calidad (más canales, filtros, ~32 kHz). **Precaución**: a 16 kHz la muestra hay que entregarla cada 62.5 µs — un ISR la garantiza, una tarea normal no → ISR para el muestreo, core 0 para la mezcla pesada. **NO arregla el lag de dibujo** (p.ej. Ganímedes), que es CPU de render, no audio. NO implementado.
+- **PENDIENTE (idea, port a consolas retro, para luego)**: **portar a Wii** (y, casi gratis, GameCube) usando devkitPPC+libogc: el core es C++ std puro con `Renderer` abstracto → solo hay que escribir un `Renderer` de framebuffer + entrada nunchuck (mando nativo de Wii, coincide con los controles actuales) + audio. El ranking completo de consolas disponibles (NES/SNES/Mega Drive/Wii/GameCube/PS2/Xbox 360) y la decisión de aplazarlo está en WORKLOG #38. **Decisión**: diferido hasta pulir la versión ESP32 actual. NO implementado.
 - **BUG PENDIENTE**: ~~los controles del HUD pestañean/se pierden en la fase de aproximación con zoom en Titán (#20)~~ → **RESUELTO (20/8/2026)**: el parpadeo/borrado parcial de minimapa, indicadores y nave en la 2ª etapa (zoom) era **tearing de framebuffer único** (el DMA de la librería aquaticus escanea el FB mientras `draw()` escribe; en zoom el frame excede la ventana de blanking). Fix: **doble buffer** en el `.ino` — `fbShadow[76800]`, `RendererESP32` pinta en el shadow, y tras `video_wait_frame()` se `memcpy(shadow→videoFB)` durante el blanking; el siguiente `draw()` pinta en el shadow durante el campo completo. El DMA solo ve frames completos (  afectaba a cualquier luna con efectos en zoom, no solo Tritón). El doble buffer rompía la RAM
   (el FB de video ya no cabía); se resolvió pasando las muestras de audio a flash (ver Sonido).
   RAM 101908 B (31%), arranque limpio verificado por serial. Pendiente re-probar en CRT.

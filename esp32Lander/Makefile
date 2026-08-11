@@ -1,8 +1,8 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -O2
-SRC = ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp geysers.cpp volcanoes.cpp atmosphere.cpp rings.cpp twister.cpp tanker.cpp
+SRC = ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp geysers.cpp volcanoes.cpp atmosphere.cpp rings.cpp twister.cpp tanker.cpp wormhole.cpp
 
-all: test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo
+all: test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo wormhole_demo
 
 parachute_demo: parachute_demo.cpp $(SRC)
 	$(CXX) $(CXXFLAGS) -o parachute_demo parachute_demo.cpp $(SRC)
@@ -40,8 +40,11 @@ rings_demo: rings_demo.cpp $(SRC)
 twister_demo: twister_demo.cpp $(SRC)
 	$(CXX) $(CXXFLAGS) -o twister_demo twister_demo.cpp $(SRC)
 
+wormhole_demo: wormhole_demo.cpp $(SRC)
+	$(CXX) $(CXXFLAGS) -o wormhole_demo wormhole_demo.cpp $(SRC)
+
 clean:
-	rm -f test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo
+	rm -f test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo wormhole_demo
 	rm -rf frames
 
 .PHONY: all clean

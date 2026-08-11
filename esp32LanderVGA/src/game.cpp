@@ -85,9 +85,9 @@ Game::Game()
       demo(false), demoTimer(DEMO_START_DELAY),
       windEnabled(false), windStrength(0), windDir(1),
       viewX(0), viewY(0), viewScale(1.0f),
-      zoomedIn(false), resetTimer(0), landMultiplier(1),
+      zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
-      windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), demoHoldAltitude(false),
+      windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false),
       demoTankerPhase(0)
 {
@@ -106,6 +106,7 @@ Game::Game()
     rings.reset(level, terrain);
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    wormhole.disable();
     stormHitTimer = 0;
     setZoom(false);
     setupTitleShip();
@@ -139,7 +140,10 @@ void Game::newGame()
     rings.reset(level, terrain);
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    spawnWormhole();
+    isolateForWormhole();
     stormHitTimer = 0;
+    recycledTimer = 0;
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
@@ -160,6 +164,8 @@ void Game::restartLevel()
     tankerCrash = false;
     explosionInited = false;
     twisterCrash = false;
+    wormhole.disable();
+    recycledTimer = 0;
     terrain.clearCrater();
 
     if (state == STATE_GAMEOVER || state == STATE_WAITING) {
@@ -188,6 +194,8 @@ void Game::nextLevel()
     rings.reset(level, terrain);
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    spawnWormhole();
+    isolateForWormhole();
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
@@ -216,6 +224,15 @@ void Game::startDemo()
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
     level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
+    // Wormhole showcase: the very first demo level always opens the sky
+    // wormhole, so re-roll until the level can host one (>= WORMHOLE_START_LEVEL
+    // and on an effect-free moon, so the wormhole never shares the sky with
+    // another effect).
+    const bool showcase = DEMO_WORMHOLE_FIRST && DEMO_LEVEL_FORCE <= 0;
+    if (showcase) {
+        while (level < WORMHOLE_START_LEVEL || !moonEffectFree(level))
+            level = 1 + rand() % DEMO_MAX_LEVEL;
+    }
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
@@ -225,17 +242,24 @@ void Game::startDemo()
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
                   !moonHasTwister(level) &&
-                  !moonHasRings(level);
+                  !moonHasRings(level) &&
+                  !showcase;
     spawnWind();
     storm.reset(level);
-    if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
+    if (showcase || moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
+    if (showcase) geysers.setEnabled(false);
     volcanoes.reset(level, terrain);
+    if (showcase) volcanoes.setEnabled(false);
     atmosphere.reset(level);
+    if (showcase) atmosphere.setEnabled(false);
     rings.reset(level, terrain);
+    if (showcase) rings.setEnabled(false);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, true);
+    if (showcase) twister.setEnabled(false);
+    tanker.reset(level, terrain, ship.fuel, true); // full tank -> never active
     stormHitTimer = 0;
+    recycledTimer = 0;
     chuteAvailable = true;
     lavaBurn = false;
     ringHit = false;
@@ -247,8 +271,38 @@ void Game::startDemo()
     setZoom(false);
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
+    spawnWormhole(DEMO_WORMHOLE_FIRST);
+    setupDemoTarget();
+}
 
+void Game::setupDemoTarget()
+{
     const std::vector<TerrainLine> &tl = terrain.getLines();
+
+    // Wormhole showcase: the hole opened at any random sky point (same rules
+    // as a real level). Spawn the ship beside it, outside the no-return zone
+    // but well inside the pull zone, drifting toward it — so the radial pull,
+    // the vortex and the swallow all play out on the CRT without a long
+    // cross-country flight that the landing autopilot would lose to terrain.
+    // Full authority and no jitter: a clean, reliable showcase.
+    if (demo && wormhole.active()) {
+        float cx = wormhole.coreX();
+        float cy = wormhole.coreY();
+        float side = (rand() % 2) ? 1.0f : -1.0f;
+        float sx = cx + side * 150.0f;
+        if (sx < 30.0f || sx > terrain.getWidth() - 30.0f) {
+            side = -side;
+            sx = cx + side * 150.0f;
+        }
+        ship.reset(sx, cy);
+        ship.scale = 1.5f; // normal view scale (Ship::reset() zeroes it)
+        ship.velX = side * 0.2f;
+        ship.velY = 0.0f;
+        demoTargetX = cx;
+        demoTargetY = cy;
+        demoSkill = 1.0f;
+        return;
+    }
 
     // Aim the demo at the tanker's underside drogue when one is present, so the
     // autopilot flies up to it and plugs the probe in (aerial refueling). The
@@ -331,7 +385,86 @@ void Game::endDemoToTitle()
     demoTimer = DEMO_START_DELAY;
     terrain.init();
     setZoom(false);
+    wormhole.disable();
     setupTitleShip();
+}
+
+void Game::spawnWormhole(bool force)
+{
+    wormhole.disable();
+    if (level < WORMHOLE_START_LEVEL) return;
+    // The wormhole never combines with any other effect: it only opens on a
+    // moon without an ambient effect of its own (LUNA/EUROPA/CALLISTO).
+    if (!moonEffectFree(level)) return;
+    if (demo) {
+        // Attract mode: only the showcase first level opens a sky wormhole.
+        // Same placement rules as a real level (any random point of the sky,
+        // clamped above the terrain profile); setupDemoTarget() spawns the
+        // ship beside it so the pull, vortex and swallow play out. After the
+        // swallow the demo just returns to the title.
+        if (!force) return;
+        float cx = WORMHOLE_SKY_X_MARGIN +
+                   (float)(rand() % (int)(terrain.getWidth() - 2.0f * WORMHOLE_SKY_X_MARGIN));
+        float cy = WORMHOLE_SKY_Y_MIN +
+                   (float)(rand() % (int)(WORMHOLE_SKY_Y_MAX - WORMHOLE_SKY_Y_MIN));
+        float gy = terrain.yAt(cx, 500.0f);
+        if (cy > gy - WORMHOLE_SKY_CLEAR) cy = gy - WORMHOLE_SKY_CLEAR;
+        wormhole.reset(cx, cy);
+        return;
+    }
+    if (rand() % 100 >= WORMHOLE_CHANCE_PERCENT) return;
+    // Any position of the sky: random x over the world and y within the sky
+    // band, clamped so the nucleus stays clear of the terrain profile.
+    float cx = WORMHOLE_SKY_X_MARGIN +
+               (float)(rand() % (int)(terrain.getWidth() - 2.0f * WORMHOLE_SKY_X_MARGIN));
+    float cy = WORMHOLE_SKY_Y_MIN +
+               (float)(rand() % (int)(WORMHOLE_SKY_Y_MAX - WORMHOLE_SKY_Y_MIN));
+    float gy = terrain.yAt(cx, 500.0f);
+    if (cy > gy - WORMHOLE_SKY_CLEAR) cy = gy - WORMHOLE_SKY_CLEAR;
+    wormhole.reset(cx, cy);
+}
+
+void Game::isolateForWormhole()
+{
+    // While a wormhole is present every other effect and the tanker stay off.
+    if (!wormhole.active()) return;
+    windEnabled = false;
+    storm.setEnabled(false);
+    geysers.setEnabled(false);
+    volcanoes.setEnabled(false);
+    atmosphere.setEnabled(false);
+    rings.setEnabled(false);
+    twister.setEnabled(false);
+    tanker.setEnabled(false);
+}
+
+void Game::wormholeJump()
+{
+    int cur = moonIndex(level);
+    int nidx = cur;
+    while (nidx == cur) nidx = rand() % 8;
+    level = 8 + nidx; // nextLevel() does level++ first -> 9..16, a different moon
+    nextLevel();
+    // No level intro on a teleport: the new moon starts playing right away and
+    // the ship materializes with a fade-in (warpInT ramps ship.scale 0->1.5).
+    introTimer = 0;
+    // Reappear at any position between the sky and the terrain.
+    float w = terrain.getWidth();
+    ship.posX = 60.0f + (float)(rand() % (int)(w - 120.0f));
+    float gy = terrain.yAt(ship.posX, 500.0f);
+    float yMin = 90.0f;
+    float yMax = gy - 40.0f;
+    if (yMax < yMin) yMax = yMin;
+    ship.posY = yMin + (float)(rand() % (int)(yMax - yMin + 1));
+    ship.velX = (float)(rand() % 41) / 100.0f - 0.2f;
+    ship.velY = 0.0f;
+    ship.rotation = 0.0f;
+    ship.targetRotation = 0.0f;
+    // Start invisible: the warp-in ramp grows ship.scale 0->1.5 over the next
+    // frames (avoids a one-frame flash of a full-size ship before the fade).
+    ship.scale = 0.0f;
+    warpInT = WORMHOLE_WARP_IN_T;
+    recycledTimer = WORMHOLE_RECYCLED_T; // "YOU'VE BEEN RECYCLED" banner
 }
 
 void Game::setupTitleShip()
@@ -777,34 +910,40 @@ void Game::updateView()
         return;
     }
 
-    if (moonHasRings(level)) {
-        // Rings zoom: band-proximity OR final-approach altitude.
-        // Entering the debris band -> zoom-in to weave through the rocks.
-        // After exiting the band, if the ship is still high -> zoom-out.
-        // Near the ground, the normal altitude threshold kicks in for
-        // the final landing approach zoom (same as all other moons).
-        float bandCY = rings.centerBandY(terrain, ship.posX);
-        float bandTop = bandCY - RING_Y_JITTER - 30.0f;
-        float bandBot = bandCY + RING_Y_JITTER + 30.0f;
-        float bandTopOut = bandCY - RING_Y_JITTER - 60.0f;
-        float bandBotOut = bandCY + RING_Y_JITTER + 60.0f;
+    // While the wormhole vortex owns the ship the zoom transitions are frozen
+    // (the ship shrinks toward the core; setZoom would reset its scale). Same
+    // during the respawn fade-in: the materialization ramps ship.scale and
+    // must not be overridden by a zoom transition.
+    if (!wormhole.captured() && warpInT <= 0.0f) {
+        if (moonHasRings(level)) {
+            // Rings zoom: band-proximity OR final-approach altitude.
+            // Entering the debris band -> zoom-in to weave through the rocks.
+            // After exiting the band, if the ship is still high -> zoom-out.
+            // Near the ground, the normal altitude threshold kicks in for
+            // the final landing approach zoom (same as all other moons).
+            float bandCY = rings.centerBandY(terrain, ship.posX);
+            float bandTop = bandCY - RING_Y_JITTER - 30.0f;
+            float bandBot = bandCY + RING_Y_JITTER + 30.0f;
+            float bandTopOut = bandCY - RING_Y_JITTER - 60.0f;
+            float bandBotOut = bandCY + RING_Y_JITTER + 60.0f;
 
-        bool inBand = ship.posY >= bandTop && ship.posY <= bandBot;
-        bool nearBand = ship.posY >= bandTopOut && ship.posY <= bandBotOut;
-        bool lowAlt = ship.altitude < ZOOM_IN_ALT;
+            bool inBand = ship.posY >= bandTop && ship.posY <= bandBot;
+            bool nearBand = ship.posY >= bandTopOut && ship.posY <= bandBotOut;
+            bool lowAlt = ship.altitude < ZOOM_IN_ALT;
 
-        if (!zoomedIn && (inBand || lowAlt)) {
-            setZoom(true, 2.0f);
-        } else if (zoomedIn && !nearBand && ship.altitude > ZOOM_OUT_ALT) {
-            setZoom(false);
-        }
-    } else {
-        float zi = ZOOM_IN_ALT;
-        float zo = ZOOM_OUT_ALT;
-        if (!zoomedIn && ship.altitude < zi) {
-            setZoom(true);
-        } else if (zoomedIn && ship.altitude > zo) {
-            setZoom(false);
+            if (!zoomedIn && (inBand || lowAlt)) {
+                setZoom(true, 2.0f);
+            } else if (zoomedIn && !nearBand && ship.altitude > ZOOM_OUT_ALT) {
+                setZoom(false);
+            }
+        } else {
+            float zi = ZOOM_IN_ALT;
+            float zo = ZOOM_OUT_ALT;
+            if (!zoomedIn && ship.altitude < zi) {
+                setZoom(true);
+            } else if (zoomedIn && ship.altitude > zo) {
+                setZoom(false);
+            }
         }
     }
 
@@ -902,12 +1041,16 @@ void Game::checkCollisions()
         }
 
         ship.land();
-        if (ship.velY < LAND_PERFECT_VY) {
+        // Decide the landing outcome ONCE at touchdown: velY keeps evolving
+        // while the landing message is shown (gravity, parachute braking), so
+        // the bonus and the on-screen verdict must share this fixed value.
+        landPerfect = ship.velY < LAND_PERFECT_VY;
+        if (landPerfect) {
             score += (int)(50 * mult);
-            fuel += 50;
-            ship.fuel += 50;
-            if (fuel > FUEL_MAX) fuel = FUEL_MAX;
-            if (ship.fuel > FUEL_MAX) ship.fuel = FUEL_MAX;
+            // The +50 fuel is NOT applied here: the player is focused on the
+            // landing spot, not the HUD. It lands at the next level start,
+            // where the reward is clearly visible in the FUEL counter.
+            landFuelBonus = 50;
         } else {
             score += (int)(15 * mult);
         }
@@ -934,6 +1077,10 @@ void Game::update()
     updateWind(dt);
     if (fuelMaxTimer > 0.0f) fuelMaxTimer -= dt;
     if (chuteTooLowTimer > 0.0f) chuteTooLowTimer -= dt;
+    if (recycledTimer > 0.0f) {
+        recycledTimer -= dt;
+        if (recycledTimer < 0.0f) recycledTimer = 0.0f;
+    }
     ship.windStrength = windEnabled ? windStrength : 0.0f;
     ship.windDir = windDir;
     ship.gravity = GRAVITY * moonGravity(level);
@@ -943,6 +1090,7 @@ void Game::update()
     if (state != STATE_WAITING) atmosphere.update(dt);
     if (state != STATE_WAITING) rings.update(dt);
     if (state != STATE_WAITING) twister.update(dt);
+    if (state != STATE_WAITING) wormhole.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -965,6 +1113,21 @@ void Game::update()
     }
 
     if (state == STATE_PLAYING) {
+        if (wormhole.swallowed()) {
+            // The swallow flash + hole fade play out first (the ship is hidden
+            // while swallowed), then the ship fades in on another moon (or the
+            // demo returns to the title). Physics stays frozen meanwhile.
+            if (!wormhole.active()) {
+                // Full sequence even in the attract demo: the hole swallows the
+                // ship and it fades back in on another moon (wormholeJump), so
+                // the demo shows the whole teleport; the autopilot then keeps
+                // flying on the new moon until the level ends (back to title).
+                wormholeJump();
+                if (demo) setupDemoTarget();
+            }
+            return;
+        }
+
         if (introTimer > 0) {
             ship.left = ship.posX - 10.0f * ship.scale;
             ship.right = ship.posX + 10.0f * ship.scale;
@@ -1098,6 +1261,15 @@ void Game::update()
             twister.apply(ship, terrain, input.angle * 180.0f / PI);
         }
 
+        // Sky wormhole: OUTSIDE half the action radius it pulls radially
+        // toward the nucleus (the ship stays controllable and escapes by
+        // thrusting away); INSIDE it the ship is captured and scripted into a
+        // shrinking vortex that swallows it. Collisions stay on in the pull
+        // zone; they are skipped while the vortex owns the ship.
+        bool wormholePulled = false;
+        if (wormhole.active()) wormholePulled = wormhole.apply(ship);
+        if (wormhole.captured()) ship.setThrust(0.0f); // no control while trapped
+
         if (atmosphere.active()) {
             ship.velX *= ATMOS_DRAG;
             ship.velY += ATMOS_DOWN;
@@ -1126,10 +1298,24 @@ void Game::update()
         ship.altitude = minAlt;
 
         updateView();
+
+        // Wormhole respawn: the level already plays (no intro announcement)
+        // while the ship materializes, growing from nothing to its normal size
+        // over WORMHOLE_WARP_IN_T. Runs after updateView so the zoom stays
+        // frozen on the very frame the ramp finishes (setZoom would reset
+        // ship.scale), and draw always sees the ramped scale.
+        if (warpInT > 0.0f) {
+            warpInT -= dt;
+            if (warpInT < 0.0f) warpInT = 0.0f;
+            float wp = 1.0f - warpInT / WORMHOLE_WARP_IN_T;
+            if (wp < 0.0f) wp = 0.0f;
+            ship.scale = 1.5f * wp;
+        }
+
         ship.left = ship.posX - 10.0f * ship.scale;
         ship.right = ship.posX + 10.0f * ship.scale;
         ship.bottom = ship.posY + 14.0f * ship.scale;
-        checkCollisions();
+        if (!wormholePulled) checkCollisions();
         return;
     }
 
@@ -1139,10 +1325,24 @@ void Game::update()
         if (resetTimer <= 0) {
             if (demo) {
                 endDemoToTitle();
+                landFuelBonus = 0;
+            } else if (state == STATE_LANDED) {
+                // Perfect-landing fuel bonus is granted here, at the level
+                // transition: the player is relaxed and sees 300 -> 350 in
+                // the FUEL counter of the next level.
+                if (landFuelBonus > 0) {
+                    ship.fuel += (float)landFuelBonus;
+                    if (ship.fuel > FUEL_MAX) ship.fuel = FUEL_MAX;
+                    fuel = ship.fuel;
+                    landFuelBonus = 0;
+                }
+                if (ship.fuel <= 0) {
+                    endGame();
+                } else {
+                    nextLevel();
+                }
             } else if (ship.fuel <= 0) {
                 endGame();
-            } else if (state == STATE_LANDED) {
-                nextLevel();
             } else {
                 restartLevel();
             }
@@ -1158,6 +1358,7 @@ void Game::update()
             demo = false;
             demoTimer = DEMO_START_DELAY;
             setZoom(false);
+            wormhole.disable();
             setupTitleShip();
         }
     }
@@ -1170,7 +1371,7 @@ void Game::draw(Renderer &r)
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
     if (state != STATE_WAITING) atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
 
-    int warnY = 62, fastY = 72;
+    int warnY = 62;
 
     if (state == STATE_WAITING) {
         for (int i = 0; i < TITLE_STAR_COUNT; i++) {
@@ -1400,7 +1601,8 @@ void Game::draw(Renderer &r)
         twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
         tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
-        if (!lavaBurn && !tankerCrash && !fogged) ship.draw(r, viewX, viewY, viewScale);
+        if (!lavaBurn && !tankerCrash && !fogged && !wormhole.swallowed())
+            ship.draw(r, viewX, viewY, viewScale);
 
         // Refuel probe on top of the module: a thin boom with a diamond tip
         // that sticks out of the hull toward the tanker, shown during the
@@ -1409,7 +1611,7 @@ void Game::draw(Renderer &r)
         bool tankerDockShow = tanker.active && !tanker.done &&
             fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
             fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
-        if (tankerDockShow && !lavaBurn && !fogged) {
+        if (tankerDockShow && !lavaBurn && !fogged && !wormhole.swallowed()) {
             float rad = ship.rotation * PI / 180.0f;
             float ux = sinf(rad), uy = -cosf(rad);
             float bx = ship.posX * viewScale + viewX;
@@ -1417,6 +1619,7 @@ void Game::draw(Renderer &r)
             drawProbe(r, bx, by, ux, uy, ship.scale, viewScale);
         }
         storm.drawBolts(r, viewX, viewY, viewScale);
+        wormhole.draw(r, viewX, viewY, viewScale);
 
         drawDockingPiP(r);
 
@@ -1544,6 +1747,12 @@ void Game::draw(Renderer &r)
                 r.text(22, 32, buf);
             }
 
+            // VX/VY labels flash when the horizontal/vertical speed is too
+            // high to land safely (the old "TOO FAST" banner is gone).
+            bool alarm = (state == STATE_PLAYING && introTimer <= 0);
+            bool vxAlarm = alarm && (ship.velX > LAND_HARD_VX || ship.velX < -LAND_HARD_VX);
+            bool vyAlarm = alarm && (ship.velY > LAND_HARD_VY);
+
             if (glitch) {
                 char gb[8];
                 glitchChars(gb, 3);
@@ -1571,10 +1780,12 @@ void Game::draw(Renderer &r)
                 r.text(22, 52, buf);
                 snprintf(buf, sizeof buf, "ALT %d", alt);
                 r.text(250, 22, buf);
+                bool flashVX = vxAlarm && (ship.counter % 50) >= 30;
+                bool flashVY = vyAlarm && (ship.counter % 50) >= 30;
                 snprintf(buf, sizeof buf, "VX %d", vx);
-                r.text(250, 32, buf);
+                if (!flashVX) r.text(250, 32, buf);
                 snprintf(buf, sizeof buf, "VY %d", vy);
-                r.text(250, 42, buf);
+                if (!flashVY) r.text(250, 42, buf);
                 snprintf(buf, sizeof buf, "G %.2f", ship.gravity / GRAVITY);
                 r.text(250, 52, buf);
             }
@@ -1586,7 +1797,6 @@ void Game::draw(Renderer &r)
                          windDir > 0 ? '>' : '<');
                 r.text(250, 62, buf);
                 warnY = 72;
-                fastY = 82;
             }
 
             // Parachute status (top-left, above the L<level> line): solid =
@@ -1607,13 +1817,20 @@ void Game::draw(Renderer &r)
             r.text((SCREEN_W - (int)strlen(s) * 6) / 2.0f, y, s);
         };
 
+        // Wormhole respawn banner: shown a few seconds after the ship warps to
+        // the other moon. Plain centered text, same style as the landing/crash
+        // messages.
+        if (recycledTimer > 0.0f) {
+            centerText(90, "CONGRATULATIONS,");
+            centerText(102, "YOU'VE BEEN RECYCLED!");
+        }
+
         if (state == STATE_LANDED) {
-            if (ship.velY < LAND_PERFECT_VY) {
+            if (landPerfect) {
                 centerText(90, "CONGRATULATIONS");
                 centerText(102, "PERFECT LANDING");
             } else {
-                centerText(90, "HARD LANDING");
-                centerText(102, "HOPELESSLY MAROONED");
+                centerText(96, "GOOD LANDING");
             }
         } else if (state == STATE_CRASHED) {
             if (lavaBurn) {
@@ -1646,12 +1863,6 @@ void Game::draw(Renderer &r)
             centerText(102, "GAME OVER");
         }
 
-        if (state == STATE_PLAYING && introTimer <= 0) {
-            if ((ship.velY > LAND_HARD_VY ||
-                 ship.velX > LAND_HARD_VX || ship.velX < -LAND_HARD_VX) &&
-                (ship.counter % 50) < 30) {
-                r.text(250, fastY, "TOO FAST");
-            }
             if (tanker.docked && tanker.fuelFlowing) {
                 r.text(250, warnY, "REFUELING");
             } else if (tanker.docked) {
@@ -1664,9 +1875,8 @@ void Game::draw(Renderer &r)
                     r.text(250, warnY, "DOCKING");
                 }
             }
-        }
 
-        if (fuelMaxTimer > 0.0f) {
+            if (fuelMaxTimer > 0.0f) {
             centerText(96, "FUEL MAX");
         }
 

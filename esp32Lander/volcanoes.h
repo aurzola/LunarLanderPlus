@@ -16,6 +16,7 @@ public:
 
     void reset(int level, const Terrain &t);
     bool active() const { return enabled_; }
+    void setEnabled(bool e) { enabled_ = e; }
     void update(float dt);
     void draw(Renderer &r, float viewX, float viewY, float viewScale) const;
     int particlesAlive() const { return (int)parts_.size(); }
