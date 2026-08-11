@@ -101,6 +101,22 @@ const float GEYSER_RADIUS = 8.0f;
 const float GEYSER_PLUME_H = 40.0f;
 const float GEYSER_PUSH = 0.00025f;
 
+// Acid rain on Europa: a few drifting storm cells. Rain corrodes the ship
+// while it is inside a cell (ACID meter 0-100%); at 100% the ship is
+// destroyed. The meter dries off slowly outside the rain.
+const int   ACID_RAIN_CELLS = 3;
+const float ACID_CELL_RADIUS = 90.0f;   // world u, cell half-width
+const float ACID_CELL_DRIFT = 12.0f;    // u/s cell drift (bounces at the edges)
+const float ACID_RAIN_CORRODE = 0.002f; // meter / tick while in rain (~5 s to 100%)
+const float ACID_DRY_RATE = 0.0004f;    // meter / tick outside rain (dries off)
+const float ACID_CELL_TOP = -50.0f;     // world u, cells reach from here down to the terrain
+const int   ACID_RAIN_STREAKS = 26;     // rain streaks per cell
+const float ACID_STREAK_LEN = 7.0f;     // world u, streak length
+const float ACID_STREAK_SLANT = 0.35f;  // x lean per u of fall (diagonal rain)
+const float ACID_FALL_SPEED = 45.0f;    // u/s streak falling
+const float ACID_STREAK_CYCLE = 750.0f; // u, wrap span of the falling streaks
+const float ACID_BLINK_HI = 60.0f;      // meter % above which the HUD number blinks
+
 const int VOLCANO_VENTS = 4;
 const float VOLCANO_BURST = 9.0f;
 const float VOLCANO_GAP_MIN = 0.5f;

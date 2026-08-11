@@ -1111,10 +1111,10 @@ static int testParachute()
 static int testWormhole()
 {
     // The wormhole only hosts on effect-free moons (never combines with
-    // another effect): LUNA/EUROPA/CALLISTO yes, the rest no.
+    // another effect): LUNA/CALLISTO yes, the rest no.
     CHECK(moonEffectFree(1) == true);   // LUNA
     CHECK(moonEffectFree(2) == false);  // IO (volcanoes)
-    CHECK(moonEffectFree(3) == true);   // EUROPA
+    CHECK(moonEffectFree(3) == false);  // EUROPA (acid rain)
     CHECK(moonEffectFree(4) == false);  // GANYMEDES (rings)
     CHECK(moonEffectFree(5) == true);   // CALLISTO
     CHECK(moonEffectFree(6) == false);  // TITAN (fog)
@@ -1400,6 +1400,96 @@ static int testWormhole()
     return 0;
 }
 
+static int testAcidRain()
+{
+    Terrain t;
+    t.generate(3); // EUROPA
+
+    // Activation: only on Europa, inactive on non-Europa moons.
+    CHECK(moonHasAcidRain(3) == true);  // level 3 = EUROPA
+    CHECK(moonHasAcidRain(11) == true); // level 11 = EUROPA
+    CHECK(moonHasAcidRain(1) == false); // LUNA
+    CHECK(moonHasAcidRain(2) == false); // IO
+    AcidRain a;
+    a.reset(3, t);
+    CHECK(a.active());
+    CHECK(a.cellCount() == ACID_RAIN_CELLS);
+    CHECK(a.meterGet() == 0.0f);
+
+    // Inactive on non-Europa moons.
+    AcidRain a2;
+    a2.reset(1, t); // LUNA
+    CHECK(!a2.active());
+    a2.reset(2, t); // IO
+    CHECK(!a2.active());
+
+    // SetEnabled forces off.
+    a.setEnabled(false);
+    CHECK(!a.active());
+
+    // Meter corrodes inside rain and dries outside.
+    AcidRain a3;
+    a3.reset(3, t);
+    for (int i = 0; i < (int)a3.cellCount(); i++) {
+        float cx = a3.cellX(i);
+        CHECK(a3.inRain(cx, 0.0f) == true);
+    }
+    CHECK(a3.inRain(-999.0f, 0.0f) == false);
+    a3.corrode();
+    CHECK(a3.meterGet() == ACID_RAIN_CORRODE);
+    for (int i = 0; i < 50; i++) a3.corrode();
+    CHECK(a3.meterGet() > 0.05f);
+    for (int i = 0; i < 1000; i++) a3.dry();
+    CHECK(a3.meterGet() == 0.0f);
+
+    // Meter clamps at 100.
+    for (int i = 0; i < 500000; i++) a3.corrode();
+    CHECK(a3.meterGet() == 100.0f);
+
+    // Acid burn flag via Game integration.
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    CHECK(g.state == STATE_PLAYING);
+    g.level = 3; // EUROPA
+    g.newGame();
+    CHECK(!g.acidBurnGet()); // newGame → level 1, no acid
+
+    // Re-configure as Europa directly.
+    g.terrain.generate(3);
+    g.acidrain.reset(3, g.terrain);
+    CHECK(g.acidrain.active());
+
+    // Direct-tick the acid meter to 100 % without running the full game
+    // loop (no collisions, no demo, no state transitions).
+    while (g.acidrain.meterGet() < 100.0f) g.acidrain.corrode();
+    CHECK(g.acidrain.meterGet() == 100.0f);
+
+    // Now run one update() with the ship inside rain: it should detect
+    // the 100 % meter and trigger the crash.
+    float cx0 = g.acidrain.cellX(0);
+    g.ship.posX = cx0;
+    g.ship.posY = 80.0f;
+    g.ship.velX = 0.0f;
+    g.ship.velY = 0.0f;
+    g.introTimer = 0.0f;
+    g.wormhole.disable();
+    g.update();
+    CHECK(g.acidBurnGet());
+    CHECK(g.state == STATE_CRASHED);
+
+    // Reset clears the flag and the meter.
+    g.acidrain.setEnabled(false);
+    g.update();
+    g.level = 3;
+    g.newGame();
+    CHECK(!g.acidBurnGet());
+    CHECK(g.acidrain.meterGet() == 0.0f);
+
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -1432,6 +1522,8 @@ int main()
     r = testTwister();
     if (r) return r;
     r = testWormhole();
+    if (r) return r;
+    r = testAcidRain();
     if (r) return r;
     r = testTanker();
     if (r) return r;

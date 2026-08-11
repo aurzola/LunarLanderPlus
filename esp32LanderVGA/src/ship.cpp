@@ -9,7 +9,7 @@ Ship::Ship()
     : posX(0), posY(0), velX(0), velY(0),
       rotation(-90), targetRotation(-90),
       thrustBuild(0), fuel(FUEL_MAX), scale(1.0f),
-      altitude(0),     active(true), exploding(false), fuelExplosion(false), counter(0),
+      altitude(0),     active(true), exploding(false), dissolving(false), dissolveTick(0), fuelExplosion(false), counter(0),
       windStrength(0), windDir(1), gravity(GRAVITY)
 {
     defineShapes();
@@ -85,6 +85,8 @@ void Ship::reset(float x, float y)
     scale = 1.0f;
     active = true;
     exploding = false;
+    dissolving = false;
+    dissolveTick = 0;
     fuelExplosion = false;
     counter = 0;
     windStrength = 0;
@@ -125,6 +127,25 @@ void Ship::update()
 
     if (exploding) {
         updateExplosion();
+        return;
+    }
+
+    if (dissolving) {
+        dissolveTick++;
+        posX += velX;
+        posY += velY;
+        if (dissolveTick >= 35) return;
+        // Shape order: 0=body, 1=cabin, 2=left leg, 3=right leg,
+        //              4=left nozzle, 5=right nozzle.
+        static const int thresh[6] = {28, 20, 5, 10, 15, 23};
+        static const float vx[6] = {0.00f, 0.12f, -0.20f, 0.20f, -0.08f, 0.08f};
+        static const float vy[6] = {0.12f, 0.25f, 0.35f, 0.45f, 0.55f, 0.65f};
+        for (int i = 0; i < 6; i++) {
+            if (dissolveTick >= thresh[i]) {
+                shapePosX[i] += vx[i];
+                shapePosY[i] += vy[i];
+            }
+        }
         return;
     }
 
@@ -462,6 +483,21 @@ void Ship::crash(bool fuel)
     chute = false;
     chuteOpen = 0;
     initGroundParticles();
+}
+
+void Ship::dissolve()
+{
+    rotation = 0;
+    targetRotation = 0;
+    dissolving = true;
+    dissolveTick = 0;
+    thrustBuild = 0;
+    chute = false;
+    chuteOpen = 0;
+    for (int i = 0; i < 6; i++) {
+        shapePosX[i] = 0;
+        shapePosY[i] = 0;
+    }
 }
 
 void Ship::land()
