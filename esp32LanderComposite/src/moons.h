@@ -61,4 +61,13 @@ static inline bool moonHasTwister(int level)
     return moonIndex(level) == 7; // TRITON (nitrogen twister)
 }
 
+// Moons with no ambient effect of their own (no geysers, volcanoes, fog,
+// rings or twister): the only ones that can host a sky wormhole, because the
+// wormhole never combines with any other effect.
+static inline bool moonEffectFree(int level)
+{
+    return !moonHasGeysers(level) && !moonHasVolcanoes(level) &&
+           !moonHasTitan(level) && !moonHasRings(level) && !moonHasTwister(level);
+}
+
 #endif

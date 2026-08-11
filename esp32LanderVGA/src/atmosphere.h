@@ -11,6 +11,7 @@ public:
 
     void reset(int level);
     bool active() const { return enabled_; }
+    void setEnabled(bool e) { enabled_ = e; }
     void update(float dt);
     void drawSky(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const;
 

@@ -198,7 +198,7 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
     **`hidesShip(x,y)`**: si la nave cae dentro de una banda, `Game::draw()` **no la dibuja** en
     `STATE_PLAYING` → vuelas "a ciegas" por el HUD (ALT/VX/VY/ANG) hasta salir. **La niebla no
     cubre el HUD (19/8/2026)**: `FOG_SCREEN_TOP=100` px — `drawSky` recorta la franja superior
-    (deja libres `LOW FUEL`=72 y `TOO FAST`=82 con viento) y **recorta también el halo del terreno**
+    (deja libres `WIND`=62 y `REFUELING/DOCKING`=72 con viento) y **recorta también el halo del terreno**
     (`sy ≥ FOG_SCREEN_TOP+2`); test pixel que verifica 0 píxeles de niebla/halo sobre el HUD.
     **Física**: arrastre
     lateral `velX *= ATMOS_DRAG=0.9992` por tick (~7.7 %/s) y corriente descendente
@@ -928,5 +928,166 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
         actual (clásico o procedural) con 4 segmentos `landable` contiguos. Verificación: `make &&
         ./test_pc` **967 OK**, `sync.sh` OK, compila composite 579 KB (44 %) y VGA 585 KB (44 %).
 
+    42. **Wormhole en el cielo (efecto visual, rama `event-horizon`, 2/9/2026)**: el usuario pidió un
+        "black hole en forma de espiral que se trague la nave y la haga aparecer en otra luna al azar".
+        Decisión: validar **solo el visual** primero (fase teleport queda pendiente). El usuario eligió:
+        nombre `wormhole`, posición **en el cielo**, nave con **coreografía guionada**.
+        - `wormhole.h/cpp` (clase `Wormhole`, C++ std): máquina de fases
+          `WH_IDLE → WH_EMERGING (1.2 s) → WH_PULLING (3 s) → WH_SWALLOW (0.15 s) → WH_DYING (0.8 s) → WH_IDLE`.
+        - `reset(cx,cy)` (sin hookup en `Game`); `update(dt)` anima los brazos
+          (`rot_ += spin·WORMHOLE_SPIN·dt`); `pullShip(Ship&)` solo en `PULLING` guiona la órbita:
+          espiral logarítmica `rr = CORE + (R0−CORE)·(1−p)` con `θ = A0 + spin·p·3·TAU`, `scale` 1.0→0.25
+          y nariz apuntando al núcleo; `swallowed()` al entrar en `SWALLOW`.
+        - **Dibujo** (`draw(r,viewX,viewY,viewScale)`): 3 brazos espirales logarítmicos
+          (`r = OUTER·(CORE/OUTER)^tt`, `WORMHOLE_OUTER_R=120`/`CORE_R=8` u) aplastados en Y
+          (`SQUASH=0.65`) → disco de acreción inclinado; polilíneas `shadeSeg` con jitter `prand`
+          determinista y gaps; brillo creciente hacia el núcleo (`45+185·tt^1.5`); **núcleo oscuro**
+          (`fillPolygon` brillo 0 a 1.4×coreR) que se traga estrellas y las vueltas internas; **anillo
+          fotónico** (`circle` 255 + halo punteado tenue) dejando el interior vacío; ~20 partículas que
+          cabalgan los brazos y derivan hacia el núcleo (`tt += rot·k`). Fades por fase
+          (`EMERGING` spin-up, `SWALLOW` destello breve, `DYING` apagado).
+        - Ajuste de validación: en PC el núcleo no leía como hueco (glow central + vueltas internas
+          brillantes + disco pequeño). Fix: núcleo oscuro más grande (1.4×) + quitar glow central +
+          `CORE_R=8`/`OUTER_R=120`. Perfil de brillo por anillos verificado por script sobre los PPM
+          (vacío en r=0-1, anillo brillante r=2-4, espiral hasta r≈35 px).
+        - `wormhole_demo.cpp`: args `<seed> <level>`, agujero en (x 260-560, y 150-200) mundo, nave
+          arranca a un lado; selftest fases `EMERGING`→`PULLING`→`SWALLOW` + `swallowed()`. PPM a
+          `frames/` cada 5 frames (~115).
+        - `Makefile`: `wormhole.cpp` en `SRC` + target `wormhole_demo` (en `all`/`clean`).
+          `sync.sh`: `wormhole.cpp/h` añadidos a `SHARED`.
+        - `test_pc.cpp`: nuevo `testWormhole()` (reset activo, fase `PULLING` tras EMERGING, la nave se
+          acerca al núcleo, `SWALLOW`+`swallowed()`, vuelve a `IDLE`).
+        - Verificación: `./test_pc` **978 OK**, `./wormhole_demo 1 1` / `2 5` OK, storm/twister demos
+          OK, `sync.sh` OK, compila composite 579 KB (44 %) y VGA 585 KB (44 %).
+    43. **Wormhole hookeado en `Game` — fase teleport (fecha actual)**: se cierra el PENDIENTE de la
+        entrada 42. `Game` dispara el agujero por nivel y al tragar la nave la teletransporta a otra luna.
+        - **Spawn (`Game::spawnWormhole(bool force)`)** en `newGame`/`nextLevel`: nivel ≥
+          `WORMHOLE_START_LEVEL=2` y `rand()%100 < WORMHOLE_CHANCE_PERCENT=25`; **excluido de Tritón**
+          (`moonHasTwister`). Posición fija en el cielo: `cx ∈ [200,550]` mundo, `cy = WORMHOLE_SKY_Y=110`.
+        - **Showcase en el attract demo (ver ítem 43)**: en modo demo el spawn es una decisión
+          explícita — solo el primer nivel del demo (`DEMO_WORMHOLE_FIRST`) abre el wormhole y lo
+          coloca **sobre el spawn** (`cx = ship.posX+40`) para que la tragada + teleport se vea siempre;
+        - **Captura selectiva (`Wormhole::pullShip` ahora devuelve `bool`)**: solo captura si la nave
+          está dentro del alcance de la espiral (`d ≤ WORMHOLE_GRAB_R=120`) **y** volando alta
+          (`posY ≤ cy + WORMHOLE_GRAB_BELOW=80`); si nunca entra en alcance, al expirar `PULLING` el
+          agujero se desvanece (`DYING`) **sin** `swallowed()` (antes tragaba sí o sí). Al capturar se
+          reinicia `t_` para que la órbita de 3 s completa se vea siempre.
+        - **Teleport (`Game::wormholeJump()`)**: al `swallowed()` en `STATE_PLAYING` →
+          `level = 9 + nidx` con `nidx = rand()%8 != moonIndex(level)` (otra luna, banda de dificultad
+          media) y `nextLevel()` → terreno nuevo, intro, **fuel conservado**. En demo (ítem 43) →
+          `wormholeJump()` + `setupDemoTarget()`: el autopilot **continúa** volando en la luna destino
+          (antes `endDemoToTitle()`).
+        - **Física**: `wormhole.pullShip()` se llama tras el twister; si devuelve `true` (capturada)
+          se **salta `checkCollisions()`** (la nave está siendo arrastrada al cielo, no al suelo).
+          El paracaídas no despliega mientras `wormhole.captured()`.
+        - **Dibujo**: `wormhole.draw()` tras `storm.drawBolts` → el **núcleo oscuro (brillo 0) pinta
+          encima de la nave** ya encogida en el `SWALLOW` → la desaparición es orgánica, sin corte.
+        - Config nueva: `WORMHOLE_START_LEVEL`, `WORMHOLE_CHANCE_PERCENT`, `WORMHOLE_SKY_Y`,
+          `WORMHOLE_GRAB_R`, `WORMHOLE_GRAB_BELOW` (config.h).
+        - `test_pc.cpp`: `testWormhole()` extendido (navaja lejos → se desvanece sin tragar; en alcance
+          pero baja → no captura; **integración en `Game`**: captura → teleport a luna distinta con
+          fuel intacto). Verificación: `./test_pc` **987 OK**, `wormhole_demo` OK, `demo_sim` OK
+          (con el showcase del ítem 43), `sync.sh` OK, compila composite 585 KB (44 %) y VGA
+          590 KB (45 %).
+        - **PENDIENTE (audio)**: one-shot de warp al `wormholeJump()` (estilo explosión/rayo) —
+          sonido aún no generado; el teleport ya funciona sin él.
+
+    43. **Wormhole en el attract demo (10/9/2026, rama `event-horizon`)**: el usuario pidió que el
+        agujero de gusano **se muestre también en la demo** ("ponlo como primer nivel de la demo"),
+        manteniendo el `demo_sim` determinista (la física del wormhole es determinista, así que la
+        demostración es reproducible seed a seed). Hoy no requiere tocar el sketch VGA.
+        - `config.h`: `DEMO_WORMHOLE_FIRST = true` — el primer nivel del demo abre el showcase.
+        - `Game::startDemo()`: tras `ship.reset()` → `spawnWormhole(DEMO_WORMHOLE_FIRST)` +
+          `setupDemoTarget()`. El bloque de selección de target (tanker/lava/pad) de `startDemo` se
+          extrajo a `Game::setupDemoTarget()` para poder re-elegir target tras el teleport.
+        - `Game::spawnWormhole(bool force=false)`: en modo demo `!force` → no spawn (los niveles
+          posteriores del demo y el destino del teleport quedan **sin** wormhole); `force=true` →
+          coloca el agujero **sobre el spawn** (`cx = ship.posX+40`, `cy = WORMHOLE_SKY_Y`) para que la
+          captura + órbita de 3 s + tragada se vean siempre. Tritón (nivel 8) y LUNA (nivel 1) quedan
+          fuera por diseño (`moonHasTwister` / `level < WORMHOLE_START_LEVEL`).
+        - `Game::update()`: al `swallowed()` en demo → `demoHoldAltitude=false; wormholeJump();
+          setupDemoTarget();` — el autopilot **sigue** en la luna destino hasta aterrizar/estrellarse
+          y volver al título (antes `endDemoToTitle()`). `wormholeJump()` → `nextLevel()` → la intro
+          del nivel destino cubre la transición.
+        - Verificación: `./test_pc` 987 OK; probe ad-hoc (8 seeds) → wormhole `active`, fase
+          `EMERGING`→`PULLING`, `sawPulling`, y `endLevel` en 9..16 distinto del inicial (teleport);
+          `demo_sim 8` sin timeouts (2/8 WIN) con niveles finales 9..16; `sync.sh` OK; compila
+          composite 585 KB (44 %).
 
 
+
+    44. **Cisterna: regla de fuel incondicional + posición en Titán; wormhole más bajo/grande/
+        elíptico y showcase garantizado en la demo (10/9/2026)**. Ajustes pedidos probando en CRT:
+        - **Cisterna solo con fuel < 50 % (siempre)**: `Tanker::reset` quita el bypass
+          `!force && fuel > FUEL_MAX·TANKER_FUEL_FRACTION` → ahora el fuel gate se aplica también
+          con `force=true` (el demo/attract ya no muestra la cisterna con el tanque lleno). El
+          `force` solo salta nivel-1 y chance. `test_pc` actualizado (`forcedSpawn` con fuel 0.4×,
+          nuevo `fullForced` con FUEL_MAX → nunca activa).
+        - **Cisterna en Titán entre las dos bandas de niebla**: `TANKER_TITAN_Y` de 85 → **250**
+          (banda 1ª centrada en ~205, 2ª en ~343+, 3ª bajo el terreno; la cisterna queda en el hueco
+          libre, más cerca de la 1ª banda). Antes `=85` ("arriba del todo").
+        - **Wormhole más bajo y más grande**: `WORMHOLE_SKY_Y` 110 → **220**, `WORMHOLE_OUTER_R`
+          120 → **200**, `WORMHOLE_CORE_R` 8 → **16**, `WORMHOLE_GRAB_R` → **200** (el disco se
+          asienta sobre el terreno y es claramente visible). Muestreo del espiral `M` 160 → 300
+          (radio mayor).
+        - **Espiral elíptico, no circular**: `SQUASH` 0.65 → **0.5** y el **anillo fotónico** ya no
+          se dibuja con `circle()` sino como **elipse** (48 puntos con el mismo squash); el núcleo y
+          las partículas ya iban aplastados. Todo el disco lee como elipse inclinada.
+        - **Showcase garantizado en la demo**: `startDemo` con `DEMO_WORMHOLE_FIRST` **re-tira el
+          nivel** (`while level < WORMHOLE_START_LEVEL || moonHasTwister(level)`) → el primer nivel
+          del demo siempre puede alojar el wormhole (excluye LUNA nivel 1 y Tritón 8). Cuando el
+          showcase está activo se apagan **todos** los demás efectos: viento (`windEnabled=false`),
+          tormenta, géiseres, volcanes, atmósfera, anillos y torbellino (`setEnabled(false)`, nuevo
+          método inline en cada módulo); la cisterna no aparece (fuel lleno). Solo el wormhole en un
+          nivel limpio (terreno + estrellas + pads).
+        - Demo: al `swallowed()` en demo → **`endDemoToTitle()`** (vuelve al título; una partida
+          real sí hace `wormholeJump()`). Antes el demo seguía volando en la luna destino.
+        - Verificación: `./test_pc` **990 OK** (incluye `testDemo` con `sawWormhole` — el demo
+          termina en el trago, que es un outcome válido), `demo_sim` sin timeouts (todos LOSE ~10 s:
+          el showcase traga siempre, esperado), `sync.sh` OK, compila composite 585 KB (44 %),
+          subido a la placa.
+
+45. **Wormhole: vórtice continuo al capturar + escala normal en el showcase (12/8/2026)**.
+    Reportado en CRT: al aparecer el agujero la nave se veía más pequeña y, al cruzar el punto de
+    no retorno, **brincaba** a otro punto de la elipse.
+    - **Nave pequeña en el showcase (demo)**: `setupDemoTarget()` hacía `ship.reset(sx, cy)`, y
+      `Ship::reset()` deja `scale = 1.0`; la escala de vista normal es **1.5** (`setZoom(false)`),
+      así que la nave del showcase volaba a 2/3 de tamaño mientras el agujero estaba presente.
+      Fix: `ship.scale = 1.5f` tras el reset del showcase (AGENTS.md). Verificado en PC:
+      `shipScale=1.50` antes y después de la intro del demo.
+    - **Salto al capturar**: `startAng_ = atan2(dy, dx)` (ángulo nave→núcleo) con
+      `posX = cx + cos(ang)·rr` colocaba a la nave en el **punto simétrico** de la elipse (una
+      nave 70 u a la izquierda aterrizaba 140 u a la derecha). Fix: `captureRad_`/`startAng_` se
+      calculan en el sistema **aplastado por `SQUASH`** (`rdx = posX−cx`, `rdy = posY−cy`,
+      `captureRad = hypot(rdx, rdy/SQUASH)`, `startAng = atan2(rdy/SQUASH, rdx)`) → en `p=0` la
+      espiral pasa **exactamente** por la posición de la nave (X e Y continuos, sin blend).
+    - `test_pc.cpp`: test de continuidad del vórtice (horizontal y vertical) que **detecta el bug**
+      (FAIL `|posX−340| < 20` con el código viejo; PASS con el fix). Verificación: `./test_pc`
+      **1033 OK**, `wormhole_demo`/demo 25/25 seeds tragan + teletransportan, `demo_sim 40`
+      winRate 22% (sin regresión), compila composite + VGA, subido a la placa.
+
+46. **HUD: se quita el aviso `TOO FAST`; las etiquetas `VX`/`VY` hacen flashing (12/8/2026)**.
+    El usuario pidió eliminar el banner `TOO FAST` y, en su lugar, que las etiquetas `VX`/`VY`
+    parpadeen según corresponda.
+    - `game.cpp`: se elimina el bloque `TOO FAST` y la variable `fastY`. Las etiquetas `VX`/`VY`
+      (en `(250,32)`/`(250,42)`) ahora parpadean (`ship.counter % 50 >= 30`, se omite el texto)
+      mientras se juega (`STATE_PLAYING` y `introTimer <= 0`) cuando `|velX| > LAND_HARD_VX`
+      (parpadea `VX`) o `velY > LAND_HARD_VY` (parpadea `VY`). `warnY` del aviso
+      `REFUELING`/`DOCKING` sigue desplazándose con WIND (62→72).
+    - Docs: `AGENTS.md` (sección HUD), `config.h` comentario de `FOG_SCREEN_TOP`,
+      `docs/WORKLOG.md` ítem 201. Verificación: `./test_pc` **1033 OK**, compila composite + VGA,
+      subido a la placa.
+47. **Wormhole: banner "YOU'VE BEEN RECYCLED" al aparecer en la otra luna (12/8/2026)**.
+    Tras el teletransporte, al materializarse la nave en la luna destino se muestra durante 4 s
+    el texto `CONGRATULATIONS,` / `YOU'VE BEEN RECYCLED!` (mayúsculas, dos líneas, centrado).
+    - `game.cpp`: nuevo campo `recycledTimer` (0 por defecto). `wormholeJump()` lo arma con
+      `WORMHOLE_RECYCLED_T` (4 s, `config.h`); `update()` lo decrementa cada tick (clamp ≥ 0) y
+      `draw()` lo pinta centrado en `(90,102)` con `textScaled` escala 1, con **fade-out** en los
+      últimos 0.8 s (`brightness = 255·t/0.8`). Se resetea a 0 en `newGame`/`restartLevel`/
+      `startDemo`. El banner también aparece en el demo/attract (el autopilot también teletransporta).
+    - `game.h`: getter `recycledBanner()`.
+    - `test_pc.cpp`: el test de integración del wormhole verifica que el banner arranca en
+      `(0, WORMHOLE_RECYCLED_T]` tras el jump y baja a 0 (con el wormhole deshabilitado cada
+      iteración, porque en la luna nueva re-aparece y re-traga a la nave re-armando el banner).
+      Verificación: `./test_pc` **1036 OK**, render PPM verificado (dos líneas centradas legibles),
+      `sync.sh` OK, compila composite, subido a la placa.

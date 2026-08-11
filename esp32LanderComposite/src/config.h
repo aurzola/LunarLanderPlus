@@ -40,6 +40,10 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;  // 0 = demo elige nivel al azar 1..DEMO_MAX_LEVEL
+const bool DEMO_WORMHOLE_FIRST = true; // attract showcase: el primer nivel del demo
+                                        // abre el wormhole sobre el spawn (traga +
+                                        // teleport); tras el salto el autopilot
+                                        // sigue en la luna destino sin wormhole
 const int START_LEVEL = 1;  // partida ordenada desde LUNA
 const float DEMO_POWER_RATE = 0.4f;
 const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)
@@ -134,8 +138,8 @@ const float FOG_DRIFT_A = 18.0f;
 const float FOG_DRIFT_SPEED_MIN = 0.12f;
 const float FOG_DRIFT_SPEED_MAX = 0.20f;
 // Fog and terrain halo are never drawn above this screen row so they can't
-// reach the HUD / minimap / warnings (LOW FUEL=72, TOO FAST=82 with wind) and
-// make them flicker during the approach phase. 100 clears them all.
+// reach the HUD / minimap / warnings (WIND=62, REFUELING/DOCKING=72 with wind)
+// and make them flicker during the approach phase. 100 clears them all.
 const int FOG_SCREEN_TOP = 68;
 
 // Ganymede debris bands (franjas de roca): the moon's debris is rendered as
@@ -231,7 +235,7 @@ const int TANKER_FORCE_LEVEL1 = 1; // TEMP CRT test: force tanker in level 1
 const int DEMO_FORCE_TANKER_CRASH = 1; // TEMP: demo AI flies into the tanker hull
 const int TANKER_CHANCE_PERCENT = 70;
 const float TANKER_HOVER_ALT = 340.0f;   // hover so the dock altitude clears the minimap (ZOOM_IN_ALT=200)
-const float TANKER_TITAN_Y = 85.0f;      // Titan: fixed world-y, clear of the fog
+const float TANKER_TITAN_Y = 250.0f;     // Titan: between the two fog bands (1st ~205, 2nd ~343+), near the 1st
 const float TANKER_FUEL_FRACTION = 0.5f; // spawn only when fuel < FUEL_MAX * this
 const float TANKER_HULL_W = 22.0f;
 const float TANKER_HULL_H = 6.0f;
@@ -299,5 +303,43 @@ const float PARACHUTE_WIND_GAIN = 2.0f;    // canopy sail: wind drift multiplier
 const int GROUND_PARTICLES_MAX = 40;
 const float GROUND_PARTICLE_LIFE = 70.0f;  // ticks (0.70 s at GAME_DT=0.01)
 const float GROUND_PARTICLE_GRAV = 0.012f; // per tick (world u/tick^2)
+
+// Wormhole (event-horizon sky effect, hooked up in Game): a spiral accretion
+// disk with a dark nucleus and a photon ring. It fades in at a random position
+// of the sky (EMERGING) and while active it exerts a PURE RADIAL pull on the
+// ship: the closer to the nucleus, the stronger
+// (a = PULL_MAX*(1-d/GRAB_R)). A ship near the outer reach can escape by
+// thrusting away from the center; inside the point of no return (where the
+// pull exceeds full thrust, d < GRAB_R*(1-THRUST_ACCEL/PULL_MAX)) it is doomed
+// and is swallowed at the core (d < SWALLOW_R), then Game fades it in on a
+// random other moon between the sky and the terrain (wormholeJump). The hole
+// NEVER coexists with any other effect: it only spawns on effect-free moons
+// (LUNA/EUROPA/CALLISTO, moonEffectFree) and every ambient effect is
+// suppressed while it is present. It stays active for the whole level (no
+// fade-out timer).
+const float WORMHOLE_CORE_R = 16.0f;     // world u, dark nucleus (event horizon)
+const float WORMHOLE_OUTER_R = 200.0f;  // world u, reach of the spiral arms
+const int   WORMHOLE_ARMS = 3;
+const float WORMHOLE_TURNS = 2.5f;      // turns per arm
+const float WORMHOLE_SPIN = 200.0f;     // deg/s arm rotation
+const int   WORMHOLE_PARTICLES = 24;
+const float WORMHOLE_EMERGE_T = 1.2f;   // s, fade-in (spin-up + brightness 0->1)
+const float WORMHOLE_DIE_T = 0.8f;      // s, fade out after the swallow
+const int   WORMHOLE_START_LEVEL = 2;   // levels >= 2 can host a sky wormhole
+const int   WORMHOLE_CHANCE_PERCENT = 25;
+const float WORMHOLE_GRAB_R = 200.0f;   // u, action radius (spiral outer radius)
+const float WORMHOLE_PULL_MAX = 0.0028f; // u/tick^2 at the core (~1.55x full thrust)
+const float WORMHOLE_SWALLOW_R = 30.0f; // u, ship center inside this -> swallowed
+const float WORMHOLE_CAPTURE_R = 100.0f; // u, = half the action radius: inside
+                                         // this the ship is trapped, can no
+                                         // longer escape and is vortexed in
+const float WORMHOLE_VORTEX_T = 2.5f;   // s, spiral-to-core duration once captured
+const float WORMHOLE_VORTEX_TURNS = 3.0f; // full turns during the vortex
+const float WORMHOLE_SKY_X_MARGIN = 140.0f; // world u, min x margin for the core
+const float WORMHOLE_SKY_Y_MIN = 150.0f;    // world u, min core height (sky band)
+const float WORMHOLE_SKY_Y_MAX = 280.0f;    // world u, max core height (sky band)
+const float WORMHOLE_SKY_CLEAR = 100.0f;    // world u, nucleus stays this high above terrain
+const float WORMHOLE_WARP_IN_T = 1.2f;  // s, ship materializes (fade-in) on the new moon
+const float WORMHOLE_RECYCLED_T = 4.0f; // s, "YOU'VE BEEN RECYCLED" banner after the warp
 
 #endif

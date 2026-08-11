@@ -11,6 +11,7 @@ public:
     Tanker();
 
     void reset(int level, const Terrain& terrain, float fuel, bool force = false);
+    void setEnabled(bool on) { active = on; } // wormhole isolation: no tanker on wormhole moons
     bool checkDock(const Ship& ship);
     void beginDock(float shipVX, float shipVY);
     void breakAway(Ship& ship);

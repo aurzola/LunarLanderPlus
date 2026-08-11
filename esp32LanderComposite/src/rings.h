@@ -17,6 +17,7 @@ public:
 
     void reset(int level, const Terrain &t);
     bool active() const { return enabled_; }
+    void setEnabled(bool e) { enabled_ = e; }
     void update(float dt);
     void draw(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const;
 

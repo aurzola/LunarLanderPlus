@@ -23,9 +23,10 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
     fuelFlowing = false;
 
     if (level < TANKER_START_LEVEL && !(TANKER_FORCE_LEVEL1 && level == 1)) return;
-    // The air tanker is only useful on a low tank: skip it when fuel is still
-    // above half (unless forced, e.g. the attract-mode showcase).
-    if (!force && fuel >= FUEL_MAX * TANKER_FUEL_FRACTION) return;
+    // The air tanker only makes sense on a low tank: it never appears while
+    // fuel is above half, regardless of force (demo/test forcing still needs
+    // a real low-tank flight to be meaningful).
+    if (fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
     // Ganymede's debris rings make a high-altitude rendezvous impossible.
     if (moonHasRings(level)) return;
     if (!force && rand() % 100 >= TANKER_CHANCE_PERCENT) return;
@@ -57,8 +58,9 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
         if (overlapsLanding) continue;
 
         bodyX = cx;
-        // On Titan the tanker hovers at a fixed world-y above every fog band;
-        // elsewhere it hovers TANKER_HOVER_ALT above the ground.
+        // On Titan the tanker hovers between the two visible fog bands (the
+        // first centered ~FOG_BAND_START, the second ~130+ u below it), closer
+        // to the first; elsewhere it hovers TANKER_HOVER_ALT above the ground.
         if (moonHasTitan(level)) baseY = TANKER_TITAN_Y;
         else baseY = terrainY - TANKER_HOVER_ALT;
         bodyY = baseY;

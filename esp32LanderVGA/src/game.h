@@ -12,6 +12,7 @@
 #include "rings.h"
 #include "twister.h"
 #include "tanker.h"
+#include "wormhole.h"
 #include "explosion.h"
 #include "config.h"
 
@@ -68,6 +69,7 @@ public:
     Rings rings;
     Twister twister;
     Tanker tanker;
+    Wormhole wormhole;
     ExplosionManager explosion;
     bool windEnabled;
     float windStrength;
@@ -79,6 +81,8 @@ public:
     bool tankerCrashGet() const { return tankerCrash; }
     bool landPerfectGet() const { return landPerfect; }
     float chuteTooLow() const { return chuteTooLowTimer; }
+    float warpIn() const { return warpInT; }
+    float recycledBanner() const { return recycledTimer; }
     bool chuteAvailable;
 
 private:
@@ -96,6 +100,8 @@ private:
     float stormHitTimer;
     float fuelMaxTimer;
     float chuteTooLowTimer;
+    float warpInT; // wormhole respawn: ship materializes (scale 0->1.5) over this
+    float recycledTimer; // wormhole respawn: shows the "recycled" banner while > 0
     bool demoHoldAltitude;
     bool lavaBurn;
     bool ringHit;
@@ -113,6 +119,10 @@ private:
     void endDemoToTitle();
     void setupTitleShip();
     void runDemoAI();
+    void setupDemoTarget();
+    void spawnWormhole(bool force = false);
+    void wormholeJump();
+    void isolateForWormhole();
     void spawnWind();
     void spawnDust();
     void updateWind(float dt);

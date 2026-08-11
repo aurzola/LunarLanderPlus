@@ -13,6 +13,7 @@
 #include "atmosphere.h"
 #include "rings.h"
 #include "twister.h"
+#include "wormhole.h"
 #include "tanker.h"
 #include "renderer_pc.h"
 
@@ -228,14 +229,17 @@ static int testDemo()
 
     bool finished = false;
     bool outcomeSeen = false;
+    bool sawWormhole = false;
     for (int i = 0; i < 200000; i++) {
         g.update();
+        if (g.wormhole.active() && g.state == STATE_PLAYING) sawWormhole = true;
         if (g.state == STATE_LANDED || g.state == STATE_CRASHED) outcomeSeen = true;
         if (g.state == STATE_WAITING) {
             finished = true;
             break;
         }
     }
+    if (sawWormhole) outcomeSeen = true; // showcase: the swallow ended the demo
     CHECK(finished);
     CHECK(outcomeSeen);
 
@@ -784,14 +788,26 @@ static int testTanker()
     tnFull.reset(2, t1, FUEL_MAX);
     CHECK(!tnFull.active);
 
-    // Forced spawn bypasses the fuel check (attract-mode showcase).
+    // Forced spawn bypasses level/chance gates, but NEVER the fuel rule: with
+    // a full tank no tanker shows up. A low tank can be force-spawned.
+    bool fullForced = false;
+    for (int s = 0; s < 50 && !fullForced; s++) {
+        srand(20000 + s);
+        Terrain tfF;
+        tfF.generate(2);
+        Tanker tkFull;
+        tkFull.reset(2, tfF, FUEL_MAX, true);
+        if (tkFull.active) fullForced = true;
+    }
+    CHECK(!fullForced);
+
     bool forcedSpawn = false;
     for (int s = 0; s < 200 && !forcedSpawn; s++) {
         srand(10000 + s);
         Terrain tf;
         tf.generate(2);
         Tanker tkf;
-        tkf.reset(2, tf, FUEL_MAX, true);
+        tkf.reset(2, tf, FUEL_MAX * 0.4f, true);
         if (tkf.active) forcedSpawn = true;
     }
     CHECK(forcedSpawn);
@@ -804,7 +820,7 @@ static int testTanker()
     tnG.reset(4, tg, 100.0f, true);
     CHECK(!tnG.active);
 
-    // Titan: the tanker hovers at a fixed world-y above the fog bands.
+    // Titan: the tanker hovers between the two fog bands, closer to the first.
     bool titanSeen = false;
     for (int s = 0; s < 200 && !titanSeen; s++) {
         srand(5000 + s);
@@ -1092,6 +1108,298 @@ static int testParachute()
     return 0;
 }
 
+static int testWormhole()
+{
+    // The wormhole only hosts on effect-free moons (never combines with
+    // another effect): LUNA/EUROPA/CALLISTO yes, the rest no.
+    CHECK(moonEffectFree(1) == true);   // LUNA
+    CHECK(moonEffectFree(2) == false);  // IO (volcanoes)
+    CHECK(moonEffectFree(3) == true);   // EUROPA
+    CHECK(moonEffectFree(4) == false);  // GANYMEDES (rings)
+    CHECK(moonEffectFree(5) == true);   // CALLISTO
+    CHECK(moonEffectFree(6) == false);  // TITAN (fog)
+    CHECK(moonEffectFree(7) == false);  // ENCELADUS (geysers)
+    CHECK(moonEffectFree(8) == false);  // TRITON (twister)
+    CHECK(moonEffectFree(9) == true);   // LUNA (back to the cycle)
+
+    // Fade-in (EMERGING) then the field goes ACTIVE and STAYS active (no
+    // fade-out timer): it only dies after a swallow.
+    Wormhole w;
+    CHECK(!w.active());
+    w.reset(400.0f, 200.0f);
+    CHECK(w.active());
+    CHECK(w.phase() == WH_EMERGING);
+    CHECK(w.coreX() == 400.0f && w.coreY() == 200.0f);
+    for (int i = 0; i < 130; i++) w.update(GAME_DT); // EMERGING is 1.2 s
+    CHECK(w.phase() == WH_ACTIVE);
+    for (int i = 0; i < 600; i++) w.update(GAME_DT); // persistent, never fades
+    CHECK(w.phase() == WH_ACTIVE);
+    CHECK(w.active());
+    CHECK(!w.swallowed());
+
+    // Pure radial pull in the OUTER zone (d >= CAPTURE_R): the acceleration is
+    // directed toward the core and GROWS the closer to it
+    // (a = PULL_MAX*(1-d/GRAB_R)).
+    float aFar = 0.0f, aNear = 0.0f;
+    {
+        Wormhole wF;
+        wF.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wF.update(GAME_DT);
+        Ship sF;
+        sF.reset(550.0f, 200.0f); // d=150, outer zone (pull only)
+        sF.velX = sF.velY = 0.0f;
+        float vx0 = sF.velX, vy0 = sF.velY;
+        wF.apply(sF);
+        float dx = sF.velX - vx0, dy = sF.velY - vy0;
+        aFar = sqrtf(dx * dx + dy * dy);
+        CHECK(aFar > 0.0f);
+        CHECK(!wF.captured());
+        CHECK(!wF.swallowed());
+        // direction: toward the core (dx<0 since the core is to the left)
+        CHECK(dx < 0.0f);
+    }
+    {
+        Wormhole wN;
+        wN.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wN.update(GAME_DT);
+        Ship sN;
+        sN.reset(510.0f, 200.0f); // d=110, still outer zone
+        sN.velX = sN.velY = 0.0f;
+        float vx0 = sN.velX, vy0 = sN.velY;
+        wN.apply(sN);
+        float dx = sN.velX - vx0, dy = sN.velY - vy0;
+        aNear = sqrtf(dx * dx + dy * dy);
+        CHECK(!wN.captured());
+    }
+    CHECK(aNear > aFar); // closer -> stronger pull
+
+    // Outside the action radius there is no force at all.
+    {
+        Wormhole wO;
+        wO.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wO.update(GAME_DT);
+        Ship sO;
+        sO.reset(650.0f, 200.0f); // d=250 > GRAB_R
+        sO.velX = sO.velY = 0.0f;
+        wO.apply(sO);
+        CHECK(sO.velX == 0.0f && sO.velY == 0.0f);
+        CHECK(!wO.swallowed());
+    }
+
+    // Manual integration helper: pull + (optional) full thrust away from the
+    // core each tick, no gravity (isolates the field). Returns the final
+    // distance to the core.
+    auto sim = [](Wormhole &wh, Ship &sh, int ticks, bool thrustAway) {
+        for (int i = 0; i < ticks && !wh.swallowed(); i++) {
+            wh.update(GAME_DT);
+            if (thrustAway && !wh.swallowed()) {
+                float dx = sh.posX - wh.coreX(), dy = sh.posY - wh.coreY();
+                float d = sqrtf(dx * dx + dy * dy);
+                if (d > 1.0f) {
+                    sh.velX += dx / d * THRUST_ACCEL; // push OUTWARD, away
+                    sh.velY += dy / d * THRUST_ACCEL; // from the center
+                }
+            }
+            if (wh.active() && !wh.swallowed()) wh.apply(sh);
+            sh.posX += sh.velX;
+            sh.posY += sh.velY;
+            sh.velX *= DRAG;
+            sh.velY *= DRAG;
+        }
+        float dx = sh.posX - wh.coreX(), dy = sh.posY - wh.coreY();
+        return sqrtf(dx * dx + dy * dy);
+    };
+
+    // ESCAPE: from the outer reach, thrusting away from the center breaks free.
+    {
+        Wormhole wE;
+        wE.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wE.update(GAME_DT);
+        Ship sE;
+        sE.reset(540.0f, 200.0f); // d=140, well outside the no-return zone
+        sE.velX = sE.velY = 0.0f;
+        float dEnd = sim(wE, sE, 2000, true);
+        CHECK(!wE.swallowed());
+        CHECK(dEnd > WORMHOLE_GRAB_R); // escaped the action radius
+    }
+
+    // NO ESCAPE: inside the capture radius the ship is trapped even with full
+    // thrust away -- the vortex scripts it and it is swallowed at the core.
+    {
+        Wormhole wN;
+        wN.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wN.update(GAME_DT);
+        Ship sN;
+        sN.reset(440.0f, 220.0f); // d~=44.7 < CAPTURE_R (100)
+        sN.velX = sN.velY = 0.0f;
+        sim(wN, sN, 1500, true);
+        CHECK(wN.captured());
+        CHECK(wN.swallowed());
+    }
+
+    // VORTEX MECHANICS: crossing CAPTURE_R captures the ship; the spiral keeps
+    // shrinking its radius toward the core rim, the ship shrinks, and even
+    // continuous full thrust outward cannot stop the swallow.
+    {
+        Wormhole wV;
+        wV.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wV.update(GAME_DT);
+        Ship sV;
+        sV.reset(480.0f, 200.0f); // d=80 < CAPTURE_R
+        sV.velX = sV.velY = 0.0f;
+        sV.scale = 1.5f;
+        bool sawShrink = false;
+        bool sawCloser = false;
+        float prevD = 80.0f;
+        for (int i = 0; i < 1500 && !wV.swallowed(); i++) {
+            wV.update(GAME_DT);
+            if (wV.active() && !wV.swallowed()) {
+                wV.apply(sV);
+                if (wV.captured() && sV.scale < 1.5f) sawShrink = true;
+            }
+            if (wV.captured() && !wV.swallowed()) {
+                float d = sqrtf((sV.posX - wV.coreX()) * (sV.posX - wV.coreX()) +
+                                (sV.posY - wV.coreY()) * (sV.posY - wV.coreY()));
+                if (d < prevD) sawCloser = true;
+                prevD = d;
+            }
+        }
+        CHECK(wV.captured());
+        CHECK(wV.swallowed());
+        CHECK(sawShrink);   // the ship shrank during the vortex
+        CHECK(sawCloser);   // the spiral closed in toward the core
+    }
+
+    // VORTEX CONTINUITY: the first scripted position must stay at the ship's
+    // actual capture spot, NOT teleport to the mirrored point of the ellipse.
+    // Horizontal case: the old bug placed a ship captured on the left at the
+    // symmetric x on the right (and the other way around).
+    {
+        Wormhole wC;
+        wC.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wC.update(GAME_DT);
+        Ship sC;
+        sC.reset(340.0f, 200.0f); // d=60, left of the core
+        sC.velX = sC.velY = 0.0f;
+        CHECK(wC.apply(sC)); // captured: scripted vortex (one frame in)
+        CHECK(wC.captured());
+        CHECK(fabsf(sC.posX - 340.0f) < 20.0f);
+        CHECK(fabsf(sC.posY - 200.0f) < 20.0f);
+    }
+    // Vertical case: a ship captured below the core must not jump upward to
+    // the squashed side of the ellipse.
+    {
+        Wormhole wC2;
+        wC2.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wC2.update(GAME_DT);
+        Ship sC2;
+        sC2.reset(400.0f, 290.0f); // d=90, straight below the core
+        sC2.velX = sC2.velY = 0.0f;
+        CHECK(wC2.apply(sC2));
+        CHECK(wC2.captured());
+        CHECK(fabsf(sC2.posX - 400.0f) < 20.0f);
+        CHECK(fabsf(sC2.posY - 290.0f) < 20.0f);
+    }
+
+    // CAPTURE BOUNDARY: d just above CAPTURE_R stays free; once inside the
+    // ship is captured and no longer escapable even while thrusting away.
+    {
+        Wormhole wB1;
+        wB1.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wB1.update(GAME_DT);
+        Ship sB1;
+        sB1.reset(510.0f, 200.0f); // d=110 > CAPTURE_R
+        sB1.velX = sB1.velY = 0.0f;
+        wB1.apply(sB1);
+        CHECK(!wB1.captured());
+        CHECK(!wB1.swallowed());
+
+        Wormhole wB2;
+        wB2.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wB2.update(GAME_DT);
+        Ship sB2;
+        sB2.reset(490.0f, 200.0f); // d=90 < CAPTURE_R
+        sB2.velX = sB2.velY = 0.0f;
+        wB2.apply(sB2);
+        CHECK(wB2.captured());
+        CHECK(!wB2.swallowed()); // captured but not yet swallowed
+    }
+
+    // Swallow happens only once the ship crosses the core rim (d < SWALLOW_R)
+    // (or the vortex completes); inside the reach but outside the rim, a
+    // single apply captures but does not swallow.
+    {
+        Wormhole wIn;
+        wIn.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wIn.update(GAME_DT);
+        Ship sIn;
+        sIn.reset(440.0f, 200.0f); // d=40 < CAPTURE_R: captured
+        sIn.velX = sIn.velY = 0.0f;
+        CHECK(wIn.apply(sIn)); // scripted vortex -> Game skips collisions
+        CHECK(wIn.captured());
+        CHECK(!wIn.swallowed());
+    }
+    {
+        Wormhole wSw;
+        wSw.reset(400.0f, 200.0f);
+        for (int i = 0; i < 130; i++) wSw.update(GAME_DT);
+        Ship sSw;
+        sSw.reset(425.0f, 200.0f); // d=25 < SWALLOW_R
+        sSw.velX = sSw.velY = 0.0f;
+        CHECK(wSw.apply(sSw));
+        CHECK(wSw.swallowed());
+        CHECK(wSw.phase() == WH_SWALLOW);
+        wSw.update(GAME_DT);
+        for (int i = 0; i < 200; i++) wSw.update(GAME_DT); // SWALLOW -> DYING -> IDLE
+        CHECK(wSw.phase() == WH_IDLE);
+        CHECK(!wSw.active());
+    }
+
+    // Game integration: swallowing the ship waits for the hole to fade, then
+    // fades the ship in on a random other moon between the sky and the terrain
+    // (wormholeJump), and the fuel survives the warp.
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    CHECK(g.state == STATE_PLAYING);
+    g.level = 5; // CALLISTO (moonIndex 4): effect-free host
+    g.wormhole.reset(400.0f, 110.0f);
+    g.ship.reset(410.0f, 110.0f); // d=10 < SWALLOW_R: swallowed right away
+    g.ship.fuel = 400.0f;
+    g.fuel = 400.0f;
+    int curMoon = moonIndex(g.level);
+    bool seenJump = false;
+    for (int i = 0; i < 1400 && !seenJump; i++) {
+        g.update();
+        if (g.state == STATE_PLAYING && moonIndex(g.level) != curMoon)
+            seenJump = true;
+    }
+    CHECK(seenJump); // the teleport happened
+    CHECK(g.state == STATE_PLAYING);
+    CHECK(fabsf(g.ship.fuel - 400.0f) < 1.0f); // fuel preserved through the warp
+    // Respawned between the sky and the terrain.
+    CHECK(g.ship.posX >= 60.0f);
+    float gy = g.terrain.yAt(g.ship.posX, 500.0f);
+    CHECK(g.ship.posY >= 90.0f);
+    CHECK(g.ship.posY < gy); // above the terrain at that x
+    // The warp-in materialization runs during the intro and completes.
+    CHECK(g.warpIn() > 0.0f);
+    for (int i = 0; i < 300 && g.warpIn() > 0.0f; i++) g.update();
+    CHECK(g.warpIn() == 0.0f);
+    CHECK(g.ship.scale == 1.5f); // fully materialized
+    // The "recycled" banner fires on the new moon and runs down to zero.
+    CHECK(g.recycledBanner() > 0.0f);
+    CHECK(g.recycledBanner() <= WORMHOLE_RECYCLED_T);
+    for (int i = 0; i < (int)(WORMHOLE_RECYCLED_T / GAME_DT) + 2; i++) {
+        g.wormhole.disable(); // no new warp on the new moon while the banner runs
+        g.update();
+    }
+    CHECK(g.recycledBanner() == 0.0f);
+
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -1122,6 +1430,8 @@ int main()
     r = testRings();
     if (r) return r;
     r = testTwister();
+    if (r) return r;
+    r = testWormhole();
     if (r) return r;
     r = testTanker();
     if (r) return r;

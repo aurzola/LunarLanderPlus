@@ -22,6 +22,7 @@ SHARED=(config.h
         rings.cpp rings.h
         twister.cpp twister.h
         tanker.cpp tanker.h
+        wormhole.cpp wormhole.h
         explosion.h)
 
 err=0
