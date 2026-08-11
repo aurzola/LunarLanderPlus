@@ -1091,3 +1091,37 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       iteración, porque en la luna nueva re-aparece y re-traga a la nave re-armando el banner).
       Verificación: `./test_pc` **1036 OK**, render PPM verificado (dos líneas centradas legibles),
       `sync.sh` OK, compila composite, subido a la placa.
+48. **Lluvia ácida de Europa (rama `acid-rain`, 26/8/2026)**. EUROPA (moonIndex==2, niveles 3/11/19…)
+    recibe su efecto ambiental propio: celdas de tormenta que corroen la nave.
+    - **config.h**: `ACID_RAIN_CELLS=3`, `ACID_CELL_RADIUS=90`, `ACID_CELL_DRIFT=12`, `ACID_RAIN_CORRODE=0.002`,
+      `ACID_DRY_RATE=0.0004`, `ACID_CELL_TOP=-50`, `ACID_RAIN_STREAKS=26`, `ACID_STREAK_LEN=7`,
+      `ACID_STREAK_SLANT=0.35`, `ACID_FALL_SPEED=45`, `ACID_STREAK_CYCLE=750`.
+    - **moons.h**: `moonHasAcidRain(level)` (moonIndex==2), `moonEffectFree()` ahora excluye Europa
+      (solo LUNA y CALLISTO albergan wormhole).
+    - **acidrain.h/cpp**: 3 celdas con deriva y rebote, streaks oblicuas, splashes en terreno, puffs de vapor.
+      `prand()` determinista (no rand() en draw). API: `reset/active/setEnabled/update/draw/drawSizzle/
+      inRain/corrode/dry/meterGet/cellCount/cellX`.
+    - **game.h**: miembro público `AcidRain acidrain`, flag `bool acidBurn` + getter `acidBurnGet()`.
+    - **game.cpp**: hooks en los 4 sitios de reset (newGame/nextLevel/restartLevel/startDemo con
+      `showcase`), `isolateForWormhole()` apaga la lluvia, `update()` con `setEnabled(false)` guard
+      en `AcidRain` mientras `wormhole.active()`. Física en STATE_PLAYING: `corrode()`/`dry()` según
+      `inRain`, crash al 100% (`acidBurn=true`, pérdida de fuel, `STATE_CRASHED` + return).
+      Draw: `acidrain.draw()` después de twister, `drawSizzle()` tras el ship. Mensaje
+      `"YOU CRASHED" / "ACID RAIN CORRODED THE SHIP"`. HUD `ACID nn%` en (250,72) con warnY→82.
+    - **renderer_canvas.cpp**: glifo `%` añadido a la fuente 5×7 para el HUD.
+    - **acidrain_demo.cpp + Makefile + sync.sh + .gitignore**: demo Escan eando el mundo, selftest
+      `active + maxMeter>0.3 + inRain>0 + outRain>0`.
+    - **test_pc.cpp**: tests de luna (EUROPA sí, otras no), `moonEffectFree(3)==false`, directo
+      de AcidRain (inRain, corrode/dry, clamp a 100), integración con Game (meter→100% → crash acidBurn).
+    - **AGENTS.md**: fila `acidrain.h/cpp` en la tabla, `moons.h` actualizado con lluvia ácida,
+      `acidrain_demo.cpp` añadido a la tabla y comandos.
+    - Verificación: `./test_pc` **1062 OK**, `./acidrain_demo` pasa, `./demo_sim 40` winRate 32 %
+      (13/40; baja del 45 % pre-lluvia porque el demo AI no esquiva las celdas → aceptable para
+       attract). Compila composite 594 KB (45 %), RAM 108 KB (33 %), subido a la placa.
+    - **Refinamientos (27/8/2026)**: la nave se **disuelve** en vez de explotar — `ship.dissolve()` 
+      desprende las 6 partes secuencialmente (patas→toberas→cabina→cuerpo, 0.35 s) con
+      velocidades bajas en X e Y (0.12-0.65 u/tick), conservando la inercia que traía. Mensaje
+      `"ACID RAIN CORRODED THE SHIP"` en una sola línea centrada. HUD: solo la palabra `ACID`
+      parpadea (≥90%), número fijo, sin `%`, con espacio. Tanto `ACID` como `WIND` glitchean
+      al caer rayo. Las streaks de lluvia se recortan contra el terreno. Glifo `%` en la
+      fuente 5×7 del renderer.

@@ -9,6 +9,7 @@
 #include "geysers.h"
 #include "volcanoes.h"
 #include "atmosphere.h"
+#include "acidrain.h"
 #include "rings.h"
 #include "twister.h"
 #include "tanker.h"
@@ -70,6 +71,7 @@ public:
     Twister twister;
     Tanker tanker;
     Wormhole wormhole;
+    AcidRain acidrain;
     ExplosionManager explosion;
     bool windEnabled;
     float windStrength;
@@ -79,6 +81,7 @@ public:
     bool ringHitGet() const { return ringHit; }
     bool twisterCrashGet() const { return twisterCrash; }
     bool tankerCrashGet() const { return tankerCrash; }
+    bool acidBurnGet() const { return acidBurn; }
     bool landPerfectGet() const { return landPerfect; }
     float chuteTooLow() const { return chuteTooLowTimer; }
     float warpIn() const { return warpInT; }
@@ -107,6 +110,7 @@ private:
     bool ringHit;
     bool twisterCrash;
     bool tankerCrash;
+    bool acidBurn;
     bool explosionInited;
     int demoTankerPhase; // 0 = approach pre-position left of the drogue, 1 = slide in
     std::vector<WindStreak> windStreaks;

@@ -88,7 +88,7 @@ Game::Game()
       zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
-      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), explosionInited(false),
+      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), acidBurn(false), explosionInited(false),
       demoTankerPhase(0)
 {
     input.startPressed = false;
@@ -140,13 +140,15 @@ void Game::newGame()
     rings.reset(level, terrain);
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    acidrain.reset(level, terrain);
     spawnWormhole();
-    isolateForWormhole();
+    if (wormhole.active()) isolateForWormhole();
     stormHitTimer = 0;
     recycledTimer = 0;
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    acidBurn = false;
     explosionInited = false;
     terrain.clearCrater();
 }
@@ -162,6 +164,7 @@ void Game::restartLevel()
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    acidBurn = false;
     explosionInited = false;
     twisterCrash = false;
     wormhole.disable();
@@ -194,12 +197,14 @@ void Game::nextLevel()
     rings.reset(level, terrain);
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    acidrain.reset(level, terrain);
     spawnWormhole();
-    isolateForWormhole();
+    if (wormhole.active()) isolateForWormhole();
     stormHitTimer = 0;
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    acidBurn = false;
     explosionInited = false;
     terrain.clearCrater();
     state = STATE_PLAYING;
@@ -258,12 +263,19 @@ void Game::startDemo()
     twister.reset(level, terrain);
     if (showcase) twister.setEnabled(false);
     tanker.reset(level, terrain, ship.fuel, true); // full tank -> never active
+    acidrain.reset(level, terrain);
+    if (showcase) acidrain.setEnabled(false);
+    // Demo showcase: jump-start the acid meter so the attract shows the
+    // corrosion crash quickly (the ship slowly dissolves in the rain and
+    // the player sees the "ACID RAIN CORRODED THE SHIP" ending).
+    if (demo && !showcase && acidrain.active()) acidrain.setMeter(97.0f);
     stormHitTimer = 0;
     recycledTimer = 0;
     chuteAvailable = true;
     lavaBurn = false;
     ringHit = false;
     tankerCrash = false;
+    acidBurn = false;
     explosionInited = false;
     terrain.clearCrater();
     ship.reset(110, 150);
@@ -436,6 +448,7 @@ void Game::isolateForWormhole()
     rings.setEnabled(false);
     twister.setEnabled(false);
     tanker.setEnabled(false);
+    acidrain.setEnabled(false);
 }
 
 void Game::wormholeJump()
@@ -1091,6 +1104,7 @@ void Game::update()
     if (state != STATE_WAITING) rings.update(dt);
     if (state != STATE_WAITING) twister.update(dt);
     if (state != STATE_WAITING) wormhole.update(dt);
+    if (state != STATE_WAITING) acidrain.update(dt);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -1256,6 +1270,26 @@ void Game::update()
         }
         ship.update();
         if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
+
+        // Acid rain on Europa: rain inside a drifting cell corrodes the ship;
+        // at 100% the acid has eaten through the hull and the ship is lost.
+        if (acidrain.active()) {
+            if (acidrain.inRain(ship.posX, ship.posY)) acidrain.corrode();
+            else acidrain.dry();
+            if (acidrain.meterGet() >= 100.0f) {
+                acidBurn = true;
+                ship.dissolve();
+                int lost = 200 + (rand() % 200);
+                fuel -= lost;
+                ship.fuel -= lost;
+                if (ship.fuel < 0) ship.fuel = 0;
+                if (fuel < 0) fuel = 0;
+                score += 5;
+                state = STATE_CRASHED;
+                resetTimer = CRASH_RESET_DELAY;
+                return;
+            }
+        }
 
         if (twister.active()) {
             twister.apply(ship, terrain, input.angle * 180.0f / PI);
@@ -1600,9 +1634,11 @@ void Game::draw(Renderer &r)
         rings.draw(r, terrain, viewX, viewY, viewScale);
         twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
         tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
+        acidrain.draw(r, terrain, viewX, viewY, viewScale);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
         if (!lavaBurn && !tankerCrash && !fogged && !wormhole.swallowed())
             ship.draw(r, viewX, viewY, viewScale);
+        if (acidrain.active()) acidrain.drawSizzle(r, ship.posX, ship.posY, viewX, viewY, viewScale);
 
         // Refuel probe on top of the module: a thin boom with a diamond tip
         // that sticks out of the hull toward the tanker, shown during the
@@ -1773,6 +1809,12 @@ void Game::draw(Renderer &r)
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "G   %s", gb);
                 r.text(250, 52, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "WIND %s", gb);
+                r.text(250, 62, buf);
+                glitchChars(gb, 3);
+                snprintf(buf, sizeof buf, "ACID %s", gb);
+                r.text(250, 72, buf);
             } else {
                 snprintf(buf, sizeof buf, "ANG %d", ang);
                 r.text(22, 42, buf);
@@ -1793,10 +1835,25 @@ void Game::draw(Renderer &r)
             if (demo) r.text(22, 62, "DEMO");
             bool windShown = windEnabled;
             if (windShown) {
-                snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
-                         windDir > 0 ? '>' : '<');
-                r.text(250, 62, buf);
+                if (!glitch) {
+                    snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
+                             windDir > 0 ? '>' : '<');
+                    r.text(250, 62, buf);
+                }
                 warnY = 72;
+            }
+
+            if (acidrain.active()) {
+                if (!glitch) {
+                    int acidVal = (int)acidrain.meterGet();
+                    bool acidAlarm = acidVal >= 90;
+                    bool flashACID = acidAlarm && (ship.counter % 40) >= 26;
+                    char numBuf[12];
+                    snprintf(numBuf, sizeof numBuf, "%d", acidVal);
+                    if (!flashACID) r.text(250, 72, "ACID");
+                    r.text(280, 72, numBuf);
+                }
+                warnY = 82;
             }
 
             // Parachute status (top-left, above the L<level> line): solid =
@@ -1854,6 +1911,8 @@ void Game::draw(Renderer &r)
             } else if (tankerCrash) {
                 centerText(90, "BOTH DESTROYED");
                 centerText(102, "COLLIDED WITH THE TANKER");
+            } else if (acidBurn) {
+                centerText(96, "ACID RAIN CORRODED THE SHIP");
             } else {
                 centerText(90, "YOU CRASHED");
                 centerText(102, "FUEL TANKS DESTROYED");
