@@ -15,6 +15,7 @@
 #include "twister.h"
 #include "wormhole.h"
 #include "tanker.h"
+#include "quake.h"
 #include "renderer_pc.h"
 
 static int checks = 0;
@@ -1490,6 +1491,201 @@ static int testAcidRain()
     return 0;
 }
 
+static int testQuake()
+{
+    // Activation: only on Io, inactive on other moons.
+    CHECK(moonHasQuakes(2) == true);   // level 2 = IO
+    CHECK(moonHasQuakes(10) == true);  // level 10 = IO
+    CHECK(moonHasQuakes(1) == false);  // LUNA
+    CHECK(moonHasQuakes(3) == false);  // EUROPA
+
+    Terrain t;
+    t.generate(2); // IO
+    CHECK(t.zoneCount() == 4);
+
+    Ship s;
+    s.reset(200, 150);
+
+    Quake q;
+    q.reset(2, t, s);
+    CHECK(q.active());
+    CHECK(q.phase() == Quake::IDLE);
+
+    // Inactive on non-Io moons.
+    Quake q2;
+    q2.reset(1, t, s); // LUNA
+    CHECK(!q2.active());
+    q2.reset(3, t, s); // EUROPA
+    CHECK(!q2.active());
+
+    // No zone ruptured yet.
+    for (int i = 0; i < t.zoneCount(); i++) CHECK(!t.zoneBroken(i));
+
+    // The strike follows the ship, so park it right over a landing pad (near
+    // the surface) to force the pad-destruction showcase.
+    int targetPad = 0;
+    float p0x = t.zoneLabelX(targetPad);
+    float p0y = t.getLines()[t.zoneStart(targetPad)].y1;
+    s.posX = p0x;
+    s.posY = p0y - 60.0f;
+
+    // Drive the quake to completion (max wait 20s + rumble 1s).
+    int guard = 0;
+    while (q.phase() != Quake::BROKEN && guard < 500) {
+        q.update(1.0f, t, s);
+        guard++;
+    }
+    CHECK(q.phase() == Quake::BROKEN);
+    CHECK(guard < 500);
+
+    int rz = q.rupturedZone();
+    CHECK(rz == targetPad);
+    CHECK(t.zoneBroken(rz));
+
+    // The ruptured pad is no longer landable: its segments are tilted and
+    // the label (approach lights / minimap point) is gone.
+    const std::vector<TerrainLine> &tl = t.getLines();
+    int zs = t.zoneStart(rz);
+    int zc = t.zoneSegCount(rz);
+    CHECK(zs >= 0);
+    for (int k = 0; k < zc; k++) {
+        CHECK(!tl[zs + k].landable);
+    }
+    CHECK(tl[zs].labelX < 0);
+
+    // A perfect approach on the ruptured pad still crashes.
+    float rxc = t.zoneLabelX(rz);
+    float baseY = tl[zs].y1;
+    int res = t.checkLanding(rxc - 10.0f, rxc + 10.0f, baseY + QUAKE_LIFT + 20.0f,
+                             0.0f, 0.05f, 0.0f);
+    CHECK(res == 1);
+
+    // isRupturedAt true inside the strike window (quake + persistent terrain).
+    CHECK(q.isRupturedAt(q.strikeX()));
+    CHECK(t.isRupturedAt(q.strikeX()));
+    CHECK(!q.isRupturedAt(q.strikeX() + 5000.0f));
+
+    // The other pads still land safely (only the struck pad broke).
+    int safeZone = -1;
+    for (int i = 0; i < t.zoneCount(); i++) {
+        if (!t.zoneBroken(i)) { safeZone = i; break; }
+    }
+    CHECK(safeZone >= 0);
+    int zs2 = t.zoneStart(safeZone);
+    int zc2 = t.zoneSegCount(safeZone);
+    float sx2 = t.zoneLabelX(safeZone);
+    float zx1 = tl[zs2].x1;
+    float zx2 = tl[zs2 + zc2 - 1].x2;
+    float sy2 = tl[zs2].y1;
+    CHECK(zx2 - zx1 > 20.0f);
+    res = t.checkLanding(sx2 - 8.0f, sx2 + 8.0f, sy2 + 2.0f, 0.0f, 0.05f, 0.0f);
+    CHECK(res == 2);
+
+    // A regenerated level forgets the old ruptures.
+    t.generate(2);
+    CHECK(!t.isRupturedAt(q.strikeX()));
+    for (int i = 0; i < t.zoneCount(); i++) CHECK(!t.zoneBroken(i));
+
+    // Game integration: crashing on the ruptured pad sets the quake flag.
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    g.level = 2; // IO
+    g.terrain.generate(2);
+    g.quake.reset(2, g.terrain, g.ship);
+    g.introTimer = 0.0f;
+    g.wormhole.disable();
+    CHECK(!g.quakeCrashGet());
+    CHECK(g.quake.active());
+
+    // Park the ship over a landing pad (near the surface): the quake follows
+    // the ship, so the next strike destroys that pad.
+    int gPad = 0;
+    float gPadX = g.terrain.zoneLabelX(gPad);
+    g.ship.posX = gPadX;
+    g.ship.posY = g.terrain.getLines()[g.terrain.zoneStart(gPad)].y1 - 60.0f;
+    while (g.quake.phase() != Quake::BROKEN) g.quake.update(1.0f, g.terrain, g.ship);
+    CHECK(g.quake.rupturedZone() == gPad);
+    CHECK(g.quake.isRupturedAt(gPadX));
+    CHECK(g.terrain.isRupturedAt(gPadX));
+
+    // Crash the ship onto the ruptured pad.
+    g.ship.posX = gPadX;
+    int rzs = g.terrain.zoneStart(gPad);
+    g.ship.posY = g.terrain.getLines()[rzs].y1 + QUAKE_LIFT - 5.0f;
+    g.ship.velY = 0.05f;
+    g.ship.velX = 0.0f;
+    g.ship.rotation = 0.0f;
+    g.ship.scale = 1.0f;
+    g.ship.left = g.ship.posX - 10.0f * g.ship.scale;
+    g.ship.right = g.ship.posX + 10.0f * g.ship.scale;
+    g.ship.bottom = g.ship.posY + 14.0f * g.ship.scale;
+    g.update();
+    CHECK(g.quakeCrashGet());
+    CHECK(g.state == STATE_CRASHED);
+
+    // A clean landing elsewhere is not a quake crash.
+    Game g2;
+    g2.input.startPressed = true;
+    g2.update();
+    g2.input.startPressed = false;
+    g2.level = 2;
+    g2.newGame();
+    g2.introTimer = 0.0f;
+    g2.wormhole.disable();
+    CHECK(!g2.quakeCrashGet());
+
+    return 0;
+}
+
+static int testVolcanoRebuild()
+{
+    // After a quake buckles the surface, Volcanoes::rebuild() re-anchors each
+    // crater on the new terrain and re-runs the flows so the lava ribbons
+    // follow the post-quake shape instead of the pre-quake one.
+    bool sawRupture = false;
+    for (int s = 0; s < 60 && !sawRupture; s++) {
+        srand(6000 + s);
+        Terrain t;
+        t.generate(2); // IO
+        Volcanoes v;
+        v.reset(2, t);
+        CHECK(v.active());
+        if (v.volcanoCount() == 0) continue;
+
+        // Rupture right under the first volcano so its crater gets re-shaped.
+        float cx = v.volcanoX(0);
+        float gyBefore = v.volcanoGY(0);
+        t.ruptureSurface(cx, QUAKE_SURFACE_HALF_W);
+        float yNew = t.yAt(cx, 500.0f);
+        if (fabsf(yNew - gyBefore) < 1.0f) continue; // barely moved: skip seed
+
+        // Without a rebuild the crater still points at the old height.
+        CHECK(fabsf(v.volcanoGY(0) - gyBefore) < 0.5f);
+        CHECK(fabsf(yNew - gyBefore) > QUAKE_LIFT * 0.5f);
+
+        v.rebuild(t);
+
+        // Crater now sits on the new surface.
+        CHECK(fabsf(v.volcanoGY(0) - t.yAt(cx, 500.0f)) < 0.5f);
+
+        // Every flow sample lies on the current terrain (both arms).
+        for (int arm = 0; arm < 2; arm++) {
+            CHECK(v.flowLen(0, arm) >= 1);
+            for (int k = 0; k < v.flowLen(0, arm); k++) {
+                float fx = v.flowXAt(0, arm, k);
+                float fy = v.flowYAt(0, arm, k);
+                float ty = t.yAt(fx, fy);
+                CHECK(fabsf(fy - ty) < 0.5f);
+            }
+        }
+        sawRupture = true;
+    }
+    CHECK(sawRupture);
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -1515,6 +1711,8 @@ int main()
     if (r) return r;
     r = testVolcanoLava();
     if (r) return r;
+    r = testVolcanoRebuild();
+    if (r) return r;
     r = testAtmosphere();
     if (r) return r;
     r = testRings();
@@ -1524,6 +1722,8 @@ int main()
     r = testWormhole();
     if (r) return r;
     r = testAcidRain();
+    if (r) return r;
+    r = testQuake();
     if (r) return r;
     r = testTanker();
     if (r) return r;

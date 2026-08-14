@@ -24,6 +24,7 @@ SHARED=(config.h
         tanker.cpp tanker.h
         wormhole.cpp wormhole.h \
         acidrain.cpp acidrain.h
+        quake.cpp quake.h
         explosion.h)
 
 err=0

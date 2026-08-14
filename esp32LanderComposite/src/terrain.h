@@ -2,6 +2,7 @@
 #define TERRAIN_H
 
 #include <vector>
+#include <utility>
 
 class Renderer;
 
@@ -14,6 +15,14 @@ struct TerrainLine {
 
 struct Star {
     float x, y;
+};
+
+struct ZoneInfo {
+    int startIdx;
+    int segCount;
+    float labelX;
+    bool broken;
+    float baseY;
 };
 
 class Terrain {
@@ -33,9 +42,22 @@ public:
     bool onChuteSpot(float x) const { return x >= chuteZoneX1 && x <= chuteZoneX2; }
     float chuteLabel() const { return chuteLabelX; }
 
+    int zoneCount() const { return (int)zones_.size(); }
+    int zoneStart(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].startIdx : -1; }
+    int zoneSegCount(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].segCount : 0; }
+    float zoneLabelX(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].labelX : -1.0f; }
+    bool zoneBroken(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].broken : false; }
+    int zoneOverlapping(float x1, float x2) const;
+    void ruptureZone(int zone);
+    void ruptureSurface(float cx, float halfW);
+    bool isZoneRupturedAt(float x) const;
+    bool isRupturedAt(float x) const;
+
 private:
     std::vector<TerrainLine> lines;
+    std::vector<ZoneInfo> zones_;
     std::vector<Star> stars;
+    std::vector<std::pair<float, float> > ruptureRanges_;
     float tileWidth;
     float chuteZoneX1, chuteZoneX2, chuteLabelX;
     bool craterActive;

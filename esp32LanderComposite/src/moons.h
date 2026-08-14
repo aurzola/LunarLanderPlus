@@ -66,14 +66,19 @@ static inline bool moonHasAcidRain(int level)
     return moonIndex(level) == 2; // EUROPA (acid rain)
 }
 
+static inline bool moonHasQuakes(int level)
+{
+    return moonIndex(level) == 1; // IO (tectonic quakes)
+}
+
 // Moons with no ambient effect of their own (no geysers, volcanoes, fog,
-// rings, twister or acid rain): the only ones that can host a sky wormhole,
-// because the wormhole never combines with any other effect.
+// rings, twister, acid rain or quakes): the only ones that can host a sky
+// wormhole, because the wormhole never combines with any other effect.
 static inline bool moonEffectFree(int level)
 {
     return !moonHasGeysers(level) && !moonHasVolcanoes(level) &&
            !moonHasTitan(level) && !moonHasRings(level) && !moonHasTwister(level) &&
-           !moonHasAcidRain(level);
+           !moonHasAcidRain(level) && !moonHasQuakes(level);
 }
 
 #endif

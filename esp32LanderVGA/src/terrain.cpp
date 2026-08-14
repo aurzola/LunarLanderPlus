@@ -40,6 +40,7 @@ void Terrain::init()
 {
     lines.clear();
     stars.clear();
+    ruptureRanges_.clear();
 
     const float S = 1.35f;
     const float OY = 130.0f;
@@ -106,6 +107,20 @@ void Terrain::init()
         lines[idx].labelX = zoneCenterX;
     }
 
+    // Populate zone registry so other systems can query and rupture pads.
+    zones_.clear();
+    for (int i = 0; i < 4; i++) {
+        int idx = landingIdx[i];
+        int segs = (landingMul[i] == 5) ? 3 : (landingMul[i] == 2 ? 5 : 4);
+        ZoneInfo zi;
+        zi.startIdx = idx;
+        zi.segCount = segs;
+        zi.labelX = lines[idx].labelX;
+        zi.broken = false;
+        zi.baseY = lines[idx].y1;
+        zones_.push_back(zi);
+    }
+
     chuteLabelX = lines[landingIdx[0]].labelX;
     chuteZoneX1 = lines[landingIdx[0]].x1;
     chuteZoneX2 = lines[landingIdx[0] + 3].x2;
@@ -127,6 +142,7 @@ void Terrain::generate(int level)
 {
     lines.clear();
     stars.clear();
+    ruptureRanges_.clear();
 
     const float S = 1.35f;
     const float OY = 130.0f;
@@ -185,6 +201,7 @@ void Terrain::generate(int level)
 
     int li = 0;
     int firstZoneIdx = -1;
+    zones_.clear();
     for (int j = 0; j < 4; j++) {
         int segs = padLines[j] + (ganymede ? 2 : 0);
         while (li < zoneStart[j]) li++;
@@ -195,6 +212,14 @@ void Terrain::generate(int level)
             lines[k].multiplier = landingMul[j];
         }
         lines[idx].labelX = zoneCenterX;
+
+        ZoneInfo zi;
+        zi.startIdx = idx;
+        zi.segCount = segs;
+        zi.labelX = zoneCenterX;
+        zi.broken = false;
+        zi.baseY = lines[idx].y1;
+        zones_.push_back(zi);
     }
 
     chuteLabelX = lines[firstZoneIdx].labelX;
@@ -343,4 +368,109 @@ float Terrain::yAt(float x, float fallback) const
         }
     }
     return fallback;
+}
+
+void Terrain::ruptureZone(int zone)
+{
+    if (zone < 0 || zone >= (int)zones_.size()) return;
+    ZoneInfo &zi = zones_[zone];
+    if (zi.broken) return;
+    zi.broken = true;
+
+    int s = zi.startIdx;
+    int n = zi.segCount;
+    float baseY = zi.baseY;
+
+    for (int k = 0; k < n; k++) {
+        int vi = s + k;
+        if (vi >= (int)lines.size()) break;
+        float t0 = (float)k / (float)n;
+        float t1 = (float)(k + 1) / (float)n;
+        float lift0 = QUAKE_LIFT * sinf(t0 * (float)M_PI);
+        float lift1 = QUAKE_LIFT * sinf(t1 * (float)M_PI);
+        lines[vi].y1 = baseY + lift0;
+        lines[vi].y2 = baseY + lift1;
+        lines[vi].landable = false;
+        lines[vi].multiplier = 1;
+    }
+    lines[s].labelX = -1;
+}
+
+int Terrain::zoneOverlapping(float x1, float x2) const
+{
+    for (int i = 0; i < (int)zones_.size(); i++) {
+        int s = zones_[i].startIdx;
+        int n = zones_[i].segCount;
+        if (s + n - 1 >= (int)lines.size()) continue;
+        float zx1 = lines[s].x1;
+        float zx2 = lines[s + n - 1].x2;
+        if (x2 >= zx1 && x1 <= zx2) return i;
+    }
+    return -1;
+}
+
+void Terrain::ruptureSurface(float cx, float halfW)
+{
+    float w1 = cx - halfW;
+    float w2 = cx + halfW;
+
+    // Any landing pad touched by the window is destroyed entirely: its flat
+    // surface buckles, becomes non-landable and loses its label (which also
+    // clears the approach lights and the minimap point).
+    for (int z = 0; z < (int)zones_.size(); z++) {
+        int s = zones_[z].startIdx;
+        int n = zones_[z].segCount;
+        if (s + n - 1 >= (int)lines.size()) continue;
+        float zx1 = lines[s].x1;
+        float zx2 = lines[s + n - 1].x2;
+        if (w2 >= zx1 && w1 <= zx2) ruptureZone(z);
+    }
+
+    // Buckle the open surface itself: every non-zone segment in the window
+    // is lifted by a hump whose peak depends on where the segment sits in it.
+    for (int i = 0; i < (int)lines.size(); i++) {
+        if (lines[i].x2 <= w1 || lines[i].x1 >= w2) continue;
+        bool inZone = false;
+        for (int z = 0; z < (int)zones_.size() && !inZone; z++) {
+            int s = zones_[z].startIdx;
+            int n = zones_[z].segCount;
+            if (i >= s && i < s + n) inZone = true;
+        }
+        if (inZone) continue;
+        float lo = (lines[i].x1 > w1) ? lines[i].x1 : w1;
+        float hi = (lines[i].x2 < w2) ? lines[i].x2 : w2;
+        float mid = (lo + hi) * 0.5f;
+        float t = (mid - w1) / (w2 - w1);
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        float lift = QUAKE_LIFT * sinf(t * (float)M_PI);
+        lines[i].y1 += lift;
+        lines[i].y2 += lift;
+        lines[i].landable = false;
+    }
+
+    ruptureRanges_.push_back(std::make_pair(w1, w2));
+}
+
+bool Terrain::isRupturedAt(float x) const
+{
+    if (isZoneRupturedAt(x)) return true;
+    for (int i = 0; i < (int)ruptureRanges_.size(); i++) {
+        if (x >= ruptureRanges_[i].first && x <= ruptureRanges_[i].second) return true;
+    }
+    return false;
+}
+
+bool Terrain::isZoneRupturedAt(float x) const
+{
+    for (int i = 0; i < (int)zones_.size(); i++) {
+        if (!zones_[i].broken) continue;
+        int s = zones_[i].startIdx;
+        int n = zones_[i].segCount;
+        if (s + n - 1 >= (int)lines.size()) continue;
+        float zx1 = lines[s].x1;
+        float zx2 = lines[s + n - 1].x2;
+        if (x >= zx1 && x <= zx2) return true;
+    }
+    return false;
 }

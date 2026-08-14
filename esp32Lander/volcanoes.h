@@ -15,6 +15,10 @@ public:
     Volcanoes();
 
     void reset(int level, const Terrain &t);
+    // Re-anchor every crater on the (possibly re-shaped) surface and re-run the
+    // downhill flows + lava ranges so the ribbons follow the terrain after a
+    // quake buckles it. Eruption state (timers/phase) is kept.
+    void rebuild(const Terrain &t);
     bool active() const { return enabled_; }
     void setEnabled(bool e) { enabled_ = e; }
     void update(float dt);
@@ -22,6 +26,16 @@ public:
     int particlesAlive() const { return (int)parts_.size(); }
     int volcanoCount() const { return (int)volc_.size(); }
     float volcanoX(int i) const { return volc_[i].x; }
+    float volcanoGY(int i) const { return volc_[i].gy; }
+    int flowLen(int v, int arm) const {
+        return arm == 0 ? (int)volc_[v].flowX.size() : (int)volc_[v].flowX2.size();
+    }
+    float flowXAt(int v, int arm, int k) const {
+        return arm == 0 ? volc_[v].flowX[k] : volc_[v].flowX2[k];
+    }
+    float flowYAt(int v, int arm, int k) const {
+        return arm == 0 ? volc_[v].flowY[k] : volc_[v].flowY2[k];
+    }
 
     // Number of volcanoes shown for a given viewport (viewX, viewScale),
     // capped at VOLCANO_MAX_VISIBLE.

@@ -1115,9 +1115,49 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       de AcidRain (inRain, corrode/dry, clamp a 100), integración con Game (meter→100% → crash acidBurn).
     - **AGENTS.md**: fila `acidrain.h/cpp` en la tabla, `moons.h` actualizado con lluvia ácida,
       `acidrain_demo.cpp` añadido a la tabla y comandos.
-    - Verificación: `./test_pc` **1062 OK**, `./acidrain_demo` pasa, `./demo_sim 40` winRate 32 %
-      (13/40; baja del 45 % pre-lluvia porque el demo AI no esquiva las celdas → aceptable para
-       attract). Compila composite 594 KB (45 %), RAM 108 KB (33 %), subido a la placa.
+ 49. **Terremotos de Ío (rama `quake`, 12/8/2026)**. IO (moonIndex==1, niveles 2/10/18…)
+     ya tenía volcanes; ahora también sufre **terremotos tectónicos**: a los 8–20 s de empezar
+     el nivel hay un temblor de aviso (~1 s de screen-shake + polvo + grieta pulsante sobre la
+     plataforma objetivo) y luego **la plataforma más cercana a la nave se abomba**: los
+     segmentos planos del pad se inclinan en una joroba (pico `QUAKE_LIFT=22 u`) que ya no es
+     aterrizable y **permanece rota para el resto del nivel**. Aterrizar ahí = crash con el
+     mensaje `"YOU CRASHED" / "THE GROUND GAVE WAY"`.
+     - **config.h**: `QUAKE_START_TIME_MIN=8`, `QUAKE_START_TIME_MAX=20`, `QUAKE_RUMBLE_TIME=1`,
+       `QUAKE_SHAKE_MAX=4` px, `QUAKE_LIFT=22`, `QUAKE_DUST_COUNT=14`, `QUAKE_DUST_RANGE=14`,
+       `QUAKE_DUST_HEIGHT=18`, `QUAKE_DUST_LIFE=50`.
+     - **moons.h**: `moonHasQuakes(level)` (moonIndex==1); `moonEffectFree()` también excluye a
+       Ío (redundante con volcanes, por coherencia).
+     - **terrain.h/cpp**: **registro de zonas** `zones_` (startIdx/segCount/labelX/baseY/broken)
+       poblado por `init()` y `generate()`; API `zoneCount/zoneStart/zoneSegCount/zoneLabelX/
+       zoneBroken`. `ruptureZone(zone)` inclina los segmentos del pad con `y=baseY+QUAKE_LIFT·
+       sin(k·π/n)` (cada uno queda no plano → `checkLanding` vuelve 1), pone `landable=false`,
+       `multiplier=1`, `labelX=-1` (las luces de aproximación, el label "Nx" y los puntos del
+       minimapa desaparecen solos). `isZoneRupturedAt(x)`. Los conectores verticales ya existentes
+       de `Terrain::draw()` cierran los bordes de la joroba.
+     - **quake.h/cpp**: máquina de fases `IDLE→RUMBLING→BROKEN`. `findNearestZone()` elige el pad
+       más cercano a `ship.posX` (saltando los ya rotos). Polvo (`Dust` con vida propia, cruz 3 px),
+       grieta pulsante determinista (`prand`, sin rand() en draw), `justStruck()` un frame, `shake()`
+       decae (×0.88) tras el golpe. API tests: `active/phase/justStruck/shake/rupturedZone/
+       isRupturedAt`.
+     - **game.h**: miembro `Quake quake`, flag `bool quakeCrash` + getter `quakeCrashGet()`.
+     - **game.cpp**: `quake.reset()` en newGame/nextLevel/startDemo (con `setEnabled(false)` en
+       showcase), `isolateForWormhole()` lo apaga (defensivo; Ío nunca alberga wormhole),
+       `quake.update(dt, terrain, ship)` en la cadena de efectos. **Screen-shake** en `draw()`:
+       offset aleatorio determinista añadido a `viewX/viewY` del bloque de mundo y restaurado
+       antes del HUD (todo el mundo vibra, el HUD no). Crash en `checkCollisions()` si
+       `quake.isRupturedAt(ship.posX)` → `quakeCrash=true` → mensaje `"THE GROUND GAVE WAY"`.
+       HUD `SEISMIC` parpadeante en `(250,72)` solo durante RUMBLING.
+     - **quake_demo.cpp + Makefile + sync.sh**: demo que encuadra la vista en el pad objetivo,
+       render PPM en las 3 fases (intacto, RUMBLING con grieta/polvo, BROKEN con la joroba);
+       selftest `active + phase==BROKEN + zoneBroken + !landable`. `quake.cpp/h` añadidos a
+       `SRC` y a `SHARED` de `sync.sh`.
+     - **test_pc.cpp**: luna (IO sí, LUNA/EUROPA no), `zoneCount==4`, transición a BROKEN,
+       segmentos del pad `!landable`, `labelX==-1`, `checkLanding` en la zona rota → 1 y en otra →
+       2 (solo la más cercana se rompe), `isRupturedAt` dentro/fuera, integración con Game
+       (crash sobre la zona rota → `quakeCrashGet()` + `STATE_CRASHED`).
+     - Verificación: `./test_pc` **1098 OK** (+34), `./quake_demo` pasa (joroba visible: superficie
+       plana y~131 → perfil irregular y 126–139), compila composite 597 KB (45 %) y VGA 603 KB
+       (46 %), subido a la placa CRT (boot limpio, audio ~16 kHz).
     - **Refinamientos (27/8/2026)**: la nave se **disuelve** en vez de explotar — `ship.dissolve()` 
       desprende las 6 partes secuencialmente (patas→toberas→cabina→cuerpo, 0.35 s) con
       velocidades bajas en X e Y (0.12-0.65 u/tick), conservando la inercia que traía. Mensaje
@@ -1125,3 +1165,40 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       parpadea (≥90%), número fijo, sin `%`, con espacio. Tanto `ACID` como `WIND` glitchean
       al caer rayo. Las streaks de lluvia se recortan contra el terreno. Glifo `%` en la
       fuente 5×7 del renderer.
+    - **Refinamientos (14/9/2026, golpes repetidos + ruptura de superficie)**: los terremotos
+      dejaron de ser un golpe único a la plataforma más cercana. Ahora **el epicentro sigue a la
+      nave** (el `ship.posX` ± `QUAKE_STRIKE_JITTER=12 u`, clamp al mundo), así un temblor puede
+      ocurrir tanto con la nave alta en el cielo como **cerca de la superficie**, justo donde
+      está volando. El efecto físico es **destruir parte de la superficie**: `Terrain::
+      ruptureSurface(cx, QUAKE_SURFACE_HALF_W=12)` abomba un tramo de 24 u (joroba de pico
+      `QUAKE_LIFT`), y si la ventana toca una plataforma de aterrizaje, **la plataforma entera
+      se destruye** (`ruptureZone` → `landable=false`, `multiplier=1`, `labelX=-1`: desaparecen
+      las luces de aproximación, el label "Nx"/"p" y el punto del minimapa; `checkLanding()`
+      vuelve 1 → no se puede aterrizar ahí). El quake **se re-arma** (`QUAKE_REARM_TIME=1.5 s`
+      + timer 15–30 s) para golpear varias veces por nivel, pero **no dispara fuera de
+      `STATE_PLAYING`** (`update(dt,t,s,canStrike)`; el shake/polvo sí decaen en los mensajes
+      de crash/landing). `Terrain::isRupturedAt(x)` es **persistente** (zonas rotas +
+      `ruptureRanges_`, limpiado en `init()`/`generate()`) y es el que usa `checkCollisions()`;
+      `Quake::isRupturedAt` cubre solo la última ventana (para tests). API nueva: `strikeX()`,
+      `Terrain::zoneOverlapping(x1,x2)`. `quake_demo` ahora tiene 2 fases: (A) nave alta →
+      superficie abombada; (B) nave baja sobre un pad intacto → el golpe lo destruye. En el
+      primer demo de Ío los temblores siguen a la nave y casi siempre rompen su pad → showcase
+      del efecto. Verificado: `./test_pc` **1108 OK**, `./quake_demo` (fases A y B), `sync.sh`
+      OK.
+    - **TEMP (14/9/2026)**: la partida arranca en Ío (`START_LEVEL=2`, revertir a 1) y la demo
+      SIEMPRE abre su nivel en Ío/terremoto (`DEMO_QUAKE_FIRST=true` en config.h, revertir a
+      false). Además la nave de la demo aparece siempre a **altitud aleatoria** en la banda
+      `DEMO_SPAWN_Y_MIN..MAX` (100–260 u) en vez del fijo 150 (`game.cpp startDemo()`: spawn
+      `ship.reset(110, sy)`), para que cada run del attract se vea distinto.
+    - **Sonido del terremoto (14/9/2026)**: `sounds/gen_storm_sounds.py` genera `quake.wav`
+      (41.6 k, 2.6 s): retumbar grave lowpass (banda ~90–120 Hz + senos sub de 36/54 Hz) que
+      **crece en crescendo durante los 1.0 s de aviso** (`QUAKE_RUMBLE_TIME`, env `0.25+0.75·a²`
+      con pulso tectónico 1.7 Hz) y aterriza en un **boom/trueno seco de 48 Hz** con transitorio
+      ruidoso justo en el golpe, seguido de cola de réplica. `convert_wav.py` lo emite como
+      `QUAKE_SOUND` en `audio_data.h`. `audio.cpp`: buffer `quakeBuf` + `quakePos` (one-shot como
+      el rayo), mezclado en el ISR; `Audio::playQuake()`. El `.ino` lo dispara con
+      `game.quake.justRumbled()` — nuevo **flanco de entrada a RUMBLING** en `quake.h/cpp` (se
+      pone al pasar IDLE→RUMBLING, se limpia al inicio de `update()` como `justStruck_`), así el
+      crescendo del sample acompaña el aviso visual y el boom coincide con la ruptura. Flash:
+      composite 640998 B (48 %) / VGA 646150 B (49 %). Verificado: `./test_pc` **1104 OK**,
+      `sync.sh` OK, subido a CRT.

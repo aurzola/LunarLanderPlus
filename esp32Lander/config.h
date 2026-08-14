@@ -44,7 +44,16 @@ const bool DEMO_WORMHOLE_FIRST = true; // attract showcase: el primer nivel del 
                                         // abre el wormhole sobre el spawn (traga +
                                         // teleport); tras el salto el autopilot
                                         // sigue en la luna destino sin wormhole
-const int START_LEVEL = 1;  // partida ordenada desde LUNA
+const bool DEMO_QUAKE_FIRST = true;    // TEMP (14/9/2026): la demo SIEMPRE abre su
+                                        // nivel en Ío (terremoto) mientras esté activo;
+                                        // revertir a false para volver al showcase de
+                                        // wormhole y niveles al azar
+const int START_LEVEL = 2;  // TEMP (14/9/2026): primer nivel = Ío (terremoto).
+                            // Partida ordenada desde LUNA = 1. REVERTIR A 1
+const float DEMO_SPAWN_Y_MIN = 100.0f; // banda aleatoria de altitud inicial de la
+                                       // demo (la nave aparece siempre variable,
+                                       // nunca fija)
+const float DEMO_SPAWN_Y_MAX = 260.0f;
 const float DEMO_POWER_RATE = 0.4f;
 const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)
 
@@ -340,7 +349,7 @@ const float WORMHOLE_TURNS = 2.5f;      // turns per arm
 const float WORMHOLE_SPIN = 200.0f;     // deg/s arm rotation
 const int   WORMHOLE_PARTICLES = 24;
 const float WORMHOLE_EMERGE_T = 1.2f;   // s, fade-in (spin-up + brightness 0->1)
-const float WORMHOLE_DIE_T = 0.8f;      // s, fade out after the swallow
+const float WORMHOLE_DIE_T = 1.8f;      // s, fade out after the swallow
 const int   WORMHOLE_START_LEVEL = 2;   // levels >= 2 can host a sky wormhole
 const int   WORMHOLE_CHANCE_PERCENT = 25;
 const float WORMHOLE_GRAB_R = 200.0f;   // u, action radius (spiral outer radius)
@@ -357,5 +366,27 @@ const float WORMHOLE_SKY_Y_MAX = 280.0f;    // world u, max core height (sky ban
 const float WORMHOLE_SKY_CLEAR = 100.0f;    // world u, nucleus stays this high above terrain
 const float WORMHOLE_WARP_IN_T = 1.2f;  // s, ship materializes (fade-in) on the new moon
 const float WORMHOLE_RECYCLED_T = 4.0f; // s, "YOU'VE BEEN RECYCLED" banner after the warp
+
+// Earthquakes on Io (moonHasQuakes, moonIndex==1). A brief rumble (screen
+// shake + dust) warns the player, then the ground near the ship buckles:
+// a section of the surface is pushed up into a jagged ridge that is no
+// longer landable. If the strike overlaps a landing pad, the whole pad is
+// destroyed (label "Nx", approach lights and minimap point disappear) and
+// stays ruptured for the rest of the level. The quake re-arms after each
+// strike, so it can hit again while the ship is closer to the surface.
+const float QUAKE_START_TIME_MIN = 8.0f;   // s, earliest strike from level start
+const float QUAKE_START_TIME_MAX = 20.0f;  // s, latest strike from level start
+const float QUAKE_NEXT_TIME_MIN = 15.0f;   // s, gap after a strike before the next
+const float QUAKE_NEXT_TIME_MAX = 30.0f;   // s, max gap after a strike
+const float QUAKE_REARM_TIME = 1.5f;       // s, fresh-crack display before re-arming
+const float QUAKE_RUMBLE_TIME = 1.0f;      // s, warning rumble before the buckle
+const float QUAKE_SHAKE_MAX = 4.0f;        // screen px, shake magnitude
+const float QUAKE_LIFT = 22.0f;            // u, peak height of the buckling hump
+const float QUAKE_STRIKE_JITTER = 12.0f;   // u, max offset of the strike from the ship
+const float QUAKE_SURFACE_HALF_W = 12.0f;  // u, half-width of the ruptured surface
+const int   QUAKE_DUST_COUNT = 14;
+const float QUAKE_DUST_RANGE = 14.0f;      // u, horizontal spread of the dust
+const float QUAKE_DUST_HEIGHT = 18.0f;     // u, vertical spread of the dust
+const float QUAKE_DUST_LIFE = 50.0f;       // ticks, dust fade duration
 
 #endif

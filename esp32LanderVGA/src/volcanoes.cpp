@@ -279,6 +279,23 @@ void Volcanoes::reset(int level, const Terrain &t)
     clampFlows();
 }
 
+void Volcanoes::rebuild(const Terrain &t)
+{
+    if (!enabled_) return;
+    float w = t.getWidth();
+    for (int i = 0; i < (int)volc_.size(); i++) {
+        Volcano &v = volc_[i];
+        // Re-anchor the crater on the (possibly re-shaped) surface and re-run
+        // the downhill arms so the lava follows the new terrain. A pad that a
+        // quake destroyed is no longer landable, so computeLava() drops its
+        // range and clampFlows() stops holding the ribbon back there.
+        v.gy = terrainYAt(t, v.x, v.gy);
+        buildFlow(t, v, w);
+    }
+    computeLava(t);
+    clampFlows();
+}
+
 void Volcanoes::emit(const Volcano &v)
 {
     Particle p;

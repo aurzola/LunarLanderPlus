@@ -9,6 +9,7 @@ void playExplosion();
 void playTankerExplosion();
 void playBurn();
 void playLightning();
+void playQuake();
 uint32_t debugIsrCount();
 
 }
