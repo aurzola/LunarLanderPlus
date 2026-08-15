@@ -237,18 +237,14 @@ void Game::startDemo()
     demoHoldAltitude = false;
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
-    level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
+    // TEMP (16/9/2026): the demo ALWAYS opens on DEMO_LEVEL_FIRST (level 7,
+    // Encélado) so every attract cycle shows the same moon. REVERT to the
+    // first-cycle-only showcase (demoFirstLevelPending) + random 1..MAX_LEVEL.
+    level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE
+                                   : (DEMO_LEVEL_FIRST > 0) ? DEMO_LEVEL_FIRST
+                                                             : 1 + rand() % DEMO_MAX_LEVEL;
 
-    // First demo cycle: open on the fixed DEMO_LEVEL_FIRST (Encélado level 7
-    // by default) so the attract starts with a known moon/effect; the flag is
-    // consumed so the NEXT cycles re-roll a uniform random level. With
-    // DEMO_LEVEL_FIRST=0 there is no fixed first level (all random).
-    const bool firstLevelShowcase = DEMO_LEVEL_FIRST > 0 && DEMO_LEVEL_FORCE <= 0 &&
-                                    demoFirstLevelPending;
-    if (firstLevelShowcase) {
-        level = DEMO_LEVEL_FIRST;
-        demoFirstLevelPending = false;
-    }
+    const bool firstLevelShowcase = DEMO_LEVEL_FIRST > 0 && DEMO_LEVEL_FORCE <= 0;
 
     // Wormhole showcase: while DEMO_WORMHOLE_FIRST is on, the very first demo
     // level opens the sky wormhole, so re-roll until the level can host one
@@ -1368,7 +1364,8 @@ void Game::update()
             }
         }
         ship.update();
-        if (geysers.inPlume(ship.posX, ship.posY)) ship.velY -= GEYSER_PUSH;
+        if (geysers.inPlume(ship.posX, ship.posY))
+            ship.velY -= GEYSER_PUSH * (ship.gravity / GRAVITY);
 
         // Acid rain on Europa: rain inside a drifting cell corrodes the ship;
         // at 100% the acid has eaten through the hull and the ship is lost.
@@ -1967,6 +1964,10 @@ void Game::draw(Renderer &r)
             }
 
             if (demo) r.text(22, 62, "DEMO");
+            snprintf(buf, sizeof buf, "SCL %.3f", ship.scale);
+            r.text(250, 92, buf);
+            snprintf(buf, sizeof buf, "VWS %.3f", viewScale);
+            r.text(250, 102, buf);
             bool windShown = windEnabled;
             if (windShown) {
                 if (!glitch) {

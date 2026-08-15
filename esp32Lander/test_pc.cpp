@@ -344,6 +344,15 @@ static int testGeysers()
     }
     CHECK(maxAlive > 0);
     CHECK(sawPlume);
+
+    // The plume push must be scaled by the moon's gravity (Game::update uses
+    // GEYSER_PUSH * gravity/GRAVITY). On Enceladus (0.70x) the net downward
+    // gravity inside the plume is gravity - GEYSER_PUSH*0.70 = 0.000175, so a
+    // ship in the plume still falls (it never hovers forever). Before the fix
+    // the fixed push left only 0.00010 (~29% of local gravity) and the demo
+    // autopilot's angle noise could hold the ship at VY=-2 burning fuel.
+    CHECK(fabsf(0.0005f * 0.70f - GEYSER_PUSH * 0.70f - 0.000175f) < 0.000001f);
+    CHECK(0.0005f * 0.70f - GEYSER_PUSH * 0.70f > 0.000150f);
     return 0;
 }
 
