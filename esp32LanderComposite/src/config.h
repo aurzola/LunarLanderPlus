@@ -45,10 +45,10 @@ const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nive
                                         // activarlo, el primer nivel del demo abre el
                                         // wormhole (traga + teleport) y el autopilot
                                         // sigue en la luna destino sin wormhole
-const int DEMO_LEVEL_FIRST = 7;         // 16/9/2026: el PRIMER ciclo de la demo abre en
-                                        // este nivel fijo (7 = Encélado/géiseres); luego
-                                        // cada ciclo re-tira al azar 1..DEMO_MAX_LEVEL.
-                                        // 0 = sin primer nivel fijo (todo al azar)
+const int DEMO_LEVEL_FIRST = 7;         // TEMP (16/9/2026): la demo SIEMPRE abre en este
+                                        // nivel fijo (7 = Encélado/géiseres), cada ciclo.
+                                        // REVERTIR: primer ciclo fijo + luego al azar
+                                        // 1..DEMO_MAX_LEVEL. 0 = sin nivel fijo
 const int START_LEVEL = 2;  // TEMP (14/9/2026): primer nivel = Ío (terremoto).
                             // Partida ordenada desde LUNA = 1. REVERTIR A 1
 const float DEMO_SPAWN_Y_MIN = 100.0f; // banda aleatoria de altitud inicial de la
@@ -109,7 +109,11 @@ const int GEYSER_MAX_PARTS = 250;
 const float GEYSER_VENT_OFFSET = 14.0f;
 const float GEYSER_RADIUS = 8.0f;
 const float GEYSER_PLUME_H = 40.0f;
-const float GEYSER_PUSH = 0.00025f;
+const float GEYSER_PUSH = 0.00025f;  // vertical push inside the plume, scaled by
+                                     // (ship.gravity/GRAVITY) in Game::update so it
+                                     // always cancels ~50% of the local gravity
+                                     // (on Enceladus 0.70x the fixed push would
+                                     // cancel 71% and trap the ship hovering).
 
 // Acid rain on Europa: a few drifting storm cells. Rain corrodes the ship
 // while it is inside a cell (ACID meter 0-100%); at 100% the ship is

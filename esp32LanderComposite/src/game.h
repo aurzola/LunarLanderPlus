@@ -110,7 +110,7 @@ private:
     float warpInT; // wormhole respawn: ship materializes (scale 0->1.5) over this
     float recycledTimer; // wormhole respawn: shows the "recycled" banner while > 0
     bool demoHoldAltitude;
-    bool demoFirstLevelPending; // first demo cycle opens on DEMO_LEVEL_FIRST (then random)
+    bool demoFirstLevelPending; // TEMP: demo always opens on DEMO_LEVEL_FIRST (unused; revert)
     bool lavaBurn;
     bool ringHit;
     bool twisterCrash;

@@ -1238,3 +1238,24 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       wormhole nunca abre en attract (la rama demo de `spawnWormhole` exige `force=true`).
     - Verificado: `./test_pc` **1123 OK** (incluye `testViewportCull`), `sync.sh` OK (composite y
       VGA idénticos), composite 641466 B (48 %), subido a CRT.
+51. **Géiseres de Encélado: push escalado por gravedad + debug de escala en HUD (16/9/2026,
+    rama `demo-enceladus-scale-hud`)**.
+    - **Bug "hover forever" del demo en Encélado**: en la columna del géiser el push fijo
+      `GEYSER_PUSH=0.00025` anulaba el **71 %** de la gravedad local (Encélado = 0.70×), dejando
+      caída neta residual de 0.00010 (~29 %); el autopilot del demo, que corta empuje con
+      `velY < -0.01`, podía quedar flotando a `VY=-2` (velY −0.01) quemando combustible para
+      siempre. **Fix**: `Game::update()` aplica `ship.velY -= GEYSER_PUSH · (ship.gravity/GRAVITY)`
+      → la columna cancela **siempre ~50 % de la gravedad local** (en Encélado queda caída neta
+      0.000175, la nave nunca flota).
+    - **Detección en `demo_sim.cpp`**: rastrea el "hovering" (|velY| < 0.02, `alt > 30`, empuje
+      > 0.05) por seed, imprime los peores casos y cuenta `stuck` en el resumen
+      (`=== wins=.. losses=.. timeouts=.. stuck=..`).
+    - **Test nuevo en `test_pc.cpp`** (`testGeysers`): verifica la fórmula neta en Encélado
+      (0.0005·0.70 − 0.00025·0.70 = 0.000175) y que la caída neta queda > 0.000150.
+    - **Debug `SCL`/`VWS` en el HUD (TEMP)**: mientras la demo está activa se dibuja
+      `SCL <ship.scale>` y `VWS <viewScale>` en `(250,92)`/`(250,102)` para validar en CRT el
+      escalado/zoom (nave y vista) durante la rama; quitar al cerrar.
+    - **Demo TEMP**: `DEMO_LEVEL_FIRST=7` ahora abre SIEMPRE en Encélado/géiseres **cada ciclo**
+      (antes solo el primer ciclo y luego al azar 1..12); `demoFirstLevelPending` queda sin
+      consumir. REVERTIR al primer-ciclo-fijo.
+    - Verificado: `./test_pc` OK, `sync.sh` OK (esp32Lander == composite == VGA), subido a CRT.
