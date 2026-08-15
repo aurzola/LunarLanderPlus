@@ -110,7 +110,7 @@ private:
     float warpInT; // wormhole respawn: ship materializes (scale 0->1.5) over this
     float recycledTimer; // wormhole respawn: shows the "recycled" banner while > 0
     bool demoHoldAltitude;
-    bool demoQuakeFirst;
+    bool demoFirstLevelPending; // first demo cycle opens on DEMO_LEVEL_FIRST (then random)
     bool lavaBurn;
     bool ringHit;
     bool twisterCrash;
@@ -123,6 +123,13 @@ private:
     std::vector<DustParticle> dust;
     void updateView();
     void setZoom(bool zoom, float zm = 5.0f);
+    // Viewport culling: an effect is only updated/drawn while it can be seen
+    // (or, for the physics hooks, while it can reach the ship). World-space
+    // point/vertical-band vs the visible world rect from the current view.
+    bool effectVisible(float wx, float wy, float margin) const;
+    bool xInView(float wx, float margin) const;
+    bool bandVisible(float wy, float margin) const;
+    bool atmosphereInView() const;
     void checkCollisions();
     void endGame();
     void startDemo();

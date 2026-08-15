@@ -1202,3 +1202,39 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       crescendo del sample acompaña el aviso visual y el boom coincide con la ruptura. Flash:
       composite 640998 B (48 %) / VGA 646150 B (49 %). Verificado: `./test_pc` **1104 OK**,
       `sync.sh` OK, subido a CRT.
+50. **Culling de viewport para los efectos ambientales (16/9/2026, rama `quake`)**.
+    - **Motivo**: en zoom (5×) la ventana visible son solo ~187 u de ancho de un mundo de 800+,
+      pero todos los efectos se actualizaban y dibujaban cada frame sin importar dónde estuviera
+      la cámara. El wormhole es el caso extremo: ~900 `powf` + miles de `pixelShade` por frame
+      (espiral, núcleo, partículas) aun cuando está completamente fuera de pantalla.
+    - **Mecánica**: `Game` calcula el rectángulo de mundo visible a partir de `viewX/viewY/
+      viewScale` y expone 4 helpers (`game.h/cpp`): `effectVisible(wx,wy,margin)` (punto + margen
+      de alcance), `xInView(wx,margin)` (solo horizontal, para cosas sobre el terreno),
+      `bandVisible(wy,margin)` (solo vertical, para bandas que cruzan todo el ancho) y
+      `atmosphereInView()` (bandas de niebla de Titán).
+    - **Aplicado en `Game::update()`**: atmósfera solo si `atmosphereInView()`; wormhole solo si
+      está visible **o** puede alcanzar a la nave (`< WORMHOLE_GRAB_R`) **o** está capturado/
+      tragado (el Game espera a las fases swallow/dying para saltar de luna, así que esas
+      secuencias siguen corriendo aunque el hueco salga de vista).
+    - **Aplicado en `Game::draw()`**: wormhole (`effectVisible(WORMHOLE_OUTER_R)`), atmósfera
+      (`atmosphereInView()`), géiseres (algún vent + alcance del chorro en X), volcanes
+      (`volcanoes.countInView`), anillos (banda `RING_CY` ± curva+jitter), torbellino (ancla ±
+      `TWISTER_HEIGHT`).
+    - **La física NO se culla**: arrastre de atmósfera, corrientes, colisiones de anillos, etc.
+      corren directo en `Game::update()`/`checkCollisions()` siempre. El culling es solo para el
+      update visual y el draw (el coste caro).
+    - **`rings.cpp`**: `drawFog` vuelve al inicio si `RING_FOG_BRIGHT==0` (la niebla desactivada
+      ya no recorre la banda entera escribiendo brillo 0).
+    - **Tests**: `testViewportCull` en `test_pc.cpp` con un `CountRenderer` que cuenta todas las
+      llamadas primitivas (incluidas fuera de pantalla): parquea la nave en zoom y comprueba (a)
+      que un hueco `EMERGING` fuera de vista **no avanza** mientras que uno visible sí pasa a
+      `ACTIVE`, y (b) que el draw fuera de pantalla no genera píxeles extra del wormhole
+      (`on.px > off.px`).
+    - **Demo (16/9/2026)**: `DEMO_QUAKE_FIRST` se elimina (ya no hay showcase de Ío) y se
+      sustituye por `DEMO_LEVEL_FIRST=7` (config.h): el **primer ciclo** de la demo abre en
+      Encélado/géiseres (`demoFirstLevelPending` consumido en `startDemo()`); los ciclos
+      siguientes re-tiran nivel al azar 1..12. `DEMO_WORMHOLE_FIRST=false` (16/9/2026): la demo
+      ya NO fuerza el showcase de wormhole — cada ciclo muestra una luna/efecto al azar y el
+      wormhole nunca abre en attract (la rama demo de `spawnWormhole` exige `force=true`).
+    - Verificado: `./test_pc` **1123 OK** (incluye `testViewportCull`), `sync.sh` OK (composite y
+      VGA idénticos), composite 641466 B (48 %), subido a CRT.

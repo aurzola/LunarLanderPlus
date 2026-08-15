@@ -89,7 +89,7 @@ Game::Game()
       zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
-      demoQuakeFirst(true),
+      demoFirstLevelPending(true),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false),
       acidBurn(false), quakeCrash(false), explosionInited(false),
       demoTankerPhase(0)
@@ -239,22 +239,23 @@ void Game::startDemo()
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
     level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
 
-    // Quake showcase: the demo always picks Io (level 2) so the attract mode
-    // shows the earthquake effect. While the TEMP flag DEMO_QUAKE_FIRST is on
-    // it applies to EVERY demo cycle (not just the first one); with it off,
-    // only the very first demo level is the quake showcase.
-    const bool quakeShowcase = (DEMO_QUAKE_FIRST || demoQuakeFirst) && DEMO_LEVEL_FORCE <= 0;
-    if (quakeShowcase) {
-        level = 2; // Io, has quakes
-        demoQuakeFirst = false;
+    // First demo cycle: open on the fixed DEMO_LEVEL_FIRST (Encélado level 7
+    // by default) so the attract starts with a known moon/effect; the flag is
+    // consumed so the NEXT cycles re-roll a uniform random level. With
+    // DEMO_LEVEL_FIRST=0 there is no fixed first level (all random).
+    const bool firstLevelShowcase = DEMO_LEVEL_FIRST > 0 && DEMO_LEVEL_FORCE <= 0 &&
+                                    demoFirstLevelPending;
+    if (firstLevelShowcase) {
+        level = DEMO_LEVEL_FIRST;
+        demoFirstLevelPending = false;
     }
 
-    // Wormhole showcase: the very first demo level always opens the sky
-    // wormhole, so re-roll until the level can host one (>= WORMHOLE_START_LEVEL
-    // and on an effect-free moon, so the wormhole never shares the sky with
-    // another effect). The quake showcase takes priority — both never run
-    // together on the same demo cycle.
-    const bool showcase = DEMO_WORMHOLE_FIRST && DEMO_LEVEL_FORCE <= 0 && !quakeShowcase;
+    // Wormhole showcase: while DEMO_WORMHOLE_FIRST is on, the very first demo
+    // level opens the sky wormhole, so re-roll until the level can host one
+    // (>= WORMHOLE_START_LEVEL and on an effect-free moon, so the wormhole
+    // never shares the sky with another effect). Never runs together with the
+    // first-level showcase (both would fight over the same demo cycle).
+    const bool showcase = DEMO_WORMHOLE_FIRST && DEMO_LEVEL_FORCE <= 0 && !firstLevelShowcase;
     if (showcase) {
         while (level < WORMHOLE_START_LEVEL || !moonEffectFree(level))
             level = 1 + rand() % DEMO_MAX_LEVEL;
@@ -1001,6 +1002,48 @@ void Game::updateView()
     else if (sy > SCREEN_H - marginbottom) viewY = -ship.posY * viewScale + SCREEN_H - marginbottom;
 }
 
+// Culling tests against the world-space rectangle currently visible: a world
+// point expanded by a margin (the effect's reach) and a full-width horizontal
+// band checked vertically. viewX/viewY/viewScale hold the CURRENT view; in
+// zoom the visible slice is only ~187 world units wide, so effects whose
+// anchor is far outside it are skipped entirely (their per-frame draw cost is
+// the expensive part — e.g. the wormhole runs ~900 powf + thousands of
+// pixelShade calls every frame even when fully off screen).
+bool Game::effectVisible(float wx, float wy, float margin) const
+{
+    float x0 = -viewX / viewScale;
+    float x1 = (SCREEN_W - viewX) / viewScale;
+    float y0 = -viewY / viewScale;
+    float y1 = (SCREEN_H - viewY) / viewScale;
+    return wx + margin >= x0 && wx - margin <= x1 &&
+           wy + margin >= y0 && wy - margin <= y1;
+}
+
+bool Game::xInView(float wx, float margin) const
+{
+    float x0 = -viewX / viewScale;
+    float x1 = (SCREEN_W - viewX) / viewScale;
+    return wx + margin >= x0 && wx - margin <= x1;
+}
+
+bool Game::bandVisible(float wy, float margin) const
+{
+    float y0 = -viewY / viewScale;
+    float y1 = (SCREEN_H - viewY) / viewScale;
+    return wy + margin >= y0 && wy - margin <= y1;
+}
+
+bool Game::atmosphereInView() const
+{
+    if (!atmosphere.active()) return false;
+    // Fog bands span the whole world width, so only the vertical extent
+    // matters (ellipse arc + band half + vertical drift).
+    const float m = FOG_BAND_HALF * 2.0f + FOG_DRIFT_A + FOG_CURVE_A;
+    for (int i = 0; i < atmosphere.bandCount(); i++)
+        if (bandVisible(atmosphere.bandCenter(i), m)) return true;
+    return false;
+}
+
 void Game::checkCollisions()
 {
     // A rock from the debris rings shatters the ship if it hits it mid-flight.
@@ -1137,10 +1180,24 @@ void Game::update()
     if (state != STATE_WAITING) storm.update(dt, terrain);
     if (state != STATE_WAITING) geysers.update(dt);
     if (state != STATE_WAITING) volcanoes.update(dt);
-    if (state != STATE_WAITING) atmosphere.update(dt);
+    // Titan fog: t_ only drives the band drift (the drag/downdraft/hidesShip
+    // hooks run directly in Game), so there is nothing to keep alive while the
+    // bands are fully out of view.
+    if (state != STATE_WAITING && atmosphereInView()) atmosphere.update(dt);
     if (state != STATE_WAITING) rings.update(dt);
     if (state != STATE_WAITING) twister.update(dt);
-    if (state != STATE_WAITING) wormhole.update(dt);
+    // Wormhole: its update only advances visual state (spin/phase/particles).
+    // Freeze it while the hole is off screen AND cannot reach the ship, but
+    // keep driving it during the pull/vortex/teleport sequences (Game waits on
+    // the swallow/dying phases to advance before jumping moons).
+    if (state != STATE_WAITING && wormhole.active()) {
+        float dx = wormhole.coreX() - ship.posX;
+        float dy = wormhole.coreY() - ship.posY;
+        bool nearShip = dx * dx + dy * dy < WORMHOLE_GRAB_R * WORMHOLE_GRAB_R;
+        if (effectVisible(wormhole.coreX(), wormhole.coreY(), WORMHOLE_OUTER_R) ||
+            nearShip || wormhole.captured() || wormhole.swallowed())
+            wormhole.update(dt);
+    }
     if (state != STATE_WAITING) acidrain.update(dt);
     if (state != STATE_WAITING) quake.update(dt, terrain, ship, state == STATE_PLAYING);
 
@@ -1454,7 +1511,8 @@ void Game::draw(Renderer &r)
     r.clear();
 
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
-    if (state != STATE_WAITING) atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
+    if (state != STATE_WAITING && atmosphereInView())
+        atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
 
     int warnY = 62;
 
@@ -1689,11 +1747,21 @@ void Game::draw(Renderer &r)
             viewY += sy;
         }
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
-        geysers.draw(r, viewX, viewY, viewScale);
-        volcanoes.draw(r, viewX, viewY, viewScale);
+        {
+            // Geysers: only draw when at least one vent (plus plume reach) is
+            // in view. Vents sit on terrain, so horizontal visibility is enough.
+            bool gv = false;
+            for (int i = 0; i < geysers.ventCount() && !gv; i++)
+                gv = xInView(geysers.ventX(i), GEYSER_SPOUT_H + 20.0f);
+            if (gv) geysers.draw(r, viewX, viewY, viewScale);
+        }
+        if (volcanoes.countInView(viewX, viewScale) > 0)
+            volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
-        rings.draw(r, terrain, viewX, viewY, viewScale);
-        twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
+        if (rings.active() && bandVisible(RING_CY, RING_CURVE_A + RING_Y_JITTER + 16.0f))
+            rings.draw(r, terrain, viewX, viewY, viewScale);
+        if (effectVisible(twister.coreX(), twister.coreY(terrain), TWISTER_HEIGHT))
+            twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
         tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
         acidrain.draw(r, terrain, viewX, viewY, viewScale);
         quake.draw(r, viewX, viewY, viewScale);
@@ -1717,7 +1785,8 @@ void Game::draw(Renderer &r)
             drawProbe(r, bx, by, ux, uy, ship.scale, viewScale);
         }
         storm.drawBolts(r, viewX, viewY, viewScale);
-        wormhole.draw(r, viewX, viewY, viewScale);
+        if (effectVisible(wormhole.coreX(), wormhole.coreY(), WORMHOLE_OUTER_R))
+            wormhole.draw(r, viewX, viewY, viewScale);
 
         drawDockingPiP(r);
 

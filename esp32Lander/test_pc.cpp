@@ -1686,6 +1686,91 @@ static int testVolcanoRebuild()
     return 0;
 }
 
+// Counting renderer: counts every primitive call (including off-screen ones)
+// so a test can detect whether an effect's draw actually ran.
+struct CountRenderer : public Renderer {
+    long long px = 0;
+    long long calls = 0;
+    void clear() override { calls++; }
+    void pixel(float, float) override { px++; calls++; }
+    void pixelShade(float, float, int) override { px++; calls++; }
+    void line(float, float, float, float) override { calls++; }
+    void lineShade(float, float, float, float, int) override { px++; calls++; }
+    void rect(float, float, float, float) override { calls++; }
+    void rectShade(float, float, float, float, int) override { px++; calls++; }
+    void circle(float, float, float) override { calls++; }
+    void text(float, float, const char*) override { calls++; }
+    void textScaled(float, float, const char*, float, int) override { calls++; }
+    void fillPolygon(const float*, const float*, int, int) override { px++; calls++; }
+    void setClip(float, float, float, float) override { calls++; }
+    void clearClip() override { calls++; }
+    void flush() override { calls++; }
+    int width() const override { return (int)SCREEN_W; }
+    int height() const override { return (int)SCREEN_H; }
+};
+
+static int testViewportCull()
+{
+    // In a zoomed view (5x) the wormhole must be neither updated nor drawn
+    // while its core sits outside the visible world rectangle: park the ship
+    // low over the terrain so the camera zooms in, and place the hole in the
+    // sky above the viewport.
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    g.newGame();
+    g.introTimer = 0.0f;
+    float gy = g.terrain.yAt(400.0f, 500.0f);
+    g.ship.posX = 400.0f;
+    g.ship.posY = gy - 40.0f;
+    g.ship.velX = 0.0f;
+    g.ship.velY = 0.0f;
+    g.ship.rotation = 0.0f;
+    g.ship.targetRotation = 0.0f;
+
+    // Update culling: an EMERGING hole just below the ACTIVE threshold must
+    // not advance while off screen. The 1st update engages the zoom (still
+    // normal view this tick), the 2nd runs fully zoomed with the hole culled.
+    g.wormhole.reset(400.0f, WORMHOLE_SKY_Y_MIN); // far above the zoom view
+    for (int i = 0; i < (int)(WORMHOLE_EMERGE_T / GAME_DT) - 1; i++)
+        g.wormhole.update(GAME_DT);
+    CHECK(g.wormhole.phase() == WH_EMERGING);
+    g.update();
+    g.update();
+    CHECK(g.wormhole.phase() == WH_EMERGING); // frozen: t_ still < EMERGE_T
+
+    // Control: the same hole parked in the zoomed viewport near the ship (but
+    // beyond WORMHOLE_SWALLOW_R and WORMHOLE_CAPTURE_R so the radial pull does
+    // not script it) advances EMERGING -> ACTIVE in those two updates.
+    g.wormhole.reset(306.0f, gy + 40.0f);
+    for (int i = 0; i < (int)(WORMHOLE_EMERGE_T / GAME_DT) - 1; i++)
+        g.wormhole.update(GAME_DT);
+    CHECK(g.wormhole.phase() == WH_EMERGING);
+    g.update();
+    g.update();
+    CHECK(g.wormhole.phase() == WH_ACTIVE);
+
+    // Draw culling: same scene, hole ACTIVE off screen vs on screen. The only
+    // difference is the wormhole, so the extra pixels prove the off-screen
+    // draw was skipped (and the on-screen one ran).
+    g.wormhole.reset(400.0f, WORMHOLE_SKY_Y_MIN);
+    for (int i = 0; i < (int)(WORMHOLE_EMERGE_T / GAME_DT) + 10; i++)
+        g.wormhole.update(GAME_DT);
+    CHECK(g.wormhole.phase() == WH_ACTIVE);
+    CountRenderer off;
+    g.draw(off);
+    g.wormhole.reset(400.0f, gy - 30.0f);
+    for (int i = 0; i < (int)(WORMHOLE_EMERGE_T / GAME_DT) + 10; i++)
+        g.wormhole.update(GAME_DT);
+    CountRenderer on;
+    g.draw(on);
+    CHECK(on.px > off.px);
+    CHECK(off.calls > 0);
+    CHECK(on.calls > 0);
+    return 0;
+}
+
 int main()
 {
     int r;
@@ -1728,6 +1813,8 @@ int main()
     r = testTanker();
     if (r) return r;
     r = testParachute();
+    if (r) return r;
+    r = testViewportCull();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

@@ -40,14 +40,15 @@ const float GAMEOVER_RESET_DELAY = 5.0f;
 const float DEMO_START_DELAY = 5.0f;
 const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;  // 0 = demo elige nivel al azar 1..DEMO_MAX_LEVEL
-const bool DEMO_WORMHOLE_FIRST = true; // attract showcase: el primer nivel del demo
-                                        // abre el wormhole sobre el spawn (traga +
-                                        // teleport); tras el salto el autopilot
+const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nivel al azar
+                                        // 1..DEMO_MAX_LEVEL (cualquier luna). Al
+                                        // activarlo, el primer nivel del demo abre el
+                                        // wormhole (traga + teleport) y el autopilot
                                         // sigue en la luna destino sin wormhole
-const bool DEMO_QUAKE_FIRST = true;    // TEMP (14/9/2026): la demo SIEMPRE abre su
-                                        // nivel en Ío (terremoto) mientras esté activo;
-                                        // revertir a false para volver al showcase de
-                                        // wormhole y niveles al azar
+const int DEMO_LEVEL_FIRST = 7;         // 16/9/2026: el PRIMER ciclo de la demo abre en
+                                        // este nivel fijo (7 = Encélado/géiseres); luego
+                                        // cada ciclo re-tira al azar 1..DEMO_MAX_LEVEL.
+                                        // 0 = sin primer nivel fijo (todo al azar)
 const int START_LEVEL = 2;  // TEMP (14/9/2026): primer nivel = Ío (terremoto).
                             // Partida ordenada desde LUNA = 1. REVERTIR A 1
 const float DEMO_SPAWN_Y_MIN = 100.0f; // banda aleatoria de altitud inicial de la
