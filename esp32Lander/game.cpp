@@ -84,11 +84,14 @@ Game::Game()
     : state(STATE_WAITING), score(0), level(1), fuel(FUEL_MAX), introTimer(0),
       demo(false), demoTimer(DEMO_START_DELAY),
       windEnabled(false), windStrength(0), windDir(1),
+      hullIntegrity(100),
       viewX(0), viewY(0), viewScale(1.0f),
       zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
-      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false), acidBurn(false), explosionInited(false),
+      demoFirstLevelPending(true),
+      lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false),
+      acidBurn(false), quakeCrash(false), explosionInited(false),
       demoTankerPhase(0)
 {
     input.startPressed = false;
@@ -118,6 +121,7 @@ void Game::newGame()
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
+    hullIntegrity = 100;
     state = STATE_PLAYING;
     ship.reset(110, 150);
     setZoom(false);
@@ -141,6 +145,7 @@ void Game::newGame()
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
     acidrain.reset(level, terrain);
+    quake.reset(level, terrain, ship);
     spawnWormhole();
     if (wormhole.active()) isolateForWormhole();
     stormHitTimer = 0;
@@ -149,6 +154,7 @@ void Game::newGame()
     ringHit = false;
     tankerCrash = false;
     acidBurn = false;
+    quakeCrash = false;
     explosionInited = false;
     terrain.clearCrater();
 }
@@ -165,6 +171,7 @@ void Game::restartLevel()
     ringHit = false;
     tankerCrash = false;
     acidBurn = false;
+    quakeCrash = false;
     explosionInited = false;
     twisterCrash = false;
     wormhole.disable();
@@ -198,6 +205,7 @@ void Game::nextLevel()
     twister.reset(level, terrain);
     tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
     acidrain.reset(level, terrain);
+    quake.reset(level, terrain, ship);
     spawnWormhole();
     if (wormhole.active()) isolateForWormhole();
     stormHitTimer = 0;
@@ -205,6 +213,7 @@ void Game::nextLevel()
     ringHit = false;
     tankerCrash = false;
     acidBurn = false;
+    quakeCrash = false;
     explosionInited = false;
     terrain.clearCrater();
     state = STATE_PLAYING;
@@ -229,11 +238,24 @@ void Game::startDemo()
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
     level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE : 1 + rand() % DEMO_MAX_LEVEL;
-    // Wormhole showcase: the very first demo level always opens the sky
-    // wormhole, so re-roll until the level can host one (>= WORMHOLE_START_LEVEL
-    // and on an effect-free moon, so the wormhole never shares the sky with
-    // another effect).
-    const bool showcase = DEMO_WORMHOLE_FIRST && DEMO_LEVEL_FORCE <= 0;
+
+    // First demo cycle: open on the fixed DEMO_LEVEL_FIRST (Encélado level 7
+    // by default) so the attract starts with a known moon/effect; the flag is
+    // consumed so the NEXT cycles re-roll a uniform random level. With
+    // DEMO_LEVEL_FIRST=0 there is no fixed first level (all random).
+    const bool firstLevelShowcase = DEMO_LEVEL_FIRST > 0 && DEMO_LEVEL_FORCE <= 0 &&
+                                    demoFirstLevelPending;
+    if (firstLevelShowcase) {
+        level = DEMO_LEVEL_FIRST;
+        demoFirstLevelPending = false;
+    }
+
+    // Wormhole showcase: while DEMO_WORMHOLE_FIRST is on, the very first demo
+    // level opens the sky wormhole, so re-roll until the level can host one
+    // (>= WORMHOLE_START_LEVEL and on an effect-free moon, so the wormhole
+    // never shares the sky with another effect). Never runs together with the
+    // first-level showcase (both would fight over the same demo cycle).
+    const bool showcase = DEMO_WORMHOLE_FIRST && DEMO_LEVEL_FORCE <= 0 && !firstLevelShowcase;
     if (showcase) {
         while (level < WORMHOLE_START_LEVEL || !moonEffectFree(level))
             level = 1 + rand() % DEMO_MAX_LEVEL;
@@ -241,6 +263,7 @@ void Game::startDemo()
     score = 0;
     fuel = FUEL_MAX;
     ship.fuel = FUEL_MAX;
+    hullIntegrity = 100;
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
@@ -265,6 +288,8 @@ void Game::startDemo()
     tanker.reset(level, terrain, ship.fuel, true); // full tank -> never active
     acidrain.reset(level, terrain);
     if (showcase) acidrain.setEnabled(false);
+    quake.reset(level, terrain, ship);
+    if (showcase) quake.setEnabled(false);
     // Demo showcase: jump-start the acid meter so the attract shows the
     // corrosion crash quickly (the ship slowly dissolves in the rain and
     // the player sees the "ACID RAIN CORRODED THE SHIP" ending).
@@ -276,9 +301,16 @@ void Game::startDemo()
     ringHit = false;
     tankerCrash = false;
     acidBurn = false;
+    quakeCrash = false;
     explosionInited = false;
     terrain.clearCrater();
-    ship.reset(110, 150);
+    // Random initial altitude: the demo ship always spawns at a variable
+    // height within the band, so each attract run starts differently.
+    {
+        int span = (int)(DEMO_SPAWN_Y_MAX - DEMO_SPAWN_Y_MIN);
+        float sy = DEMO_SPAWN_Y_MIN + (float)(rand() % span);
+        ship.reset(110, sy);
+    }
     ship.velX = 0.06f;
     setZoom(false);
     resetTimer = 0;
@@ -449,6 +481,7 @@ void Game::isolateForWormhole()
     twister.setEnabled(false);
     tanker.setEnabled(false);
     acidrain.setEnabled(false);
+    quake.setEnabled(false);
 }
 
 void Game::wormholeJump()
@@ -969,6 +1002,48 @@ void Game::updateView()
     else if (sy > SCREEN_H - marginbottom) viewY = -ship.posY * viewScale + SCREEN_H - marginbottom;
 }
 
+// Culling tests against the world-space rectangle currently visible: a world
+// point expanded by a margin (the effect's reach) and a full-width horizontal
+// band checked vertically. viewX/viewY/viewScale hold the CURRENT view; in
+// zoom the visible slice is only ~187 world units wide, so effects whose
+// anchor is far outside it are skipped entirely (their per-frame draw cost is
+// the expensive part — e.g. the wormhole runs ~900 powf + thousands of
+// pixelShade calls every frame even when fully off screen).
+bool Game::effectVisible(float wx, float wy, float margin) const
+{
+    float x0 = -viewX / viewScale;
+    float x1 = (SCREEN_W - viewX) / viewScale;
+    float y0 = -viewY / viewScale;
+    float y1 = (SCREEN_H - viewY) / viewScale;
+    return wx + margin >= x0 && wx - margin <= x1 &&
+           wy + margin >= y0 && wy - margin <= y1;
+}
+
+bool Game::xInView(float wx, float margin) const
+{
+    float x0 = -viewX / viewScale;
+    float x1 = (SCREEN_W - viewX) / viewScale;
+    return wx + margin >= x0 && wx - margin <= x1;
+}
+
+bool Game::bandVisible(float wy, float margin) const
+{
+    float y0 = -viewY / viewScale;
+    float y1 = (SCREEN_H - viewY) / viewScale;
+    return wy + margin >= y0 && wy - margin <= y1;
+}
+
+bool Game::atmosphereInView() const
+{
+    if (!atmosphere.active()) return false;
+    // Fog bands span the whole world width, so only the vertical extent
+    // matters (ellipse arc + band half + vertical drift).
+    const float m = FOG_BAND_HALF * 2.0f + FOG_DRIFT_A + FOG_CURVE_A;
+    for (int i = 0; i < atmosphere.bandCount(); i++)
+        if (bandVisible(atmosphere.bandCenter(i), m)) return true;
+    return false;
+}
+
 void Game::checkCollisions()
 {
     // A rock from the debris rings shatters the ship if it hits it mid-flight.
@@ -1066,11 +1141,16 @@ void Game::checkCollisions()
             landFuelBonus = 50;
         } else {
             score += (int)(15 * mult);
+            hullIntegrity -= 15.0f;
+            if (hullIntegrity < 0.0f) hullIntegrity = 0.0f;
         }
         if (!chuteAvailable && terrain.onChuteSpot(ship.posX)) chuteAvailable = true;
         state = STATE_LANDED;
         resetTimer = CRASH_RESET_DELAY;
     } else if (result == 1) {
+        if (terrain.isRupturedAt(ship.posX)) {
+            quakeCrash = true;
+        }
         int lost = 200 + (rand() % 200);
         terrain.setCrater(ship.posX, CRATER_HALF_W);
         ship.crash();
@@ -1100,11 +1180,30 @@ void Game::update()
     if (state != STATE_WAITING) storm.update(dt, terrain);
     if (state != STATE_WAITING) geysers.update(dt);
     if (state != STATE_WAITING) volcanoes.update(dt);
-    if (state != STATE_WAITING) atmosphere.update(dt);
+    // Titan fog: t_ only drives the band drift (the drag/downdraft/hidesShip
+    // hooks run directly in Game), so there is nothing to keep alive while the
+    // bands are fully out of view.
+    if (state != STATE_WAITING && atmosphereInView()) atmosphere.update(dt);
     if (state != STATE_WAITING) rings.update(dt);
     if (state != STATE_WAITING) twister.update(dt);
-    if (state != STATE_WAITING) wormhole.update(dt);
+    // Wormhole: its update only advances visual state (spin/phase/particles).
+    // Freeze it while the hole is off screen AND cannot reach the ship, but
+    // keep driving it during the pull/vortex/teleport sequences (Game waits on
+    // the swallow/dying phases to advance before jumping moons).
+    if (state != STATE_WAITING && wormhole.active()) {
+        float dx = wormhole.coreX() - ship.posX;
+        float dy = wormhole.coreY() - ship.posY;
+        bool nearShip = dx * dx + dy * dy < WORMHOLE_GRAB_R * WORMHOLE_GRAB_R;
+        if (effectVisible(wormhole.coreX(), wormhole.coreY(), WORMHOLE_OUTER_R) ||
+            nearShip || wormhole.captured() || wormhole.swallowed())
+            wormhole.update(dt);
+    }
     if (state != STATE_WAITING) acidrain.update(dt);
+    if (state != STATE_WAITING) quake.update(dt, terrain, ship, state == STATE_PLAYING);
+
+    // The quake just buckled the ground: re-run the lava flows so the ribbons
+    // follow the new surface instead of the pre-quake terrain.
+    if (state != STATE_WAITING && quake.justStruck()) volcanoes.rebuild(terrain);
 
     if (input.startPressed && demo) {
         demo = false;
@@ -1248,7 +1347,7 @@ void Game::update()
                     stormHitTimer = STORM_CONTROL_LOSS;
                 }
             }
-        } else {
+        } else if (warpInT <= 0.0f) {
             if (stormHitTimer > 0.0f) {
                 stormHitTimer -= dt;
                 if (stormHitTimer < 0.0f) stormHitTimer = 0.0f;
@@ -1273,10 +1372,16 @@ void Game::update()
 
         // Acid rain on Europa: rain inside a drifting cell corrodes the ship;
         // at 100% the acid has eaten through the hull and the ship is lost.
+        // Hull damage from acid is cumulative across the whole game.
         if (acidrain.active()) {
-            if (acidrain.inRain(ship.posX, ship.posY)) acidrain.corrode();
-            else acidrain.dry();
-            if (acidrain.meterGet() >= 100.0f) {
+            if (acidrain.inRain(ship.posX, ship.posY)) {
+                acidrain.corrode();
+                hullIntegrity -= 0.5f * dt;
+            } else {
+                acidrain.dry();
+            }
+            if (hullIntegrity <= 0.0f) hullIntegrity = 0.0f;
+            if (acidrain.meterGet() >= 100.0f || hullIntegrity <= 0.0f) {
                 acidBurn = true;
                 ship.dissolve();
                 int lost = 200 + (rand() % 200);
@@ -1344,6 +1449,9 @@ void Game::update()
             float wp = 1.0f - warpInT / WORMHOLE_WARP_IN_T;
             if (wp < 0.0f) wp = 0.0f;
             ship.scale = 1.5f * wp;
+            float decay = 1.0f - wp;
+            if (decay < 0.0f) decay = 0.0f;
+            ship.rotation = 1080.0f * decay * decay;
         }
 
         ship.left = ship.posX - 10.0f * ship.scale;
@@ -1370,7 +1478,7 @@ void Game::update()
                     fuel = ship.fuel;
                     landFuelBonus = 0;
                 }
-                if (ship.fuel <= 0) {
+                if (ship.fuel <= 0 || hullIntegrity <= 0.0f) {
                     endGame();
                 } else {
                     nextLevel();
@@ -1403,7 +1511,8 @@ void Game::draw(Renderer &r)
     r.clear();
 
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
-    if (state != STATE_WAITING) atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
+    if (state != STATE_WAITING && atmosphereInView())
+        atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
 
     int warnY = 62;
 
@@ -1627,14 +1736,35 @@ void Game::draw(Renderer &r)
         r.text(170, 168, "POT: POWER LEVEL");
         r.text(170, 180, "START: PARACHUTE (1/LEVEL)");
     } else {
+        float svx = viewX, svy = viewY;
+        float qs = quake.shake();
+        if (qs > 0) {
+            int seed = ship.counter * 7349 + 1;
+            float sx = ((float)((seed * 1103515245 + 12345) & 0x7fffffff) / (float)0x7fffffff - 0.5f) * qs * 2.0f;
+            seed = seed * 2713 + 2;
+            float sy = ((float)((seed * 1103515245 + 12345) & 0x7fffffff) / (float)0x7fffffff - 0.5f) * qs * 2.0f;
+            viewX += sx;
+            viewY += sy;
+        }
         terrain.draw(r, viewX, viewY, viewScale, ship.counter);
-        geysers.draw(r, viewX, viewY, viewScale);
-        volcanoes.draw(r, viewX, viewY, viewScale);
+        {
+            // Geysers: only draw when at least one vent (plus plume reach) is
+            // in view. Vents sit on terrain, so horizontal visibility is enough.
+            bool gv = false;
+            for (int i = 0; i < geysers.ventCount() && !gv; i++)
+                gv = xInView(geysers.ventX(i), GEYSER_SPOUT_H + 20.0f);
+            if (gv) geysers.draw(r, viewX, viewY, viewScale);
+        }
+        if (volcanoes.countInView(viewX, viewScale) > 0)
+            volcanoes.draw(r, viewX, viewY, viewScale);
         drawWind(r);
-        rings.draw(r, terrain, viewX, viewY, viewScale);
-        twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
+        if (rings.active() && bandVisible(RING_CY, RING_CURVE_A + RING_Y_JITTER + 16.0f))
+            rings.draw(r, terrain, viewX, viewY, viewScale);
+        if (effectVisible(twister.coreX(), twister.coreY(terrain), TWISTER_HEIGHT))
+            twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
         tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
         acidrain.draw(r, terrain, viewX, viewY, viewScale);
+        quake.draw(r, viewX, viewY, viewScale);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
         if (!lavaBurn && !tankerCrash && !fogged && !wormhole.swallowed())
             ship.draw(r, viewX, viewY, viewScale);
@@ -1655,7 +1785,8 @@ void Game::draw(Renderer &r)
             drawProbe(r, bx, by, ux, uy, ship.scale, viewScale);
         }
         storm.drawBolts(r, viewX, viewY, viewScale);
-        wormhole.draw(r, viewX, viewY, viewScale);
+        if (effectVisible(wormhole.coreX(), wormhole.coreY(), WORMHOLE_OUTER_R))
+            wormhole.draw(r, viewX, viewY, viewScale);
 
         drawDockingPiP(r);
 
@@ -1760,6 +1891,9 @@ void Game::draw(Renderer &r)
             }
         }
 
+        viewX = svx;
+        viewY = svy;
+
         char buf[40];
         if (introTimer <= 0) {
             bool glitch = (stormHitTimer > 0.0f);
@@ -1813,7 +1947,7 @@ void Game::draw(Renderer &r)
                 snprintf(buf, sizeof buf, "WIND %s", gb);
                 r.text(250, 62, buf);
                 glitchChars(gb, 3);
-                snprintf(buf, sizeof buf, "ACID %s", gb);
+                snprintf(buf, sizeof buf, "HULL %s", gb);
                 r.text(250, 72, buf);
             } else {
                 snprintf(buf, sizeof buf, "ANG %d", ang);
@@ -1845,15 +1979,20 @@ void Game::draw(Renderer &r)
 
             if (acidrain.active()) {
                 if (!glitch) {
-                    int acidVal = (int)acidrain.meterGet();
-                    bool acidAlarm = acidVal >= 90;
-                    bool flashACID = acidAlarm && (ship.counter % 40) >= 26;
+                    int hv = (int)hullIntegrity;
+                    bool hullAlarm = hv <= 10;
+                    bool flashHull = hullAlarm && (ship.counter % 40) >= 26;
                     char numBuf[12];
-                    snprintf(numBuf, sizeof numBuf, "%d", acidVal);
-                    if (!flashACID) r.text(250, 72, "ACID");
+                    snprintf(numBuf, sizeof numBuf, "%d", hv);
+                    if (!flashHull) r.text(250, 72, "HULL");
                     r.text(280, 72, numBuf);
                 }
                 warnY = 82;
+            }
+
+            if (quake.phase() == Quake::RUMBLING) {
+                bool flashSeismic = (ship.counter % 30) >= 20;
+                if (!flashSeismic) r.text(250, 72, "SEISMIC");
             }
 
             // Parachute status (top-left, above the L<level> line): solid =
@@ -1911,6 +2050,9 @@ void Game::draw(Renderer &r)
             } else if (tankerCrash) {
                 centerText(90, "BOTH DESTROYED");
                 centerText(102, "COLLIDED WITH THE TANKER");
+            } else if (quakeCrash) {
+                centerText(90, "YOU CRASHED");
+                centerText(102, "THE GROUND GAVE WAY");
             } else if (acidBurn) {
                 centerText(96, "ACID RAIN CORRODED THE SHIP");
             } else {

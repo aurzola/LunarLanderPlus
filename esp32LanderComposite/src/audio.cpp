@@ -34,6 +34,7 @@ static uint8_t *thrustBuf = NULL;
 static uint8_t *explBuf = NULL;
 static uint8_t *windBuf = NULL;
 static uint8_t *boltBuf = NULL;
+static uint8_t *quakeBuf = NULL;
 static const uint8_t *tankerExplBuf = NULL;
 
 static volatile uint16_t thrustPos = 0;
@@ -41,6 +42,7 @@ static volatile int thrustPrev = 0;
 static volatile uint16_t explPos = 0xFFFF;
 static volatile uint16_t windPos = 0;
 static volatile uint16_t boltPos = 0xFFFF;
+static volatile uint32_t quakePos = 0xFFFFFFFF;
 static volatile uint32_t burnPos = 0xFFFFFFFF;
 static volatile uint32_t burnNoise = 0xABCDEF01u;
 static volatile uint32_t tankerExplPos = 0xFFFFFFFF;
@@ -106,6 +108,11 @@ static void IRAM_ATTR audioIsr() {
         v += (int32_t)boltBuf[boltPos] - 128;
         boltPos++;
         if (boltPos >= LIGHTNING_SOUND_LEN) boltPos = 0xFFFF;
+    }
+    if (quakePos < QUAKE_SOUND_LEN) {
+        v += (int32_t)quakeBuf[quakePos] - 128;
+        quakePos++;
+        if (quakePos >= QUAKE_SOUND_LEN) quakePos = 0xFFFFFFFF;
     }
 
     if (burnPos < BURN_LEN_SAMPLES) {
@@ -173,6 +180,7 @@ void Audio::begin() {
     explBuf = (uint8_t *)EXPLOSION_SOUND;
     windBuf = (uint8_t *)WIND_SOUND;
     boltBuf = (uint8_t *)LIGHTNING_SOUND;
+    quakeBuf = (uint8_t *)QUAKE_SOUND;
     tankerExplBuf = TANKER_EXPLOSION_SOUND;
 
     audioTimer = timerBegin(AUDIO_SAMPLE_RATE);
@@ -217,6 +225,10 @@ void Audio::playBurn() {
 
 void Audio::playLightning() {
     boltPos = 0;
+}
+
+void Audio::playQuake() {
+    quakePos = 0;
 }
 
 uint32_t Audio::debugIsrCount() {

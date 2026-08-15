@@ -14,6 +14,7 @@
 #include "twister.h"
 #include "tanker.h"
 #include "wormhole.h"
+#include "quake.h"
 #include "explosion.h"
 #include "config.h"
 
@@ -72,6 +73,7 @@ public:
     Tanker tanker;
     Wormhole wormhole;
     AcidRain acidrain;
+    Quake quake;
     ExplosionManager explosion;
     bool windEnabled;
     float windStrength;
@@ -82,11 +84,13 @@ public:
     bool twisterCrashGet() const { return twisterCrash; }
     bool tankerCrashGet() const { return tankerCrash; }
     bool acidBurnGet() const { return acidBurn; }
+    bool quakeCrashGet() const { return quakeCrash; }
     bool landPerfectGet() const { return landPerfect; }
     float chuteTooLow() const { return chuteTooLowTimer; }
     float warpIn() const { return warpInT; }
     float recycledBanner() const { return recycledTimer; }
     bool chuteAvailable;
+    float hullIntegrity;
 
 private:
     float viewX, viewY, viewScale;
@@ -106,17 +110,26 @@ private:
     float warpInT; // wormhole respawn: ship materializes (scale 0->1.5) over this
     float recycledTimer; // wormhole respawn: shows the "recycled" banner while > 0
     bool demoHoldAltitude;
+    bool demoFirstLevelPending; // first demo cycle opens on DEMO_LEVEL_FIRST (then random)
     bool lavaBurn;
     bool ringHit;
     bool twisterCrash;
     bool tankerCrash;
     bool acidBurn;
+    bool quakeCrash;
     bool explosionInited;
     int demoTankerPhase; // 0 = approach pre-position left of the drogue, 1 = slide in
     std::vector<WindStreak> windStreaks;
     std::vector<DustParticle> dust;
     void updateView();
     void setZoom(bool zoom, float zm = 5.0f);
+    // Viewport culling: an effect is only updated/drawn while it can be seen
+    // (or, for the physics hooks, while it can reach the ship). World-space
+    // point/vertical-band vs the visible world rect from the current view.
+    bool effectVisible(float wx, float wy, float margin) const;
+    bool xInView(float wx, float margin) const;
+    bool bandVisible(float wy, float margin) const;
+    bool atmosphereInView() const;
     void checkCollisions();
     void endGame();
     void startDemo();

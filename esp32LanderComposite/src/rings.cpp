@@ -145,6 +145,9 @@ void Rings::tracePoly(Renderer &r, const float *px, const float *py, int n) cons
 
 void Rings::drawFog(Renderer &r, const Terrain &t, float viewX, float viewY, float viewScale) const
 {
+    // Fog disabled (TEMP): skip the full-band loop that would only fill the
+    // screen with brightness 0 (pure wasted pixel writes every frame).
+    if (RING_FOG_BRIGHT == 0) return;
     static unsigned char gauss[256];
     static bool gaussInit = false;
     if (!gaussInit) {

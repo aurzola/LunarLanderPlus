@@ -7,6 +7,9 @@
 
 ## Pinout del ESP32
 
+![ESP32 pinout diagram](https://www.teachmemicro.com/wp-content/uploads/2023/12/ESP32-pinout-diagram-1024x737.jpg)
+*Referencia: ESP32 Dev Module pinout (teachmemicro.com, 30 pines)*
+
 | Señal | GPIO | Notas |
 |-------|------|-------|
 | I2C nunchuck SDA | GPIO21 | 50 kHz, `Wire.setTimeOut(100)`, pull-ups internos a mano (`gpio_set_pull_mode`; el core no los activa), dirección `0x52` |

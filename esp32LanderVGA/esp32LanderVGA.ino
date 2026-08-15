@@ -480,6 +480,7 @@ void loop()
     Audio::setWind(game.windEnabled && game.state == STATE_PLAYING
                    ? game.windStrength : 0.0f);
     if (game.storm.takeNewBolt()) Audio::playLightning();
+    if (game.quake.justRumbled()) Audio::playQuake();
 
     if (millis() - lastIsrPrint > 1000) {
         lastIsrPrint = millis();
