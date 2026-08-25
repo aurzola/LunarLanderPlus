@@ -90,6 +90,7 @@ Game::Game()
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
       demoFirstLevelPending(true),
+      tankerZooming(false),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false),
       acidBurn(false), quakeCrash(false), explosionInited(false),
       demoTankerPhase(0),
@@ -109,7 +110,7 @@ Game::Game()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    tanker.reset(level, terrain, ship.fuel, level == 1);
     wormhole.disable();
     stormHitTimer = 0;
     setZoom(false);
@@ -144,7 +145,7 @@ void Game::newGame()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    tanker.reset(level, terrain, ship.fuel, level == 1);
     acidrain.reset(level, terrain);
     quake.reset(level, terrain, ship);
     spawnWormhole();
@@ -204,7 +205,7 @@ void Game::nextLevel()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, TANKER_FORCE_LEVEL1 && level == 1);
+    tanker.reset(level, terrain, ship.fuel, level == 1);
     acidrain.reset(level, terrain);
     quake.reset(level, terrain, ship);
     spawnWormhole();
@@ -258,8 +259,10 @@ void Game::startDemo()
             level = 1 + rand() % DEMO_MAX_LEVEL;
     }
     score = 0;
-    fuel = FUEL_MAX;
-    ship.fuel = FUEL_MAX;
+    // Demo starts low on fuel so the tanker refuel is a visible, meaningful
+    // part of the attract loop (full tank would make the dock instant).
+    fuel = FUEL_MAX * 0.3f;
+    ship.fuel = FUEL_MAX * 0.3f;
     hullIntegrity = 100;
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
@@ -282,7 +285,7 @@ void Game::startDemo()
     if (showcase) rings.setEnabled(false);
     twister.reset(level, terrain);
     if (showcase) twister.setEnabled(false);
-    tanker.reset(level, terrain, ship.fuel, true); // full tank -> never active
+    tanker.reset(level, terrain, ship.fuel, true); // force: tanker always in demo
     acidrain.reset(level, terrain);
     if (showcase) acidrain.setEnabled(false);
     quake.reset(level, terrain, ship);
@@ -348,19 +351,11 @@ void Game::setupDemoTarget()
     // Aim the demo at the tanker's underside drogue when one is present, so the
     // autopilot flies up to it and plugs the probe in (aerial refueling). The
     // runDemoAI tanker mode tracks the swaying drogue live.
-    if (DEMO_LEVEL_FORCE > 0 && tanker.active) {
-        if (DEMO_FORCE_TANKER_CRASH) {
-            // TEMP: fly straight into the hull for explosion showcase.
-            demoTargetX = tanker.bodyX;
-            demoTargetY = tanker.bodyY;
-            demoSkill = 1.0f;
-            demoTankerPhase = -1; // skip the docking approach mode
-        } else {
-            demoTargetX = tanker.drogueX();
-            demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
-            demoSkill = 0.85f;
-            demoTankerPhase = 0;
-        }
+    if (tanker.active) {
+        demoTargetX = tanker.drogueX();
+        demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
+        demoSkill = 0.85f;
+        demoTankerPhase = 0;
     } else
     // TEST aim: prefer a lava-covered strip of a landing pad (Io), so the
     // burnt-ship ending shows up while tuning it. Pick the lava zone closest
@@ -519,8 +514,8 @@ void Game::setupTitleShip()
 
 void Game::runDemoAI()
 {
-    // Cruise phase after aerial refueling: hold altitude while flying to the
-    // nearest pad, then hand over to the normal descent controller.
+    // Cruise phase after aerial refueling: descend toward the pad while flying
+    // horizontally, then hand over to the normal descent controller.
     if (demoHoldAltitude) {
         float errX = demoTargetX - ship.posX;
         float desVX = clampf(errX * 0.004f, -0.12f, 0.12f);
@@ -530,7 +525,7 @@ void Game::runDemoAI()
                           -0.0015f, 0.0015f);
 
         float errY = ship.posY - demoTargetY;
-        float desVY = clampf(-errY * 0.005f, -0.05f, 0.05f);
+        float desVY = clampf(-errY * 0.008f, -0.12f, 0.08f);
         float aY = clampf((ship.velY - desVY) * 0.03f + ship.gravity, 0.0f, 0.0018f);
 
         float thrust = sqrtf(aX * aX + aY * aY) / THRUST_ACCEL;
@@ -598,7 +593,7 @@ void Game::runDemoAI()
     // target tracks the swaying drogue live (probe-and-drogue). Once docked,
     // the autopilot keeps making tiny corrections so the 1-second lock holds
     // and fuel keeps flowing.
-    if (DEMO_LEVEL_FORCE > 0 && demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
+    if (demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
         float tx = tanker.drogueX();
         float ty = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
 
@@ -952,20 +947,24 @@ void Game::updateView()
     float marginbottom = SCREEN_H * 0.3f;
     float marginx = SCREEN_W * 0.2f;
 
-    bool tankerZone = tanker.active && !tanker.done &&
-                      fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
-                      fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+    bool inZone = tanker.active && !tanker.done &&
+                  fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
+                  fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
+    // Hysteresis: enter the dock zoom inside the zone, leave it only once well
+    // outside, so the ship hovering at the boundary doesn't flicker the view.
+    bool nearZone = tanker.active && !tanker.done &&
+                    fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X + 30.0f &&
+                    fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y + 20.0f;
+    bool tankerZone = inZone || (tankerZooming && nearZone);
+    tankerZooming = tankerZone;
 
-    // Aerial docking: the viewport goes to the macro zoom-in centered on the
-    // midpoint between the module and the tanker so both ships and the
-    // deployed hose stay on screen while the player lines up the probe; the
-    // fine probe/drogue contact point is magnified in the PiP window.
+    // Aerial docking: the viewport goes to a macro zoom centered on the SHIP
+    // (not the midpoint) so the player never loses sight of their module; the
+    // PiP window shows the magnified probe/drogue contact point.
     if (tankerZone) {
         if (!zoomedIn) setZoom(true);
-        float midX = (ship.posX + tanker.bodyX) * 0.5f;
-        float midY = (ship.posY + tanker.bodyY) * 0.5f;
-        viewX = SCREEN_W * 0.5f - midX * viewScale;
-        viewY = SCREEN_H * 0.5f - midY * viewScale;
+        viewX = SCREEN_W * 0.5f - ship.posX * viewScale;
+        viewY = SCREEN_H * 0.5f - ship.posY * viewScale;
         return;
     }
 
@@ -973,6 +972,23 @@ void Game::updateView()
     // (the ship shrinks toward the core; setZoom would reset its scale). Same
     // during the respawn fade-in: the materialization ramps ship.scale and
     // must not be overridden by a zoom transition.
+    //
+    // Approach altitude for the zoom thresholds: ship.altitude is measured
+    // from ship.bottom = posY + 14*ship.scale, and ship.scale itself changes
+    // with the zoom (1.5 normal / 0.48 at 5x). Using ship.altitude directly
+    // makes the altitude jump ~14u the instant the zoom flips, which
+    // oscillated the zoom around the threshold. Measure from the ship's
+    // center (posY), which is zoom-independent.
+    float approachAlt = 9999.0f;
+    const std::vector<TerrainLine> &tls = terrain.getLines();
+    for (int i = 0; i < (int)tls.size(); i++) {
+        if (ship.posX >= tls[i].x1 && ship.posX <= tls[i].x2) {
+            float a = tls[i].y1 - ship.posY - 14.0f;
+            if (a < approachAlt) approachAlt = a;
+        }
+    }
+    if (approachAlt > 9998.0f) approachAlt = ship.altitude;
+
     if (!wormhole.captured() && warpInT <= 0.0f) {
         if (moonHasRings(level)) {
             // Rings zoom: band-proximity OR final-approach altitude.
@@ -988,31 +1004,40 @@ void Game::updateView()
 
             bool inBand = ship.posY >= bandTop && ship.posY <= bandBot;
             bool nearBand = ship.posY >= bandTopOut && ship.posY <= bandBotOut;
-            bool lowAlt = ship.altitude < ZOOM_IN_ALT;
+            bool lowAlt = approachAlt < APPROACH_ALT;
 
             if (!zoomedIn && (inBand || lowAlt)) {
                 setZoom(true, 2.0f);
-            } else if (zoomedIn && !nearBand && ship.altitude > ZOOM_OUT_ALT) {
+            } else if (zoomedIn && !nearBand && approachAlt > APPROACH_EXIT_ALT) {
                 setZoom(false);
             }
         } else {
-            float zi = ZOOM_IN_ALT;
-            float zo = ZOOM_OUT_ALT;
-            if (!zoomedIn && ship.altitude < zi) {
+            float zi = APPROACH_ALT;
+            float zo = APPROACH_EXIT_ALT;
+            if (!zoomedIn && approachAlt < zi) {
                 setZoom(true);
-            } else if (zoomedIn && ship.altitude > zo) {
+            } else if (zoomedIn && approachAlt > zo) {
                 setZoom(false);
             }
         }
     }
 
-    float sx = ship.posX * viewScale + viewX;
-    if (sx < marginx) viewX = -ship.posX * viewScale + marginx;
-    else if (sx > SCREEN_W - marginx) viewX = -ship.posX * viewScale + SCREEN_W - marginx;
+    // Camera tracking: in approach zoom the camera follows the ship centered
+    // horizontally and at ~1/3 from the top vertically, so the terrain below
+    // (the landing zone) fills the bottom 2/3 of the screen.  In normal view
+    // the margins keep the ship on-screen.
+    if (zoomedIn) {
+        viewX = -ship.posX * viewScale + SCREEN_W * 0.5f;
+        viewY = -ship.posY * viewScale + SCREEN_H * APPROACH_CAM_FRAC;
+    } else {
+        float sx = ship.posX * viewScale + viewX;
+        if (sx < marginx) viewX = -ship.posX * viewScale + marginx;
+        else if (sx > SCREEN_W - marginx) viewX = -ship.posX * viewScale + SCREEN_W - marginx;
 
-    float sy = ship.posY * viewScale + viewY;
-    if (sy < margintop) viewY = -ship.posY * viewScale + margintop;
-    else if (sy > SCREEN_H - marginbottom) viewY = -ship.posY * viewScale + SCREEN_H - marginbottom;
+        float sy = ship.posY * viewScale + viewY;
+        if (sy < margintop) viewY = -ship.posY * viewScale + margintop;
+        else if (sy > SCREEN_H - marginbottom) viewY = -ship.posY * viewScale + SCREEN_H - marginbottom;
+    }
 }
 
 // Culling tests against the world-space rectangle currently visible: a world
@@ -1306,7 +1331,7 @@ void Game::update()
             } else if (tanker.update(dt, ship)) {
                 fuelMaxTimer = 1.5f;
                 fuel = ship.fuel;
-                if (demo && DEMO_LEVEL_FORCE > 0) {
+                if (demo) {
                     const std::vector<TerrainLine> &tl2 = terrain.getLines();
                     float bestD = 1e9f;
                     int bestI = -1;
@@ -1318,7 +1343,7 @@ void Game::update()
                     }
                     if (bestI >= 0) {
                         demoTargetX = tl2[bestI].labelX;
-                        demoTargetY = ship.posY;
+                        demoTargetY = terrain.yAt(tl2[bestI].labelX, 500.0f);
                         demoHoldAltitude = true;
                     }
                 }
@@ -1438,6 +1463,7 @@ void Game::update()
         if (ship.posY < -50) {
             ship.reset(110, 150);
             ship.velX = 2;
+            setZoom(false);
         }
 
         float minAlt = 9999;
@@ -1795,7 +1821,9 @@ void Game::draw(Renderer &r)
             rings.draw(r, terrain, viewX, viewY, viewScale);
         if (effectVisible(twister.coreX(), twister.coreY(terrain), TWISTER_HEIGHT))
             twister.draw(r, terrain, viewX, viewY, viewScale, zoomedIn);
-        tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
+        // Hide tanker during final approach: the ship is landing, not docking.
+        if (ship.altitude >= APPROACH_ALT)
+            tanker.draw(r, viewX, viewY, viewScale, ship.counter, ship);
         acidrain.draw(r, terrain, viewX, viewY, viewScale);
         quake.draw(r, viewX, viewY, viewScale);
         bool fogged = (state == STATE_PLAYING) && atmosphere.hidesShip(ship.posX, ship.posY);
@@ -2004,6 +2032,8 @@ void Game::draw(Renderer &r)
             r.text(250, 92, buf);
             snprintf(buf, sizeof buf, "VWS %.3f", viewScale);
             r.text(250, 102, buf);
+            snprintf(buf, sizeof buf, "TK %.3f", Tanker::drawScaleFor(ship.scale, viewScale));
+            r.text(250, 112, buf);
             bool windShown = windEnabled;
             if (windShown) {
                 if (!glitch) {
@@ -2142,7 +2172,8 @@ void Game::draw(Renderer &r)
         bool dockZone = tanker.active && !tanker.done &&
                         fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
                         fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
-        if (zoomedIn && !dockZone) {
+        bool inApproach = ship.altitude < APPROACH_ALT;
+        if (inApproach && !dockZone) {
             const float MX = 112, MY = 22, MW = 96, MH = 49;
             r.line(MX, MY, MX + MW, MY);
             r.line(MX, MY + MH, MX + MW, MY + MH);

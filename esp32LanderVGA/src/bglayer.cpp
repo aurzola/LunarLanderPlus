@@ -54,12 +54,22 @@ void LayerPainter::pixelShade(float x, float y, int brightness)
 
 void LayerPainter::vspan(int x, int y0, int y1)
 {
-    if (x < 0 || x >= w_) return;
     if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
+    // Thicken both axes so a 1px contour survives ~3x nearest-neighbor
+    // downsampling (the layer is baked at 1:1, then sampled at ~0.343x:
+    // a 1px sloped line vanishes into stippling).
+    y0 -= 1;
+    y1 += 1;
     if (y0 < 0) y0 = 0;
     if (y1 >= h_) y1 = h_ - 1;
     if (y0 > y1) return;
-    memset(buf_ + (size_t)y0 * w_ + x, 255, (size_t)(y1 - y0 + 1));
+    for (int dx = -1; dx <= 1; dx++) {
+        int cx = x + dx;
+        if (cx < 0 || cx >= w_) continue;
+        uint8_t *col = buf_ + cx;
+        for (int y = y0; y <= y1; y++)
+            col[(size_t)y * w_] = 255;
+    }
 }
 
 void LayerPainter::line(float x1, float y1, float x2, float y2)

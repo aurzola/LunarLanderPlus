@@ -1344,3 +1344,33 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       pinado S3 al frente con bus LCD_CAM D0–D7 GPIO4/5/6/7/15/16/40/41 + audio 18 +
       nunchuck SDA21/SCL9 + pot 8 + start 13), docs/hardware.md (banner de estado + pinout S3),
       comandos útiles (compile/upload S3 como principal).
+56. **Cisterna: refino de docking + showcase del demo; umbral de aproximación unificado
+    (rama `tanker-docking`, 25/8/2026)**. Conjunto de mejoras que cierran la rama:
+    - **Docking más fácil**: `TANKER_DOCK_TOL_X/Y` 12/8→20/14, límites de velocidad relajados
+      (vy ±0.14 / vx 0.20), `TANKER_DOCK_BREAK_TOL_X/Y` 18/14→28/22, `TANKER_DOCK_LOCK_TIME`
+      0.4→0.3 s, `TANKER_CONE_GUIDE` 12→20, sway del drogue 3.0/1.6→2.0/1.2.
+    - **Tanker forzosa en nivel 1 y en demo**: `TANKER_START_LEVEL=1`, `force` salta la regla de
+      combustible (`TANKER_FUEL_FRACTION`); la demo arranca al 30 % de fuel y SIEMPRE abre en
+      Luna (`DEMO_LEVEL_FIRST=1`) → el attract muestra el repostaje completo (vuela al drogue,
+      dockea, reposta, crucero-desciende al pad). `DEMO_FORCE_TANKER_CRASH=0` (showcase de choque
+      desactivado). `demoHoldAltitude` ahora desciende (`desVY ∈ [−0.12, 0.08]`);
+      `demoTargetY = terrain.yAt(pad)` tras repostar.
+    - **Bug demo "sube y sube" (fijado)**: `readInputs()` del `.ino` pisaba `input.angle` cada
+      loop deshaciendo la rampa del autopilot → early-return en modo demo (solo el botón start).
+    - **Escala visual del zeppelin unificada**: `drawScale = ship.scale·viewScale·
+      TANKER_DRAW_SCALE` (`TANKER_DRAW_SCALE=1.5`) en todas las vistas (antes ×1.6 solo en
+      zoom-out); helper `Tanker::drawScaleFor()` + label `TK` de debug en el HUD.
+    - **Umbral de aproximación único `APPROACH_ALT=200`** (salida `APPROACH_EXIT_ALT=350`,
+      sustituyen a `ZOOM_IN_ALT`/`ZOOM_OUT_ALT`): gobierna zoom-in, minimapa (`altitude <
+      APPROACH_ALT && !dockZone`), ocultación de la cisterna y dibujado del terreno. Cámara de
+      zoom centrada en la nave al 50 % desde arriba (`APPROACH_CAM_FRAC=0.50`).
+    - **Fix oscilación de zoom (fijado)**: `ship.altitude` se medía desde `bottom = posY +
+      14·ship.scale` y `ship.scale` cambia con el zoom (1.5/0.48) → la altitud saltaba ~14 u al
+      flipar el zoom y el zoom oscilaba frame a frame (visto como doble dibujado del mundo).
+      El umbral usa ahora `approachAlt` medido desde `ship.posY` (independiente de escala);
+      se eliminó el force-zoom-out por `tanker.leaving`. Validado: 1 solo flip de zoom en 8000
+      frames × 8 seeds (antes 311).
+    - **Otros**: `vspan` del bgLayer engrosado 3 px por ambos ejes (sobrevive el downsampling ×3
+      en laderas), cobertura de lava variable por pad (0.4–0.8), `setZoom(false)` al resetear la
+      nave, tests ampliados (slope test del bgLayer + test tanker con force fuel). `test_pc`
+      1144/1144, `demo_sim` sin cambios de win-rate.
