@@ -11,6 +11,8 @@ public:
     void clear() override;
     void pixel(float x, float y) override;
     void pixelShade(float x, float y, int brightness) override;
+    void drawLayer(const uint8_t *layer, int lw, int lh,
+                   float offX, float offY, float scale) override;
     void flush() override;
     int width() const override;
     int height() const override;

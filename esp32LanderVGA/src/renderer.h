@@ -1,6 +1,8 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include <cstdint>
+
 class Renderer {
 public:
     virtual ~Renderer() {}
@@ -20,6 +22,13 @@ public:
     virtual void flush() = 0;
     virtual int width() const = 0;
     virtual int height() const = 0;
+
+    virtual void drawLayer(const uint8_t *layer, int lw, int lh,
+                           float offX, float offY, float scale)
+    {
+        (void)layer; (void)lw; (void)lh;
+        (void)offX; (void)offY; (void)scale;
+    }
 };
 
 #endif

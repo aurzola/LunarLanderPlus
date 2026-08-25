@@ -14,6 +14,7 @@ SHARED=(config.h
         game.cpp game.h
         renderer.h
         renderer_canvas.cpp renderer_canvas.h
+        bglayer.cpp bglayer.h
         storm.cpp storm.h
         moons.h
         geysers.cpp geysers.h

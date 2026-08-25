@@ -16,6 +16,8 @@ public:
     void flush() override;
     int width() const override { return w_; }
     int height() const override { return h_; }
+    void drawLayer(const uint8_t *layer, int lw, int lh,
+                   float offX, float offY, float scale) override;
     const uint8_t *data() const { return fb_.data(); }
 
 private:

@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -O2
-SRC = ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp geysers.cpp volcanoes.cpp atmosphere.cpp rings.cpp twister.cpp tanker.cpp wormhole.cpp acidrain.cpp quake.cpp
+SRC = bglayer.cpp ship.cpp terrain.cpp game.cpp renderer_canvas.cpp renderer_pc.cpp storm.cpp geysers.cpp volcanoes.cpp atmosphere.cpp rings.cpp twister.cpp tanker.cpp wormhole.cpp acidrain.cpp quake.cpp
 
 all: test_pc main_pc demo_sim demo_render storm_demo geyser_demo volcano_demo titan_demo rings_demo twister_demo tanker_demo parachute_demo wormhole_demo acidrain_demo quake_demo
 

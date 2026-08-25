@@ -17,6 +17,7 @@
 #include "tanker.h"
 #include "quake.h"
 #include "renderer_pc.h"
+#include "bglayer.h"
 
 static int checks = 0;
 
@@ -1718,6 +1719,119 @@ struct CountRenderer : public Renderer {
     int height() const override { return (int)SCREEN_H; }
 };
 
+static int testBgLayer()
+{
+    // LayerPainter must rasterize canvas primitives into the raw buffer.
+    BgLayer layer;
+    CHECK(layer.alloc(64, 48));
+    CHECK(layer.ready() && layer.width() == 64 && layer.height() == 48);
+    LayerPainter lp;
+    lp.begin(layer.data(), layer.width(), layer.height());
+    lp.clear();
+    lp.line(2.0f, 2.0f, 20.0f, 2.0f);
+    CHECK(layer.data()[2 * 64 + 5] == 255);
+    lp.pixelShade(10.0f, 5.0f, 123);
+    CHECK(layer.data()[5 * 64 + 10] == 123);
+    {
+        float xs[3] = {30, 40, 35};
+        float ys[3] = {20, 20, 30};
+        lp.fillPolygon(xs, ys, 3, 200);
+    }
+    int ink = 0;
+    for (int y = 19; y <= 31; y++)
+        for (int x = 28; x <= 42; x++)
+            if (layer.data()[y * 64 + x] == 200) ink++;
+    CHECK(ink > 20);
+    lp.pixel(-1.0f, 0.0f);
+    lp.pixel(0.0f, -1.0f);
+    lp.pixel(64.0f, 0.0f);
+    CHECK(layer.data()[0] == 0);
+
+    // Identity blit: drawLayer(scale=1, offset=0) copies the layer verbatim.
+    BgLayer pat;
+    CHECK(pat.alloc(32, 24));
+    {
+        LayerPainter pp;
+        pp.begin(pat.data(), 32, 24);
+        pp.clear();
+        pp.pixel(7.0f, 9.0f);
+        pp.pixelShade(15.0f, 3.0f, 77);
+    }
+    RendererPC r(32, 24, "");
+    r.clear();
+    r.drawLayer(pat.data(), 32, 24, 0.0f, 0.0f, 1.0f);
+    CHECK(r.data()[9 * 32 + 7] == 255);
+    CHECK(r.data()[3 * 32 + 15] == 77);
+    CHECK(r.data()[12 * 32 + 12] == 0);
+
+    // Offset blit: shifting the camera shifts the sampled window
+    // (game semantics: screen = world*scale + view).
+    r.clear();
+    r.drawLayer(pat.data(), 32, 24, -4.0f, -2.0f, 1.0f);
+    CHECK(r.data()[(9 - 2) * 32 + (7 - 4)] == 255);
+    CHECK(r.data()[9 * 32 + 7] == 0);
+
+    // Scaled blit: a solid world block lands near its transformed screen
+    // position (1px dots would be skipped by the ~3x reduction, which is why
+    // stars stay dynamic on top of the layer).
+    BgLayer world;
+    CHECK(world.alloc(320, 240));
+    {
+        LayerPainter wp;
+        wp.begin(world.data(), 320, 240);
+        wp.clear();
+        float xs[4] = {98, 103, 103, 98};
+        float ys[4] = {98, 98, 103, 103};
+        wp.fillPolygon(xs, ys, 4, 255);
+    }
+    RendererPC rs(320, 240, "");
+    float vs = SCREEN_H / 700.0f;
+    rs.drawLayer(world.data(), 320, 240, 0.0f, 0.0f, vs);
+    float ex = 100.0f * vs, ey = 100.0f * vs;
+    int near = 0;
+    for (int yy = (int)ey - 3; yy <= (int)ey + 3; yy++)
+        for (int xx = (int)ex - 3; xx <= (int)ex + 3; xx++)
+            if (xx >= 0 && xx < 320 && yy >= 0 && yy < 240 &&
+                rs.data()[yy * 320 + xx] == 255) near++;
+    CHECK(near >= 4 && near <= 25);
+
+    // Alloc failure must degrade gracefully to the legacy vector path.
+    bgSetAllocator([](size_t) -> void * { return nullptr; });
+    {
+        BgLayer fail;
+        CHECK(!fail.alloc(64, 48));
+        Game g;
+        g.input.startPressed = true;
+        g.update();
+        g.input.startPressed = false;
+        g.newGame();
+        g.introTimer = 0.0f;
+        CountRenderer cr;
+        g.draw(cr);
+        CHECK(cr.calls > 0);
+    }
+    bgSetAllocator(malloc);
+
+    // Full game smoke: with the layer active the frame keeps terrain, stars
+    // and HUD ink, and rebaking after a quake rupture still renders.
+    Game g;
+    g.input.startPressed = true;
+    g.update();
+    g.input.startPressed = false;
+    g.newGame();
+    g.introTimer = 0.0f;
+    RendererPC rg(320, 240, "");
+    long long bright = 0;
+    for (int t = 0; t < 120; t++) {
+        g.update();
+        g.draw(rg);
+    }
+    for (int i = 0; i < 320 * 240; i++)
+        if (rg.data()[i]) bright++;
+    CHECK(bright > 500);
+    return 0;
+}
+
 static int testViewportCull()
 {
     // In a zoomed view (5x) the wormhole must be neither updated nor drawn
@@ -1824,6 +1938,8 @@ int main()
     r = testParachute();
     if (r) return r;
     r = testViewportCull();
+    if (r) return r;
+    r = testBgLayer();
     if (r) return r;
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;

@@ -11,18 +11,19 @@
 #endif
 
 Terrain::Terrain() : tileWidth(0), chuteZoneX1(0), chuteZoneX2(0), chuteLabelX(-1),
-                     craterActive(false), craterX(0), craterHalfW(0) {}
+                     craterActive(false), craterX(0), craterHalfW(0), revision_(0) {}
 
 void Terrain::setCrater(float x, float halfW)
 {
     craterActive = true;
+    revision_++;
     craterX = x;
     craterHalfW = halfW;
 }
 
 void Terrain::clearCrater()
 {
-    craterActive = false;
+    if (craterActive) { craterActive = false; revision_++; }
 }
 
 void Terrain::addLine(float x1, float y1, float x2, float y2)
@@ -38,6 +39,7 @@ void Terrain::addLine(float x1, float y1, float x2, float y2)
 
 void Terrain::init()
 {
+    revision_++;
     lines.clear();
     stars.clear();
     ruptureRanges_.clear();
@@ -140,6 +142,7 @@ void Terrain::init()
 
 void Terrain::generate(int level)
 {
+    revision_++;
     lines.clear();
     stars.clear();
     ruptureRanges_.clear();
@@ -239,8 +242,35 @@ void Terrain::generate(int level)
     }
 }
 
-void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/, bool drawStars)
+void Terrain::drawLabels(Renderer &r, float viewX, float viewY, float viewScale)
 {
+    for (int i = 0; i < (int)lines.size(); i++) {
+        const TerrainLine &l = lines[i];
+        if (!l.landable || l.multiplier <= 1 || l.labelX < 0) continue;
+        char buf[16];
+        snprintf(buf, sizeof buf, "%dx", l.multiplier);
+        float mx = l.labelX * viewScale + viewX;
+        float my = (l.y1 + 10.0f) * viewScale + viewY;
+        r.text(mx - 6, my, buf);
+        if (l.labelX == chuteLabelX) r.text(mx - 3, my + 8, "p");
+    }
+}
+
+void Terrain::drawStarField(Renderer &r, float viewX, float viewY, float viewScale)
+{
+    const int RW = r.width(), RH = r.height();
+    for (int i = 0; i < (int)stars.size(); i++) {
+        float sx = stars[i].x * viewScale + viewX;
+        float sy = stars[i].y * viewScale + viewY;
+        if (sx < -5 || sx > RW + 5 || sy < -5 || sy > RH + 5) continue;
+        r.rect(sx, sy, 1, 1);
+    }
+}
+
+void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/,
+                   bool drawStars, bool withLabels)
+{
+    const int RW = r.width();
     float c1 = craterActive ? craterX - craterHalfW : 0.0f;
     float c2 = craterActive ? craterX + craterHalfW : 0.0f;
 
@@ -256,7 +286,7 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
         float sy1 = y1 * viewScale + viewY;
         float sx2 = x2 * viewScale + viewX;
         float sy2 = y2 * viewScale + viewY;
-        if (sx2 < -10 || sx1 > SCREEN_W + 10) return;
+        if (sx2 < -10 || sx1 > RW + 10) return;
         r.line(sx1, sy1, sx2, sy2);
         if (l.landable && l.multiplier > 1) {
             r.line(sx1, sy1 - 1, sx2, sy2 - 1);
@@ -284,27 +314,11 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
                        n.x1 * viewScale + viewX, n.y1 * viewScale + viewY);
             }
         }
-
-        if (l.landable && l.multiplier > 1) {
-            if (l.labelX >= 0) {
-                char buf[8];
-                snprintf(buf, sizeof buf, "%dx", l.multiplier);
-                float mx = l.labelX * viewScale + viewX;
-                float my = (l.y1 + 10.0f) * viewScale + viewY;
-                r.text(mx - 6, my, buf);
-                if (l.labelX == chuteLabelX) r.text(mx - 3, my + 8, "p");
-            }
-        }
     }
 
-    if (drawStars) {
-        for (int i = 0; i < (int)stars.size(); i++) {
-            float sx = stars[i].x * viewScale + viewX;
-            float sy = stars[i].y * viewScale + viewY;
-            if (sx < -5 || sx > SCREEN_W + 5 || sy < -5 || sy > SCREEN_H + 5) continue;
-            r.rect(sx, sy, 1, 1);
-        }
-    }
+    if (withLabels) drawLabels(r, viewX, viewY, viewScale);
+
+    if (drawStars) drawStarField(r, viewX, viewY, viewScale);
 }
 
 int Terrain::checkLanding(float left, float right, float bottom, float rotation, float vy, float /*vx*/)
@@ -376,6 +390,7 @@ void Terrain::ruptureZone(int zone)
     ZoneInfo &zi = zones_[zone];
     if (zi.broken) return;
     zi.broken = true;
+    revision_++;
 
     int s = zi.startIdx;
     int n = zi.segCount;
@@ -411,6 +426,7 @@ int Terrain::zoneOverlapping(float x1, float x2) const
 
 void Terrain::ruptureSurface(float cx, float halfW)
 {
+    revision_++;
     float w1 = cx - halfW;
     float w2 = cx + halfW;
 

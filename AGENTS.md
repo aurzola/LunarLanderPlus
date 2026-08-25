@@ -29,6 +29,7 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
 | `game.h/cpp` | Estados, zoom, scoring, `update()` + `draw(Renderer&)` |
 | `renderer.h` | Interfaz abstracta (pixel/line/rect/circle/text/flush). `rectShade(x,y,w,h,b)` y `fillPolygon(xs,ys,n,b)` para relleno de polígonos con gris real (10/8/2026) |
 | `renderer_canvas.h/cpp` | Primitivas compartidas (Bresenham con caso explícito dx=0/dy=0, círculo, rect, fuente 5x7) vía `pixel()`. `rectShade`: rectángulo sólido con `pixelShade`. `fillPolygon`: scanline fill para polígonos convexos (intersecciones por fila + líneas horizontales sombreadas) |
+| `bglayer.h/cpp` | **bgLayer — terreno pre-horneado por nivel (24/8/2026, rama `s3-port`)**: `BgLayer` (buffer vía hook `bgSetAllocator()`; default malloc → falla elegante sin PSRAM), `LayerPainter : RendererCanvas` que pinta al buffer crudo (su `line()` usa barrido vertical por columna para cobertura tras el downsampling ×3), `Renderer::drawLayer` virtual (no-op default; nativa en PC y S3). `Game::bakeBg()` hornea el terreno a transform identidad; re-horneado por `Terrain::revision()` (contador en init/generate/cráteres/rupturas). Estrellas y labels dinámicos (`drawStarField`/`drawLabels`, nuevos métodos públicos de Terrain). Solo vista normal; zoom sigue vectorial. En S3 activo con ps_malloc (A/B en placa: fps neutrales ~58.6, costo en efectos no terreno); composite/VGA nunca activa. Ver WORKLOG #54 |
 | `renderer_pc.h/cpp` | Renderer de validación en PC: framebuffer + PPM (extiende `RendererCanvas`) |
 | `main_pc.cpp` | Demo en PC (genera snapshots PPM en `frames/`) |
 | `test_pc.cpp` | Tests de validación (asserts) |
@@ -349,7 +350,8 @@ LEDC en WORKLOG #53.
 |---------|-----------|
 | `esp32LanderS3.ino` | setup/loop igual que composite (pm lock, nunchuck, audio, acumulador GAME_DT); flags temporales `AUDIO_BRINGUP`/`AUDIO_TEST_TONE` |
 | `src/video_s3.h/cpp` | Driver de video propio: registros LCD_CAM + GDMA ring (26 descs × 3930 B, EOF→notificación a loopTask), `composeStaticLines()` precomputa lo no visible una vez |
-| `src/renderer_s3.h/cpp` | `RendererS3 : RendererCanvas` sobre el framebuffer de video |
+| `src/renderer_s3.h/cpp` | `RendererS3 : RendererCanvas` sobre el framebuffer de video; `drawLayer` nativa (muestreo nearest fixed-point 16.16, idéntica a la de PC) |
+| `src/bglayer.h/cpp` + core actualizado | Copias de `esp32Lander/` vía sync (bglayer en la lista SHARED); el `.ino` llama `bgSetAllocator(ps_malloc)` al arranque → layer activo en PSRAM; print one-shot `[bg] world layer active`; `[perf]` con `drawAvg`/`drawMax`. A/B en placa: fps neutrales (~58.6 demo), se deja activo por si crecen los efectos |
 | resto de `src/` | Copias del core del juego + `nunchuck.*` (SCL=9) + `audio.*` (pin 18, sin DAC, LEDC_USE_APB_CLK) |
 
 - **Quirks LEDC S3 (audio)**: reloj por defecto es XTAL 40 MHz → hay que llamar

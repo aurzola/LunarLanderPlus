@@ -8,6 +8,7 @@
 #include "src/config.h"
 #include "src/game.h"
 #include "src/renderer_s3.h"
+#include "src/bglayer.h"
 #include "src/audio.h"
 #include "src/nunchuck.h"
 
@@ -36,6 +37,10 @@ static unsigned long lastIsrPrint = 0;
 static unsigned long lastNunchuckPrint = 0;
 static unsigned long lastPerfPrint = 0;
 static unsigned long fieldCount = 0;
+static uint32_t drawUsMax = 0;
+static uint32_t drawUsSum = 0;
+static uint32_t drawUsN = 0;
+static bool bgPrinted = false;
 
 static const float PWR_STICK_RATE = 0.008f;
 static bool pwrStickActive = false;
@@ -275,6 +280,8 @@ void setup()
     Serial.begin(115200);
     srand(esp_random());
 
+    bgSetAllocator(ps_malloc);
+
     esp_pm_lock_handle_t pmLock;
     esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "gamePerfLock", &pmLock);
     esp_pm_lock_acquire(pmLock);
@@ -366,15 +373,29 @@ void loop()
     }
 
     video_wait_frame();
+    uint32_t t0 = micros();
     game.draw(*renderer);
+    if (!bgPrinted && game.bgActive()) {
+        bgPrinted = true;
+        Serial.println("[bg] world layer active");
+    }
+    uint32_t drawUs = (uint32_t)(micros() - t0);
+    if (drawUs > drawUsMax) drawUsMax = drawUs;
+    drawUsSum += drawUs;
+    drawUsN++;
     if (calibrateMode) drawCalibration(*renderer);
     fieldCount++;
 
     if (millis() - lastPerfPrint > 5000) {
         lastPerfPrint = millis();
-        Serial.printf("[perf] fields=%lu compose=%u us\n",
+        Serial.printf("[perf] fields=%lu compose=%u us drawAvg=%u drawMax=%u\n",
                       (unsigned long)fieldCount,
-                      (unsigned)video_last_compose_us());
+                      (unsigned)video_last_compose_us(),
+                      (unsigned)(drawUsN ? drawUsSum / drawUsN : 0),
+                      (unsigned)drawUsMax);
+        drawUsMax = 0;
+        drawUsSum = 0;
+        drawUsN = 0;
     }
 }
 

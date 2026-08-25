@@ -5,6 +5,7 @@
 #include "ship.h"
 #include "terrain.h"
 #include "renderer.h"
+#include "bglayer.h"
 #include "storm.h"
 #include "geysers.h"
 #include "volcanoes.h"
@@ -89,6 +90,7 @@ public:
     float chuteTooLow() const { return chuteTooLowTimer; }
     float warpIn() const { return warpInT; }
     float recycledBanner() const { return recycledTimer; }
+    bool bgActive() const { return worldBg.ready() && bgBaked; }
     bool chuteAvailable;
     float hullIntegrity;
 
@@ -145,6 +147,12 @@ private:
     void updateWind(float dt);
     void drawWind(Renderer &r);
     void drawDockingPiP(Renderer &r);
+    void bakeBg();
+
+    BgLayer worldBg;
+    unsigned bgBakedRev;
+    bool bgBaked;
+    bool bgAllocFailed;
 };
 
 #endif

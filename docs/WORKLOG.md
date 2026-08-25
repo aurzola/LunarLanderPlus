@@ -1291,3 +1291,43 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       software (firmware seguía componiendo campos según `[perf]`). Sketch de prueba de audio:
       `/tmp/opencode/audioTest/audioTest.ino`. Debug de registros LEDC disponible vía
       `Audio::debugRegs()` (imprime conf0/conf1/duty/duty_rd/timer).
+54. **Fase 2/3 — bgLayer: terreno pre-horneado por nivel + blit escalado (24/8/2026,
+    rama `s3-port`)**: nueva capa de fondo en espacio mundo (`esp32Lander/bglayer.{h,cpp}`,
+    compartida a los 3 targets vía `sync.sh`) que se hornea UNA vez por nivel y se blitea
+    cada frame con muestreo nearest fixed-point 16.16.
+    - **Diseño**: `BgLayer` (buffer asignado vía hook `bgSetAllocator()` — `ps_malloc` en S3,
+      `malloc` default que falla con elegancia en boards sin PSRAM → camino vectorial intacto),
+      `LayerPainter : RendererCanvas` que escribe al buffer crudo, y
+      `Renderer::drawLayer(layer,lw,lh,offX,offY,scale)` virtual (no-op default; impl nativa en
+      `RendererPC` y `RendererS3`, idénticas). `Game::bakeBg()` pinta el terreno con transform
+      identidad (`terrain.draw(p,0,0,1,0,false,false)`); el re-horneado se dispara comparando
+      `Terrain::revision()` (contador ++ en init/generate/setCrater/clearCrater/ruptureZone/
+      ruptureSurface) contra `bgBakedRev` — cero puntos de invalidación manual. El layer solo se
+      usa en vista normal (`|viewScale - SCREEN_H/700| < 0.0005`); zoom sigue vectorial. Estrellas
+      y labels NO se hornean: las estrellas de 1 px desaparecerían con el muestreo ×3 (punto
+      a punto se salta 2 de cada 3 mundiales) → `Terrain::drawStarField()`/`drawLabels()` nuevos
+      métodos públicos, dibujados dinámicos encima del blit (~120 rects, baratos).
+    - **`LayerPainter::line()` sobrescrito** con barrido vertical por columna (`vspan`) en vez de
+      Bresenham: garantiza cobertura continua tras la reducción ×3 en tramos empinados (el muestreo
+      salta columnas mundiales enteras). El alto del layer sale de `max(y2)` de las líneas del
+      terreno (¡el terreno vive en y≈600-703, no en WORLD_H=600! — primer intento horneaba vacío).
+    - **Validación PC**: `test_pc.cpp` nuevo `testBgLayer()` (17 checks: raster del painter, blit
+      identidad/offset/escala, fallo de alloc con fallback legacy, smoke de 120 frames) → 1142
+      checks totales. Harness externo `bgdiff`: misma escena con layer vs legacy forzado → ratio
+      de tinta 0.96, solo 1% de píxeles fuera de tolerancia ±2 px. Lección de método: un smoke
+      "pasó" con el layer VACÍO porque newGame sin ticks de update no genera terreno procedural —
+      los harness deben bombea updates antes de draw (y `bgActive()` getter público para probar
+      que el camino realmente corre).
+    - **Resultado en S3 (A/B real en placa)**: con layer activo (`[bg] world layer active`,
+      ps_malloc) vs legacy forzado (sin allocator): **fps idénticos ~58.6 en demo**
+      (293 campos/5 s) y `drawAvg` ≈ 8.5–9.8 ms en ambos → el terreno vectorial NO era cuello de
+      botella en S3 (el blit cuesta lo mismo que 154 Bresenham); el costo está en efectos
+      (géiseres/tormenta/HUD). El título sigue en ~38 fps (arte Apollo vectorial, 7.9 ms).
+      **Decisión**: dejar el layer ACTIVO en S3 (costo nulo, útil si crecen los efectos);
+      no perfilar más hoy. El pico de ~56 ms una vez por transición de nivel existe en AMBOS
+      builds (no es el horneado).
+    - **Instrumentación**: `[perf]` ahora imprime `drawAvg`/`drawMax` (micros() alrededor de
+      `game.draw()`); print one-shot `[bg] world layer active`. En composite/VGA el código entra
+      por sync pero nunca activa (malloc de ~638 KB falla en DRAM) — compilan limpios ambos
+      (composite 643 KB/33%, VGA 648 KB/33%). Pendiente CRT: mirada del usuario al juego normal
+      en S3 para confirmar visual idéntico.

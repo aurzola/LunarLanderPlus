@@ -31,7 +31,10 @@ public:
 
     void init();
     void generate(int level);
-    void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter, bool drawStars = true);
+    void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter,
+              bool drawStars = true, bool withLabels = true);
+    void drawLabels(Renderer &r, float viewX, float viewY, float viewScale);
+    void drawStarField(Renderer &r, float viewX, float viewY, float viewScale);
     const std::vector<TerrainLine>& getLines() const { return lines; }
     float getWidth() const { return tileWidth; }
     int checkLanding(float left, float right, float bottom, float rotation, float vy, float vx);
@@ -39,6 +42,7 @@ public:
     void setCrater(float x, float halfW);
     void clearCrater();
     bool hasCrater() const { return craterActive; }
+    unsigned revision() const { return revision_; }
     bool onChuteSpot(float x) const { return x >= chuteZoneX1 && x <= chuteZoneX2; }
     float chuteLabel() const { return chuteLabelX; }
 
@@ -62,6 +66,7 @@ private:
     float chuteZoneX1, chuteZoneX2, chuteLabelX;
     bool craterActive;
     float craterX, craterHalfW;
+    unsigned revision_;
     void addLine(float x1, float y1, float x2, float y2);
 };
 

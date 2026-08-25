@@ -92,7 +92,8 @@ Game::Game()
       demoFirstLevelPending(true),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false),
       acidBurn(false), quakeCrash(false), explosionInited(false),
-      demoTankerPhase(0)
+      demoTankerPhase(0),
+      bgBakedRev(0), bgBaked(false), bgAllocFailed(false)
 {
     input.startPressed = false;
     input.angle = 0;
@@ -844,6 +845,22 @@ float Game::landingProximity() const
     }
     if (best >= 1e9f) return 0.0f;
     return 1.0f - fminf(best / DUST_NEAR_RANGE, 1.0f);
+}
+
+void Game::bakeBg()
+{
+    if (!worldBg.ready()) return;
+    float maxY = 0.0f;
+    const std::vector<TerrainLine> &ls = terrain.getLines();
+    for (int i = 0; i < (int)ls.size(); i++)
+        if (ls[i].y2 > maxY) maxY = ls[i].y2;
+    if (worldBg.height() < (int)(maxY + 2.0f)) return;
+    LayerPainter p;
+    p.begin(worldBg.data(), worldBg.width(), worldBg.height());
+    p.clear();
+    terrain.draw(p, 0.0f, 0.0f, 1.0f, 0, false, false);
+    bgBakedRev = terrain.revision();
+    bgBaked = true;
 }
 
 void Game::drawWind(Renderer &r)
@@ -1743,7 +1760,26 @@ void Game::draw(Renderer &r)
             viewX += sx;
             viewY += sy;
         }
-        terrain.draw(r, viewX, viewY, viewScale, ship.counter);
+        float baseVs = SCREEN_H / 700.0f;
+        bool normalView = fabsf(viewScale - baseVs) < 0.0005f;
+        if (normalView && !bgAllocFailed && !worldBg.ready()) {
+            float maxY = 0.0f;
+            const std::vector<TerrainLine> &ls = terrain.getLines();
+            for (int i = 0; i < (int)ls.size(); i++)
+                if (ls[i].y2 > maxY) maxY = ls[i].y2;
+            int lh = (int)(maxY + 2.0f);
+            if (lh < (int)WORLD_H) lh = (int)WORLD_H;
+            bgAllocFailed = !worldBg.alloc((int)(terrain.getWidth() + 2.0f), lh);
+        }
+        if (worldBg.ready() && normalView) {
+            if (!bgBaked || bgBakedRev != terrain.revision()) bakeBg();
+            r.drawLayer(worldBg.data(), worldBg.width(), worldBg.height(),
+                        viewX, viewY, viewScale);
+            terrain.drawStarField(r, viewX, viewY, viewScale);
+            terrain.drawLabels(r, viewX, viewY, viewScale);
+        } else {
+            terrain.draw(r, viewX, viewY, viewScale, ship.counter);
+        }
         {
             // Geysers: only draw when at least one vent (plus plume reach) is
             // in view. Vents sit on terrain, so horizontal visibility is enough.
