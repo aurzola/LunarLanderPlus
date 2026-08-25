@@ -89,7 +89,6 @@ Game::Game()
       zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
-      demoFirstLevelPending(true),
       tankerZooming(false),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false),
       acidBurn(false), quakeCrash(false), explosionInited(false),
@@ -239,12 +238,11 @@ void Game::startDemo()
     demoHoldAltitude = false;
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
-    // TEMP (16/9/2026): the demo ALWAYS opens on DEMO_LEVEL_FIRST (level 7,
-    // Encélado) so every attract cycle shows the same moon. REVERT to the
-    // first-cycle-only showcase (demoFirstLevelPending) + random 1..MAX_LEVEL.
+    // Demo level: random 1..DEMO_MAX_LEVEL every cycle (DEMO_LEVEL_FORCE
+    // pins it for testing, DEMO_LEVEL_FIRST > 0 would fix the opener).
     level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE
                                    : (DEMO_LEVEL_FIRST > 0) ? DEMO_LEVEL_FIRST
-                                                             : 1 + rand() % DEMO_MAX_LEVEL;
+                                                            : 1 + rand() % DEMO_MAX_LEVEL;
 
     const bool firstLevelShowcase = DEMO_LEVEL_FIRST > 0 && DEMO_LEVEL_FORCE <= 0;
 
@@ -481,7 +479,9 @@ void Game::wormholeJump()
     int cur = moonIndex(level);
     int nidx = cur;
     while (nidx == cur) nidx = rand() % 8;
-    level = 8 + nidx; // nextLevel() does level++ first -> 9..16, a different moon
+    // The cycle order is not the identity: jump to the SLOT that plays moon
+    // nidx. nextLevel() does level++ first -> lands on moon nidx.
+    level = 8 + moonSlotOfIndex(nidx);
     nextLevel();
     // No level intro on a teleport: the new moon starts playing right away and
     // the ship materializes with a fade-in (warpInT ramps ship.scale 0->1.5).

@@ -11,7 +11,7 @@
 int main(int argc, char **argv)
 {
     int seed = (argc > 1) ? atoi(argv[1]) : 1;
-    int level = (argc > 2) ? atoi(argv[2]) : 2;
+    int level = (argc > 2) ? atoi(argv[2]) : 8;
     srand(1000 + seed);
 
     RendererPC r((int)SCREEN_W, (int)SCREEN_H, "frames");
@@ -25,7 +25,7 @@ int main(int argc, char **argv)
     // Quakes only fire on Io.
     q.reset(level, t, ship);
     for (int tries = 0; tries < 100 && !q.active(); tries++) {
-        level = 2;
+        level = 8;
         t.generate(level);
         q.reset(level, t, ship);
     }

@@ -1374,3 +1374,32 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       en laderas), cobertura de lava variable por pad (0.4–0.8), `setZoom(false)` al resetear la
       nave, tests ampliados (slope test del bgLayer + test tanker con force fuel). `test_pc`
       1144/1144, `demo_sim` sin cambios de win-rate.
+
+57. **Demo con niveles al azar de nuevo + progresión de dificultad del juego normal
+    (rama `demo-random-progression`, 25/8/2026)**.
+    - **Demo vuelve a elegir nivel al azar en CADA ciclo**: `DEMO_LEVEL_FIRST=1` → `0` (config.h),
+      así el attract mode ya no abre siempre en Luna/nivel 1 con la cisterna; cada ciclo muestra
+      cualquier luna 1..`DEMO_MAX_LEVEL`. Se elimina el campo muerto `demoFirstLevelPending`
+      (game.h/game.cpp). La demo sigue forzando la cisterna (`force=true`) y arrancando al 30 % de
+      combustible, así el repostaje puede aparecer en cualquier luna donde el tanque esté permitido
+      (excluido de Ganímedes por los anillos, y de las lunas con agujero de gusano vía
+      `isolateForWormhole`).
+    - **Juego normal: dificultad progresiva por ciclo de 8 niveles**. Nueva tabla
+      `MOON_DIFFICULTY_ORDER` en `moons.h`: mapea cada slot del ciclo `(level-1)%8` a una luna,
+      caminando de las calmas a las hostiles:
+      `LUNA → EUROPA (lluvia ácida) → CALLISTO (tranquila, host de wormhole) → ENCELADUS
+      (géiseres) → TITAN (niebla) → GANYMEDES (anillos) → TRITON (torbellino) → IO (volcanes +
+      terremotos, gravedad más pesada)`. `moonIndex()` devuelve ahora el índice de tabla del slot
+      (antes identidad); las predicciones `moonHas*`, `moonGravity`, `moonName` y `moonEffectFree`
+      siguen funcionando porque comparan contra el índice de la tabla. La dificultad del terreno
+      procedural (amplitud `4+level`, tope 12) ya escalaba sola y no se toca.
+    - **Fix `wormholeJump()` con el orden nuevo**: el teletransporte elegía `level = 8+nidx` con
+      `nidx` como índice de tabla, lo que ya no garantiza aterrizar en OTRA luna con un orden no
+      identidad. Ahora usa `moonSlotOfIndex(nidx)` (inversa del orden) para saltar al slot cuya
+      luna es `nidx`.
+    - **Tests y demos al nuevo mapeo**: `test_pc` actualizado (todas las constantes de nivel por
+      luna: EUROPA 3→2, CALLISTO 5→3, ENCELADUS 7→4, TITAN 6→5, GANYMEDES 4→6, TRITON 8→7, IO 2→8;
+      `moonEffectFree`, `testMoon` documenta la rampa y comprueba `moonGravity(8)==1.10`). Defaults
+      de los demos visuales de PC actualizados (volcano/quake 2→8, geyser 7→4, rings 4→6, titan
+      6→5, twister 8→7, acidrain 3→2). `test_pc` 1066/1066, demos PC con selftest OK, sketch S3
+      compila (645 KB / 49 %, RAM 211 KB).
