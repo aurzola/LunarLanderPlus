@@ -14,7 +14,8 @@ Controles físicos arcade:
 | Ruta | Contenido |
 |------|-----------|
 | `esp32Lander/` | Port C++ std del juego (sin hardware): física, terreno, nave. Validado en PC (`make && ./test_pc`). |
-| `esp32LanderComposite/` | Sketch Arduino del ESP32 (video compuesto, audio, controles). Compilar con `arduino-cli` (core esp32 ≥ 3.x). |
+| `esp32LanderS3/` | **Versión principal para CRT B/N**: ESP32-S3 con video compuesto por LCD_CAM+GDMA (audio GPIO18, nunchuck I2C). |
+| `esp32LanderComposite/` | (DESCONTINUADO 24/8/2026) sketch clásico del ESP32; se conserva como archivo histórico. |
 | `sounds/` | Pipeline de generación de los sonidos (real_sounds.py) + WAV fuente. |
 
 Ver `AGENTS.md` para la documentación técnica completa (física, terreno, audio, decisiones).
@@ -98,9 +99,9 @@ GND    ─────────────► GND / masa del TV
 # Validar el port en PC (sin hardware)
 cd esp32Lander && make && ./test_pc
 
-# Compilar el sketch
-arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino
+# Compilar la versión principal (ESP32-S3, CRT compuesto B/N)
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi esp32LanderS3/esp32LanderS3.ino
 
 # Subir
-arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 esp32LanderComposite/esp32LanderComposite.ino
+arduino-cli upload --fqbn esp32:esp32:esp32s3:PSRAM=opi --port /dev/ttyACM0 esp32LanderS3/esp32LanderS3.ino
 ```

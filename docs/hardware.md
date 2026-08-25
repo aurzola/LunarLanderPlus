@@ -1,11 +1,30 @@
 # Lunar Lander ESP32 — Hardware / Cableado / Pinado
 
+> **ESTADO (24/8/2026)**: la versión principal para CRT B/N es el **ESP32-S3**
+> (`esp32LanderS3/`, video compuesto por LCD_CAM+GDMA). El sketch clásico
+> `esp32LanderComposite/` está **DESCONTINUADO** (se conserva como archivo histórico; ya no
+> recibe sync ni uploads). El board VGA (`esp32LanderVGA/`) sigue activo como segundo ESP32.
+> El pinado del composite y las mediciones de abajo quedan como referencia histórica.
+
 > Documento de referencia para hardware. **No se carga en el contexto del agente principal**
 > durante el desarrollo normal de código (juego, física, render, UI). Lo usa el
 > `hardware` agent (ver `.opencode/agent/hardware.md`) cuando se trabaja en electricidad,
 > cableado, mediciones o pinout.
 
-## Pinout del ESP32
+## Pinout del ESP32-S3 (VERSIÓN PRINCIPAL, `esp32LanderS3/`)
+
+| Señal | GPIO | Notas |
+|-------|------|-------|
+| I2C nunchuck SDA | GPIO21 | 50 kHz, pull-ups internos vía `gpio_set_pull_mode`, dirección 0x52 |
+| I2C nunchuck SCL | GPIO9 | |
+| Potenciómetro (nivel de potencia) | GPIO8 | ADC; deshabilitado en juego (`POT_DISABLED=1`) |
+| Botón start | GPIO13 | `INPUT_PULLUP` |
+| Video compuesto (bus LCD_CAM D0–D7) | GPIO4, 5, 6, 7, 15, 16, 40, 41 | driver propio LCD_CAM+GDMA, NTSC 320×240 B/N (~58.6 fps); DAC resistivo hacia RCA |
+| Audio | GPIO18 | LEDC PWM 312.5 kHz @ 8-bit con reloj APB (`ledcSetClockSource(LEDC_USE_APB_CLK)`) → amp externo |
+
+FQBN `esp32:esp32:esp32s3:PSRAM=opi`; el bgLayer (~638 KB) vive en PSRAM.
+
+## Pinout histórico del ESP32 clásico (composite, DESCONTINUADO 24/8/2026)
 
 ![ESP32 pinout diagram](https://www.teachmemicro.com/wp-content/uploads/2023/12/ESP32-pinout-diagram-1024x737.jpg)
 *Referencia: ESP32 Dev Module pinout (teachmemicro.com, 30 pines)*

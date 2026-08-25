@@ -22,11 +22,15 @@ No tocas la física del juego, el terreno, el render ni la UI (eso pertenece al 
 
 ## Contexto del proyecto (resumen)
 
-- ESP32 (Arduino / arduino-esp32), juego portado de moonlander.seb.ly.
+- **Versión principal: ESP32-S3** (`esp32LanderS3/`, Arduino / arduino-esp32), juego portado de
+  moonlander.seb.ly. Video compuesto por LCD_CAM+GDMA (bus GPIO4/5/6/7/15/16/40/41), audio
+  LEDC GPIO18, nunchuck I2C SDA=21/SCL=9, pot GPIO8, start GPIO13.
 - Toda la lógica de lectura/mapeo de las señales físicas (no el circuito) vive en el sketch:
-  `esp32LanderComposite/esp32LanderComposite.ino`, `src/nunchuck.h/cpp`, `src/video.h/c`,
+  `esp32LanderS3/esp32LanderS3.ino`, `src/nunchuck.h/cpp`, `src/video_s3.h/c`,
   `src/audio.h/cpp`.
-- `esp32LanderComposite/src/` es **copia** de `esp32Lander/` (física/dibujado). No mezcles cambios.
+- `esp32LanderS3/src/` es **copia** de `esp32Lander/` (física/dibujado). No mezcles cambios.
+- Histórico: el sketch clásico `esp32LanderComposite/` está **DESCONTINUADO (24/8/2026)**;
+  sus pines y mediciones quedan en `docs/hardware.md` como referencia.
 
 ## Rutinas típicas
 
@@ -47,6 +51,6 @@ No tocas la física del juego, el terreno, el render ni la UI (eso pertenece al 
 
 ## Verificación
 
-- Tras tocar el sketch: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`
+- Tras tocar el sketch: `arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi esp32LanderS3/esp32LanderS3.ino`
 - Actualiza `docs/hardware.md` si cambias el circuito, las mediciones o el pinout (no AGENTS.md,
   salvo que cambie el resumen de pines de la sección "Hardware eléctrico / pinado").

@@ -44,10 +44,12 @@ destino** (`$1`). Ejecuta los pasos en orden:
    remoto, usa `git push -u origin <rama>`. Si `git push` falla por no tener tracking,
    configura el upstream correspondiente y reintenta. No crees PR salvo que se pida.
 
-6. **Subida a la placa**: comprueba que el puerto existe (`ls /dev/ttyUSB0`) y sube con
-   `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0
-   esp32LanderComposite/esp32LanderComposite.ino`. Confirma "Hash of data verified". Si el
+6. **Subida a la placa**: la versión principal es el **ESP32-S3** (`/dev/ttyACM0`).
+   Comprueba que el puerto existe (`ls /dev/ttyACM0`) y sube con:
+   `arduino-cli upload --fqbn esp32:esp32:esp32s3:PSRAM=opi --port /dev/ttyACM0
+   esp32LanderS3/esp32LanderS3.ino`. Confirma "Hash of data verified". Si el
    puerto no existe o falla la subida, repórtalo claramente y detente (no reintentar sin fin).
+   La carpeta `esp32LanderComposite/` está descontinuada (24/8/2026).
 
 7. **Resumen para /compact**: al terminar imprime un resumen breve (máx. 5 viñetas) de lo
    hecho y el estado actual del repo (commit, rama/s tocadas, push, archivos, resultados de

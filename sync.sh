@@ -1,12 +1,16 @@
 #!/bin/bash
 # Sync the shared game sources from the canonical PC port (esp32Lander/) into
-# the two sketch src/ trees (composite + VGA). Sketch-only files are NOT
-# touched: esp32LanderComposite/src keeps renderer_esp32/video/audio/nunchuck;
-# esp32LanderVGA/ keeps renderer_vga + esp32lib.
+# the sketch src/ trees. Sketch-only files are NOT touched: esp32LanderS3/src
+# keeps renderer_s3/video_s3/audio/nunchuck; esp32LanderVGA/ keeps renderer_vga
+# + esp32lib.
+#
+# esp32LanderComposite is DISCONTINUED (24/8/2026): the ESP32-S3 port is now
+# the main CRT version. Its folder no longer receives sync or uploads; to
+# reflashearto manually copy shared sources into esp32LanderComposite/src.
 set -u
 
 CANON=esp32Lander
-TARGETS=(esp32LanderComposite/src esp32LanderVGA/src)
+TARGETS=(esp32LanderS3/src esp32LanderVGA/src)
 
 SHARED=(config.h
         ship.cpp ship.h

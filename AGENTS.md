@@ -13,9 +13,9 @@ Estética objetivo: arcade / retro auténtico.
 - `pyLander/` — original en Python/Pygame Zero. **NO se usa para el ESP32.**
 - `cppLander/` — versión C++ previa del juego (base antigua). Reemplazada por el port de moonlander.
 - `esp32Lander/` — port C++ std del juego moonlander, **validado en PC** (ver "Port a ESP32").
-- `esp32LanderComposite/` — sketch Arduino del ESP32 (ver "Sketch ESP32").
+- `esp32LanderS3/` — **VERSIÓN PRINCIPAL para CRT B/N (24/8/2026)**: sketch Arduino del ESP32-S3, video compuesto por LCD_CAM+GDMA (ver "Port a ESP32-S3").
+- `esp32LanderComposite/` — **DESCONTINUADA (24/8/2026)**: reemplazada por la S3 (se ve y rinde mejor); se conserva como archivo histórico, ya no recibe sync ni uploads (ver "Sketch ESP32 clásico — DESCONTINUADO").
 - `esp32LanderVGA/` — port **VGA paralelo** a un segundo ESP32 (ver "Port a VGA").
-- `esp32LanderS3/` — port a **ESP32-S3** con video compuesto por LCD_CAM+GDMA directo (ver "Port a ESP32-S3").
 
 ## Port a ESP32 (ESTADO 4/8/2026)
 
@@ -253,7 +253,11 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   2x→6 segmentos (~20/30/36 u; +2 en Ganímedes). Dificultad: amplitud
   del random walk `4+level` (tope 12). Semilla `srand(esp_random())` en `setup()` del `.ino`.
 
-## Sketch ESP32 (`esp32LanderComposite/`)
+## Sketch ESP32 clásico (`esp32LanderComposite/`) — DESCONTINUADO 24/8/2026
+
+> **DESCONTINUADO**: la versión principal para el CRT B/N es ahora el port a **ESP32-S3** (`esp32LanderS3/`), que se ve y rinde mejor (driver propio LCD_CAM+GDMA, ~58.6 fps en demo). Esta sección se conserva como referencia histórica; la carpeta NO recibe más sync (`sync.sh` ya no la toca) ni uploads. Para reflashearla habría que re-sincronizar sus fuentes manualmente.
+
+## Detalle histórico del sketch compuesto
 
 Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module" (core esp32 ≥ 3.x).
 
@@ -334,17 +338,17 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   (40% del app slot), RAM 109 KB (33%). **Esquema de partición `no_ota`** (ver "Flash"), app slot de 2 MB.
 - Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
 
-## Port a ESP32-S3 (rama `s3-port`, EN PROGRESO 24/8/2026)
+## Port a ESP32-S3 (`esp32LanderS3/`) — VERSIÓN PRINCIPAL para CRT B/N (24/8/2026)
 
 Port a la placa **ESP32-S3** (8 MB PSRAM octal) con video compuesto NTSC por **driver directo
 LCD_CAM + anillo GDMA auto-enlazado** (sin esp_lcd, sin costuras entre campos). FQBN:
 `esp32:esp32:esp32s3:PSRAM=opi`, puerto `/dev/ttyACM0`. Fuentes del juego en
-`esp32LanderS3/src/` (copias de `esp32Lander/`; aún no integrado en `sync.sh`). Estado:
+`esp32LanderS3/src/` (copias de `esp32Lander/`; bglayer ya integrado en `sync.sh`). Estado:
 **Fase 0 (video) ✓** (artefacto diagonal superior eliminado), **Fase 1 (juego corriendo) ✓**
-(título + demo attract validados en CRT), **controles ✓** (nunchuck SCL=GPIO9, start GPIO13,
-pot GPIO8), **audio ✓** (GPIO18; motor/explosión probados en juego). Pendiente (Fases 2–4):
-sprites/bgLayer pre-renderizados en PSRAM y optimización de render. Detalles técnicos y quirks
-LEDC en WORKLOG #53.
+(título + demo attract validados en CRT), **controles ✓** (nunchuck SDA=GPIO21/SCL=GPIO9,
+start GPIO13, pot GPIO8), **audio ✓** (GPIO18; motor/explosión probados en juego),
+**Fase 2/3 bgLayer ✓** (terreno pre-horneado en PSRAM, activo; A/B fps neutrales ~58.6).
+Detalles técnicos y quirks LEDC en WORKLOG #53/#54.
 
 | Archivo | Contenido |
 |---------|-----------|
@@ -386,7 +390,7 @@ queda intacto en su placa. Detalle completo en `docs/PLAN_VGA.md` y cableado en 
 
 | Control | Mapeo del juego | Notas |
 |---------|-----------------|-------|
-| Nunchuck (joystick X) | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | I2C GPIO21/GPIO22; dead zone ±10 |
+| Nunchuck (joystick X) | Ángulo de la nave `[-PI/2, PI/2]` → rotación `[-90°, +90°]` | I2C SDA=21/SCL=9 (S3) · 21/22 (clásico); dead zone ±10 |
 | Potenciómetro A | Nivel de potencia de motores (thrust level 0.0–1.0) | **DESHABILITADO** (`POT_DISABLED=1`); ver "Entrada" |
 | Nunchuck (botón Z) | Encendido/apagado del motor (thrust = botón ? powerLevel : 0) | `NUNCHUCK_TRIGGER_Z`; alternativo C |
 | Nunchuck (botón C) | Mientras se mantiene C, el stick sube/baja `powerLevel` (continuo, rampa 0.008/tick) | único fijador de PWR con `POT_DISABLED` |
@@ -400,7 +404,20 @@ subías con C+stick.
 ## Hardware eléctrico / pinado
 
 Las conexiones eléctricas, esquemas, mediciones y el detalle de flash/memoria están en
-**`docs/hardware.md`** (lo consulta el `hardware` agent). Resumen de pines:
+**`docs/hardware.md`** (lo consulta el `hardware` agent).
+
+**Pinado de la versión principal (`esp32LanderS3/`, ESP32-S3)**:
+
+| Señal | GPIO |
+|-------|------|
+| I2C nunchuck SDA / SCL | GPIO21 / GPIO9 |
+| Pot (nivel de potencia) | GPIO8 |
+| Botón start | GPIO13 |
+| Video compuesto (bus LCD_CAM D0–D7) | GPIO4, 5, 6, 7, 15, 16, 40, 41 |
+| Audio (LEDC PWM) | GPIO18 |
+
+**Pinado histórico del sketch clásico** (`esp32LanderComposite/`, DESCONTINUADO 24/8/2026 —
+la tabla y el detalle quedan en `docs/hardware.md`):
 
 | Señal | GPIO |
 |-------|------|
@@ -421,14 +438,21 @@ Z/C, "last-used wins" del pot) es código de juego y se documenta en la sección
 
 ## Salida de video (compuesta a CRT B/N)
 
-Librería aquaticus `esp32_composite_video_lib` (GPL) embebida como `src/video.h/c`:
+**Principal: driver propio LCD_CAM+GDMA en el ESP32-S3** (`esp32LanderS3/src/video_s3.*`):
+NTSC 320×240 B/N sin costuras entre campos, ~58.6 fps en demo; bus de datos
+GPIO4/5/6/7/15/16/40/41. Ver "Port a ESP32-S3".
+
+Histórico (composite clásico, descontinuado): librería aquaticus
+`esp32_composite_video_lib` (GPL) embebida como `src/video.h/c`:
 `video_graphics(NTSC_320x240, FB_FORMAT_GREY_8BPP)`, DAC GPIO25 → RCA, B/N luma 255.
 El renderer escribe en `video_get_frame_buffer_address()`; `video_wait_frame()` sincroniza.
 Cableado y detalle del framebuffer: `docs/hardware.md`.
 
 ## Sonido (COMPLETADA 4/8/2026)
 
-- **Vía: PWM por LEDC + timer ISR en GPIO26** (NO I2S). Motivo: la librería de video
+- **Vía: PWM por LEDC + timer ISR**. En la S3 (principal) sale por **GPIO18** con
+  `ledcSetClockSource(LEDC_USE_APB_CLK)` y el handshake dual de duty (quirks en WORKLOG #53).
+  Histórico composite: GPIO26 (NO I2S). Motivo del LEDC: la librería de video
   (aquaticus) usa I2S0 + DAC1 (GPIO25) y `dac_i2s_enable()` fuerza DAC2 (GPIO26) a modo DMA,
   así que GPIO26 no estaba realmente libre para I2S. Solución: `dac_output_disable(DAC_CHANNEL_2)`
   libera la almohadilla y se usa **LEDC (canal 0, HS mode) como PWM portador a 312.5 kHz
@@ -490,8 +514,9 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   (`video_wait_frame()`), sin VSYNC explícito en el juego.
 - Dibujado: interfaz `Renderer` (pixel/line/rect/circle/text/flush). `RendererCanvas` comparte
   las primitivas; PC y ESP32 implementan `pixel()`.
-- `esp32LanderComposite/src/` y `esp32LanderVGA/src/` son **copia** de `esp32Lander/` (mismas
+- `esp32LanderS3/src/` y `esp32LanderVGA/src/` son **copia** de `esp32Lander/` (mismas
   fuentes); mantener en sync con `bash sync.sh` al cambiar física/dibujado.
+  `esp32LanderComposite/src/` está **descontinuada** (24/8/2026) y ya no recibe sync.
 - Idioma del código: inglés (coherente con el port). Respuestas al usuario: español.
 - No usar librerías no verificadas antes de consultar. No añadir comentarios al código salvo que se pidan.
 - **El agente NO hace commit ni push salvo que el usuario lo pida explícitamente.** Los cambios
@@ -500,11 +525,12 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   `.opencode/commands/flash.md`; "hacer flash" ≠ "que el agente commitee por su cuenta").
   Subir a la placa (upload) sí está permitido para probar en CRT sin commitear.
 - **Todo trabajo de implementación termina SIEMPRE subiendo a la placa (upload)**, sin que el
-  usuario tenga que pedirlo: el paso final de cualquier tarea es `sync.sh` → compilar → upload al
-  ESP32 **por defecto de la versión CRT** (`esp32LanderComposite/`, puerto `/dev/ttyUSB0`). No
-  preguntar "¿lo subo?" — subir directamente al terminar. Solo se omite (y se avisa) si no hay
-  placa conectada, el build falla o el usuario pidió explícitamente no subir. El sketch VGA se
-  sube únicamente cuando el cambio toque `esp32LanderVGA/` y el usuario lo indique.
+  usuario tenga que pedirlo: el paso final de cualquier tarea es `sync.sh` → compilar → upload a
+  la **versión principal CRT B/N: `esp32LanderS3/`** (FQBN `esp32:esp32:esp32s3:PSRAM=opi`,
+  puerto `/dev/ttyACM0`). No preguntar "¿lo subo?" — subir directamente al terminar. Solo se
+  omite (y se avisa) si no hay placa conectada, el build falla o el usuario pidió explícitamente
+  no subir. El sketch VGA se sube únicamente cuando el cambio toque `esp32LanderVGA/` y el
+  usuario lo indique. La carpeta `esp32LanderComposite/` está descontinuada: NO se sube.
 
 ## Comandos útiles
 
@@ -521,17 +547,22 @@ Cableado y detalle del framebuffer: `docs/hardware.md`.
   selftest `active + maxMeter>0.3 + inRain>0 + outRain>0`).
   Terremotos: `./quake_demo <seed> <level>` (terreno + quake sobre Ío, PPM en `frames/`;
   selftest `active + isRupturedAt(strikeX) + zoneBroken + !landable + labelX<0`).
-- Compilar sketch composite: `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
+- Compilar sketch S3 (principal): `arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi esp32LanderS3/esp32LanderS3.ino`.
+- Subir S3: `arduino-cli upload --fqbn esp32:esp32:esp32s3:PSRAM=opi --port /dev/ttyACM0 esp32LanderS3/esp32LanderS3.ino`.
 - Compilar sketch VGA: `arduino-cli compile --fqbn esp32:esp32:esp32 --build-property build.partitions=no_ota esp32LanderVGA/esp32LanderVGA.ino`.
-- Subir: `arduino-cli upload --fqbn esp32:esp32:esp32 --port /dev/ttyUSB0 ...` (o Arduino IDE).
+- Sketch composite (LEGACY, descontinuado 24/8/2026): `arduino-cli compile --fqbn esp32:esp32:esp32 esp32LanderComposite/esp32LanderComposite.ino`.
 - Sync PC↔sketches: `bash sync.sh` (copia las fuentes compartidas de `esp32Lander/` a
-  `esp32LanderComposite/src/` y `esp32LanderVGA/src/` y verifica que queden idénticas; no toca
-  los archivos propios de cada sketch: `video.*`, `renderer_esp32`, `renderer_vga`, `esp32lib/`,
-  `audio*`, `nunchuck*`). Para un diff puntual: `diff esp32Lander/<f> esp32LanderComposite/src/<f>`.
+  `esp32LanderS3/src/` y `esp32LanderVGA/src/` y verifica que queden idénticas; no toca
+  los archivos propios de cada sketch: `video_s3.*`, `renderer_s3`, `renderer_vga`, `esp32lib/`,
+  `audio*`, `nunchuck*`). La carpeta `esp32LanderComposite/` ya no recibe sync. Para un diff
+  puntual: `diff esp32Lander/<f> esp32LanderS3/src/<f>`.
 
 ## Flash / memoria
 
-Resumen: ESP32 Dev Module flash 4 MB (QIO 80 MHz), core 3.3.10, esquema de partición `no_ota`
+Principal (S3): flash ~643 KB (49 % del app slot de 1.3 MB), RAM estática ~211 KB (64 %),
+FQBN `esp32:esp32:esp32s3:PSRAM=opi`. El bgLayer vive en PSRAM (~638 KB).
+
+Histórico composite: ESP32 Dev Module flash 4 MB (QIO 80 MHz), core 3.3.10, esquema de partición `no_ota`
 (2 MB app). Sketch ≈ 525 KB (40% del app slot), RAM 109 KB (33%). Layout de particiones y cómo forzar
 `no_ota` al flashear (vs `arduino-cli upload` que revierte a `default`): `docs/hardware.md`.
 ## Proceso de trabajo / WORKLOG

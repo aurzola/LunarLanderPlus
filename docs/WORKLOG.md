@@ -1331,3 +1331,16 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       por sync pero nunca activa (malloc de ~638 KB falla en DRAM) — compilan limpios ambos
       (composite 643 KB/33%, VGA 648 KB/33%). Pendiente CRT: mirada del usuario al juego normal
       en S3 para confirmar visual idéntico.
+55. **DESCONTINUADO el sketch composite clásico; el ESP32-S3 es la versión principal para
+    CRT B/N (24/8/2026)**: tras validar en CRT que la S3 se ve y rinde mejor (driver propio
+    LCD_CAM+GDMA sin costuras entre campos, ~58.6 fps en demo vs ~38 del título en composite,
+    bgLayer activo en PSRAM), se oficializa el cambio:
+    - `esp32LanderComposite/` queda como **archivo histórico**: ya no recibe sync
+      (`sync.sh` targets ahora `esp32LanderS3/src` + `esp32LanderVGA/src`) ni uploads; para
+      reflashearla habría que re-sincronizar sus fuentes manualmente.
+    - La regla de trabajo pasa a ser `sync.sh` → compilar → upload a `esp32LanderS3/`
+      (FQBN `esp32:esp32:esp32s3:PSRAM=opi`, puerto `/dev/ttyACM0`).
+    - Docs actualizadas: AGENTS.md (estado del código, sección composite marcada histórica,
+      pinado S3 al frente con bus LCD_CAM D0–D7 GPIO4/5/6/7/15/16/40/41 + audio 18 +
+      nunchuck SDA21/SCL9 + pot 8 + start 13), docs/hardware.md (banner de estado + pinout S3),
+      comandos útiles (compile/upload S3 como principal).
