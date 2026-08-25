@@ -23,10 +23,9 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
     fuelFlowing = false;
 
     if (level < TANKER_START_LEVEL && !(TANKER_FORCE_LEVEL1 && level == 1)) return;
-    // The air tanker only makes sense on a low tank: it never appears while
-    // fuel is above half, regardless of force (demo/test forcing still needs
-    // a real low-tank flight to be meaningful).
-    if (fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
+    // The air tanker only makes sense on a low tank, but force (demo/test)
+    // bypasses this check so the tanker appears for showcasing purposes.
+    if (!force && fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
     // Ganymede's debris rings make a high-altitude rendezvous impossible.
     if (moonHasRings(level)) return;
     if (!force && rand() % 100 >= TANKER_CHANCE_PERCENT) return;
@@ -109,9 +108,9 @@ bool Tanker::checkDock(const Ship& ship)
 
     if (fabsf(probeX - drogueX()) > TANKER_DOCK_TOL_X) return false;
     if (fabsf(probeY - drogueY()) > TANKER_DOCK_TOL_Y) return false;
-    if (ship.velY > 0.09f) return false;
-    if (ship.velY < -0.09f) return false;
-    if (fabsf(ship.velX) > 0.14f) return false;
+    if (ship.velY > 0.14f) return false;
+    if (ship.velY < -0.14f) return false;
+    if (fabsf(ship.velX) > 0.20f) return false;
     return true;
 }
 
@@ -350,15 +349,14 @@ static void drawHose(Renderer &r, float x0, float y0, float x1, float y1, float 
 void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int counter,
                   const Ship& ship) const
 {
-    (void)ship;
+    (void)counter;
     if (!active || done) return;
 
-    // The zeppelin is drawn bigger in the normal/zoomed-out view (mothership
-    // feel), and the whole tanker gets an extra uniform boost so balloon AND
-    // accessories scale together. The physical hitbox stays unchanged.
+    // The tanker scales with the ship (same factor) so its size stays
+    // consistent across zoom levels; it simply reads bigger because its hull
+    // geometry is larger in world units. The physical hitbox stays unchanged.
     float s = viewScale; // world -> screen mapping (positions)
-    float drawScale = (viewScale < 1.0f) ? viewScale * 1.6f : viewScale;
-    drawScale *= TANKER_DRAW_SCALE;
+    float drawScale = ship.scale * viewScale * TANKER_DRAW_SCALE;
     float x0 = bodyX * s + viewX;
     float y0 = bodyY * s + viewY;
 

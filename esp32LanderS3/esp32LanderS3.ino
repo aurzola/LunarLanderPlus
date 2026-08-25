@@ -220,6 +220,15 @@ static void readInputs()
         btnDbPrev = btnDbStable;
     }
 
+    // In demo/attract mode the autopilot drives input.angle/thrust; reading the
+    // nunchuck here would reset them every loop and undo the AI's slow angle
+    // ramp (the ship then climbs instead of flying toward the tanker). Only the
+    // start button still matters (it cancels the demo).
+    if (game.demo) {
+        if (btnFell) game.input.startPressed = true;
+        return;
+    }
+
 #if CONTROLS_WIRED
     nunchuck.read();
 

@@ -149,13 +149,17 @@ void Volcanoes::computeLava(const Terrain &t)
         if (!leftR && !rightR) continue;
 
         float coverL = 0.0f, coverR = 0.0f;
+        // Variable coverage: each pad gets a random fraction (0.4–0.8) of the
+        // maximum possible coverage, so lava encroaches differently on every
+        // landing spot while always leaving at least VOLCANO_SAFE_STRIP clear.
+        float frac = 0.4f + (float)(rand() % 41) / 100.0f;
         if (leftR && rightR) {
-            coverL = (padW - VOLCANO_SAFE_STRIP) * 0.5f;
-            coverR = (padW - VOLCANO_SAFE_STRIP) * 0.5f;
+            coverL = (padW - VOLCANO_SAFE_STRIP) * 0.5f * frac;
+            coverR = (padW - VOLCANO_SAFE_STRIP) * 0.5f * frac;
         } else if (leftR) {
-            coverL = padW - VOLCANO_SAFE_STRIP;
+            coverL = (padW - VOLCANO_SAFE_STRIP) * frac;
         } else {
-            coverR = padW - VOLCANO_SAFE_STRIP;
+            coverR = (padW - VOLCANO_SAFE_STRIP) * frac;
         }
         float lEdge = pads[p].x1 + coverL;
         if (lEdge > leftReach) lEdge = leftReach;

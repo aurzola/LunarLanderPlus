@@ -204,6 +204,10 @@ static int testLandingBonus()
     CHECK(fabsf(g.ship.fuel - 950.0f) < 1.0f);
 
     // Hard-but-safe touchdown: velY between the thresholds -> no fuel bonus.
+    // Level 2 is Io (quakes + lava); disable both so the landing verdict is
+    // deterministic (the environmental hazards are tested elsewhere).
+    g.quake.setEnabled(false);
+    g.volcanoes.setEnabled(false);
     placeShip(0.10f);
     g.update();
     CHECK(g.state == STATE_LANDED);
@@ -794,13 +798,13 @@ static int testTanker()
     tn1.reset(1, t1, 100.0f);
     if (!TANKER_FORCE_LEVEL1) CHECK(!tn1.active);
 
-    // A full tank never summons the tanker.
+    // A full tank never summons the tanker (without force).
     Tanker tnFull;
     tnFull.reset(2, t1, FUEL_MAX);
     CHECK(!tnFull.active);
 
-    // Forced spawn bypasses level/chance gates, but NEVER the fuel rule: with
-    // a full tank no tanker shows up. A low tank can be force-spawned.
+    // Forced spawn bypasses level, chance AND fuel gates: the tanker appears
+    // even with a full tank so the demo can showcase the refueling mechanic.
     bool fullForced = false;
     for (int s = 0; s < 50 && !fullForced; s++) {
         srand(20000 + s);
@@ -810,7 +814,7 @@ static int testTanker()
         tkFull.reset(2, tfF, FUEL_MAX, true);
         if (tkFull.active) fullForced = true;
     }
-    CHECK(!fullForced);
+    CHECK(fullForced);
 
     bool forcedSpawn = false;
     for (int s = 0; s < 200 && !forcedSpawn; s++) {
@@ -1829,6 +1833,30 @@ static int testBgLayer()
     for (int i = 0; i < 320 * 240; i++)
         if (rg.data()[i]) bright++;
     CHECK(bright > 500);
+
+    // Sloped contour must survive the ~3x downsampling as a continuous line
+    // (regression: a 1px bake + nearest-neighbor left the terrain stippled).
+    {
+        BgLayer slope;
+        CHECK(slope.alloc(400, 300));
+        LayerPainter sp;
+        sp.begin(slope.data(), 400, 300);
+        sp.clear();
+        sp.line(20.0f, 40.0f, 380.0f, 200.0f); // shallow diagonal
+        RendererPC sr(320, 240, "");
+        sr.drawLayer(slope.data(), 400, 300, 0.0f, 0.0f, SCREEN_H / 700.0f);
+        // The diagonal spans screen columns ~7..130; require no fully-empty
+        // column inside the interior of that span (a stippled line would have
+        // dark gaps).
+        int empties = 0;
+        for (int sx = 12; sx < 128; sx++) {
+            bool any = false;
+            for (int sy = 0; sy < 240; sy++)
+                if (sr.data()[sy * 320 + sx]) { any = true; break; }
+            if (!any) empties++;
+        }
+        CHECK(empties == 0);
+    }
     return 0;
 }
 
@@ -1896,51 +1924,34 @@ static int testViewportCull()
 
 int main()
 {
+    int failed = 0;
     int r;
-    r = testShip();
-    if (r) return r;
-    r = testTerrain();
-    if (r) return r;
-    r = testGame();
-    if (r) return r;
-    r = testLevels();
-    if (r) return r;
-    r = testLandingBonus();
-    if (r) return r;
-    r = testDemo();
-    if (r) return r;
-    r = testStorm();
-    if (r) return r;
-    r = testMoon();
-    if (r) return r;
-    r = testGeysers();
-    if (r) return r;
-    r = testVolcanoes();
-    if (r) return r;
-    r = testVolcanoLava();
-    if (r) return r;
-    r = testVolcanoRebuild();
-    if (r) return r;
-    r = testAtmosphere();
-    if (r) return r;
-    r = testRings();
-    if (r) return r;
-    r = testTwister();
-    if (r) return r;
-    r = testWormhole();
-    if (r) return r;
-    r = testAcidRain();
-    if (r) return r;
-    r = testQuake();
-    if (r) return r;
-    r = testTanker();
-    if (r) return r;
-    r = testParachute();
-    if (r) return r;
-    r = testViewportCull();
-    if (r) return r;
-    r = testBgLayer();
-    if (r) return r;
+    r = testShip();          if (r) failed++;
+    r = testTerrain();       if (r) failed++;
+    r = testGame();          if (r) failed++;
+    r = testLevels();        if (r) failed++;
+    r = testLandingBonus();  if (r) failed++;
+    r = testDemo();          if (r) failed++;
+    r = testStorm();         if (r) failed++;
+    r = testMoon();          if (r) failed++;
+    r = testGeysers();       if (r) failed++;
+    r = testVolcanoes();     if (r) failed++;
+    r = testVolcanoLava();   if (r) failed++;
+    r = testVolcanoRebuild(); if (r) failed++;
+    r = testAtmosphere();    if (r) failed++;
+    r = testRings();         if (r) failed++;
+    r = testTwister();       if (r) failed++;
+    r = testWormhole();      if (r) failed++;
+    r = testAcidRain();      if (r) failed++;
+    r = testQuake();         if (r) failed++;
+    r = testTanker();        if (r) failed++;
+    r = testParachute();     if (r) failed++;
+    r = testViewportCull();  if (r) failed++;
+    r = testBgLayer();       if (r) failed++;
+    if (failed) {
+        printf("%d TEST GROUP(S) FAILED (%d checks total)\n", failed, checks);
+        return 1;
+    }
     printf("ALL CHECKS PASSED (%d)\n", checks);
     return 0;
 }

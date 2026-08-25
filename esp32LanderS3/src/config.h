@@ -18,9 +18,15 @@ const float FUEL_MAX = 1000.0f;
 const float FUEL_PER_THRUST = 0.2f;
 const float FUEL_CRASH_LOSS = 250.0f;
 
-const float ZOOM_IN_ALT = 200.0f;
-const float ZOOM_OUT_ALT = 350.0f;
-const float ZOOM_FACTOR = 2.5f;
+const float APPROACH_ALT = 200.0f;    // single threshold for everything in final
+                                      // approach: zoom-in, minimap, terrain drawing,
+                                      // tanker suppression.  Hysteresis exit at
+                                      // APPROACH_EXIT_ALT below.
+const float APPROACH_EXIT_ALT = 350.0f;
+const float APPROACH_CAM_FRAC = 0.50f; // screen Y of the ship (fraction of SCREEN_H
+                                       // from the top) during approach zoom: low
+                                       // enough to clear the minimap, leaves the
+                                       // landing zone filling the lower half.
 
 const float ROTATION_STEP = 15.0f;
 const float ROTATION_LERP = 0.3f;
@@ -45,12 +51,8 @@ const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nive
                                         // activarlo, el primer nivel del demo abre el
                                         // wormhole (traga + teleport) y el autopilot
                                         // sigue en la luna destino sin wormhole
-const int DEMO_LEVEL_FIRST = 7;         // TEMP (16/9/2026): la demo SIEMPRE abre en este
-                                        // nivel fijo (7 = Encélado/géiseres), cada ciclo.
-                                        // REVERTIR: primer ciclo fijo + luego al azar
-                                        // 1..DEMO_MAX_LEVEL. 0 = sin nivel fijo
-const int START_LEVEL = 2;  // TEMP (14/9/2026): primer nivel = Ío (terremoto).
-                            // Partida ordenada desde LUNA = 1. REVERTIR A 1
+const int DEMO_LEVEL_FIRST = 1;         // demo siempre arranca en Luna (nivel 1) con tanque
+const int START_LEVEL = 1;
 const float DEMO_SPAWN_Y_MIN = 100.0f; // banda aleatoria de altitud inicial de la
                                        // demo (la nave aparece siempre variable,
                                        // nunca fija)
@@ -260,23 +262,28 @@ const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
 // fuel flows incrementally (longer connection = more fuel). Touching the
 // mothership hull destroys both ships. It only appears when fuel is running low
 // (< half), so the rendezvous is reserved for when it actually matters.
-const int TANKER_START_LEVEL = 2;
-const int TANKER_FORCE_LEVEL1 = 1; // TEMP CRT test: force tanker in level 1
-const int DEMO_FORCE_TANKER_CRASH = 1; // TEMP: demo AI flies into the tanker hull
+const int TANKER_START_LEVEL = 1;
+const int TANKER_FORCE_LEVEL1 = 1; // force tanker in level 1 (unconditional)
+const int DEMO_FORCE_TANKER_CRASH = 0; // demo AI docks for refueling (no crash)
 const int TANKER_CHANCE_PERCENT = 70;
-const float TANKER_HOVER_ALT = 340.0f;   // hover so the dock altitude clears the minimap (ZOOM_IN_ALT=200)
+const float TANKER_DRAW_SCALE = 1.5f;    // extra visual multiplier: the balloon geometry (13 u)
+                                          // is close to the ship (~10 u), so ×1.5 keeps the
+                                          // tanker noticeably bigger while sharing the ship's
+                                          // scale factor.  Physics hitbox (HULL_W/H) unchanged.
+const float TANKER_HOVER_ALT = 420.0f;   // above APPROACH_EXIT_ALT (350) so the dock sits in
+                                          // stable zoom-out territory: hovering in the
+                                          // [200,350] dead-zone made the zoom flicker
 const float TANKER_TITAN_Y = 250.0f;     // Titan: between the two fog bands (1st ~205, 2nd ~343+), near the 1st
 const float TANKER_FUEL_FRACTION = 0.5f; // spawn only when fuel < FUEL_MAX * this
 const float TANKER_HULL_W = 22.0f;
 const float TANKER_HULL_H = 6.0f;
-const float TANKER_DRAW_SCALE = 1.25f; // whole tanker (balloon + accessories) reads bigger in every view
 const float TANKER_PLATFORM_W = 24.0f;
 const float TANKER_DRIFT_SPEED = 9.0f;
 const float TANKER_DRIFT_RANGE = 40.0f;
 const float TANKER_BOB_AMP = 3.0f;
 const float TANKER_BOB_SPEED = 0.9f;
-const float TANKER_DOCK_TOL_X = 12.0f;       // cone mouth: easy to seat the probe
-const float TANKER_DOCK_TOL_Y = 8.0f;
+const float TANKER_DOCK_TOL_X = 20.0f;       // cone mouth: wide enough to seat easily
+const float TANKER_DOCK_TOL_Y = 14.0f;
 const float TANKER_DOCK_ZONE_X = 90.0f;
 const float TANKER_DOCK_ZONE_Y = 45.0f;
 const float TANKER_HOSE_LEN = 20.0f;         // drogue hangs this far from the hull
@@ -287,8 +294,8 @@ const float TANKER_DROGUE_BACK_R = 1.6f;     // filled target radius at the bask
 // Picture-in-picture docking window: magnified contact point (basket + probe).
 const int PIP_SIZE = 76;                     // window size in px
 const float PIP_SCALE = SCREEN_H / 700.0f * 16.0f; // px per world unit inside the PiP
-const float TANKER_DROGUE_SWAY = 3.0f;       // drogue sway amplitude (world u)
-const float TANKER_DROGUE_SWAY_SPEED = 1.6f; // rad/s, independent of the bob phase
+const float TANKER_DROGUE_SWAY = 2.0f;       // drogue sway amplitude (world u) — reduced for easier docking
+const float TANKER_DROGUE_SWAY_SPEED = 1.2f; // rad/s, slower sway
 const float TANKER_REFUEL_RATE = 200.0f;     // fuel units per second while connected
 const float TANKER_HULL_MARGIN = 3.0f;       // ship touching the hull destroys both
 const float TANKER_LEAVE_SPEED = 1.4f;
@@ -301,11 +308,11 @@ const float TANKER_NOZZLE_LEN = 8.0f;    // module refuel probe offset from ship
 // fight a twitchy mini-game. The connection is robust by design: steady pull
 // toward center, low nudge sensitivity, and a long hold needed to break — it
 // only lets go if you drive the probe hard to the edge and keep it there.
-const float TANKER_DOCK_LOCK_TIME = 0.4f;
+const float TANKER_DOCK_LOCK_TIME = 0.3f;
 const float TANKER_DOCK_BREAK_TIME = 1.5f;
-const float TANKER_DOCK_BREAK_TOL_X = 18.0f;
-const float TANKER_DOCK_BREAK_TOL_Y = 14.0f;
-const float TANKER_CONE_GUIDE = 12.0f; // sec^-1: funnel centering pull while seated
+const float TANKER_DOCK_BREAK_TOL_X = 28.0f;
+const float TANKER_DOCK_BREAK_TOL_Y = 22.0f;
+const float TANKER_CONE_GUIDE = 20.0f; // sec^-1: strong funnel centering pull
 
 // Player parachute: a one-shot steerable canopy deployed with C+Z during
 // flight. Once deployed it cannot be retracted. While open the free fall is

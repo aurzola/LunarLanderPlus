@@ -52,6 +52,13 @@ public:
     float drogueX() const;
     float drogueY() const;
 
+    // Effective draw scale (px per world unit) applied to the whole tanker in
+    // draw(): the same base factor as the ship (ship.scale * viewScale) plus a
+    // constant boost (TANKER_DRAW_SCALE) to keep the tanker visually bigger.
+    static float drawScaleFor(float shipScale, float viewScale) {
+        return shipScale * viewScale * TANKER_DRAW_SCALE;
+    }
+
 private:
     float driftX;
     float phase;
