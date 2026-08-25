@@ -138,6 +138,65 @@ el pin 9 (+5 V) ni los DDC (4/11/12/15); sync directo a 13/14 (TTL, sin terminac
   (resolución 8-bit = máx)**.
 - Datos de audio y pipeline de generación: ver `sounds/` (no es hardware).
 
+## Amplificador tentativo para Video Monitor Monocromo (PENDIENTE, 16/8/2026)
+
+Módulo amplificador de audio mono de pequeña potencia basado en **XPT8871** (SOP-8, ESOP).
+El objetivo: amplificar la salida de GPIO26 para que el sonido se oiga por un parlante junto al
+monitor monocromo (el TV/CRT por su entrada RCA ya no sería la única vía).
+
+**Estado: NUNCA SONÓ.** Aún no se sabe si el módulo está defectuoso (algo desconectado por
+dentro), si le falta el circuito amplificador previo (filtro del portador PWM), o si el módulo
+no sirve para esta señal. Queda como pendiente de revisión/prueba.
+
+### Datos del módulo (por inspección)
+
+- Integrado: **XPT8871** (línea inferior `HL33491`), clase **AB/D seleccionable** (pin MODE).
+- Pasivos: MLCC C1/C2/C3 (entrada/filtrado), electrolítico SMD 220 µF 16 V (filtro de
+  alimentación), R3 serigrafía **101 = 100 Ω** (serie de entrada).
+- Specs del integrado (datasheet): 3 W @ 4 Ω @ 5 V, alimentación 2.5–5.5 V, **impedancia de
+  entrada ~15 kΩ**, ancho de banda de ganancia ~2.5 MHz (entrada `-IN` invertida, pin 4).
+
+### Cadena actual (NO verificada)
+
+```
+GPIO26 ──[1–10 µF acople]── IN del módulo XPT8871 ── parlante
+```
+
+### Hipótesis a revisar (en orden)
+
+1. **Módulo defectuoso / frío**: revisar soldaduras del módulo (sobre todo pin `-IN`, `SD` y
+   `MODE`), alimentación y GND. Con multímetro: verificar continuidad y que `VDD` reciba
+   voltaje real al encender.
+2. **Falta el circuito amplificador previo (filtro RC)**: la salida de GPIO26 es PWM cuadrado
+   a **312.5 kHz**; el XPT8871 deja pasar ese portador (BW ~2.5 MHz) y su modulador clase D se
+   intermodula → salida baja/opaca ("apagado"). El TV lo toleraba por su banda limitada (~15 kHz).
+   **Filtro propuesto de 2 polos** (corte ~16 kHz/etapa, ~-52 dB @ 312.5 kHz):
+
+   ```
+   GPIO26 ──[1 µF]──┬──[1 kΩ]──┬──[1 kΩ]──┬── IN del módulo XPT8871
+                   │          │          │
+                  [10 nF]    [10 nF]    (R3 interno 100 Ω → integrado)
+                   │          │          │
+                  GND        GND        GND
+   ```
+
+   No quitar el condensador de acople: bloquea el DC de ~1.65 V del PWM (sin él el offset
+   entra a `-IN` y corrompe la polarización).
+3. **Alimentación**: dar **5 V externos** al módulo (GND común con el ESP32); con 3.3 V del
+   ESP32 la potencia cae a ~1 W y los picos del parlante pueden causar brownouts.
+4. **Quizá se necesite otro amplificador** (p.ej. de entrada de línea o con mayor ganancia) si
+   con 1–3 resuelto el módulo sigue sin sonar.
+
+### Pruebas pendientes
+
+- [ ] Inspección visual/soldaduras del módulo + continuidad.
+- [ ] Probar la salida de GPIO26 → cap → filtro RC de 2 polos → módulo → parlante.
+- [ ] Medir AC (mV) en el nodo de entrada del módulo con el motor encendido (deberían verse
+      cientos de mV de señal limpia, sin el cuadrado de 312.5 kHz).
+- [ ] Alimentar el módulo con 5 V externo (GND común) y repetir.
+- [ ] Si nada de lo anterior: probar otro módulo/parlante para descartar el XPT8871.
+- [ ] Documentar aquí el circuito final una vez que suene.
+
 ## Flash / memoria (resumen)
 
 - Placa: ESP32 Dev Module, flash **4 MB** (QIO 80 MHz), core 3.3.10.

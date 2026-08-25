@@ -15,6 +15,7 @@ Estética objetivo: arcade / retro auténtico.
 - `esp32Lander/` — port C++ std del juego moonlander, **validado en PC** (ver "Port a ESP32").
 - `esp32LanderComposite/` — sketch Arduino del ESP32 (ver "Sketch ESP32").
 - `esp32LanderVGA/` — port **VGA paralelo** a un segundo ESP32 (ver "Port a VGA").
+- `esp32LanderS3/` — port a **ESP32-S3** con video compuesto por LCD_CAM+GDMA directo (ver "Port a ESP32-S3").
 
 ## Port a ESP32 (ESTADO 4/8/2026)
 
@@ -331,6 +332,31 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
 - Compila validado con `arduino-cli compile --fqbn esp32:esp32:esp32`: ~525 KB flash
   (40% del app slot), RAM 109 KB (33%). **Esquema de partición `no_ota`** (ver "Flash"), app slot de 2 MB.
 - Loop: `game.update()` cada 10 ms (acumulador sobre `millis()`); `game.draw(renderer)` por iteración.
+
+## Port a ESP32-S3 (rama `s3-port`, EN PROGRESO 24/8/2026)
+
+Port a la placa **ESP32-S3** (8 MB PSRAM octal) con video compuesto NTSC por **driver directo
+LCD_CAM + anillo GDMA auto-enlazado** (sin esp_lcd, sin costuras entre campos). FQBN:
+`esp32:esp32:esp32s3:PSRAM=opi`, puerto `/dev/ttyACM0`. Fuentes del juego en
+`esp32LanderS3/src/` (copias de `esp32Lander/`; aún no integrado en `sync.sh`). Estado:
+**Fase 0 (video) ✓** (artefacto diagonal superior eliminado), **Fase 1 (juego corriendo) ✓**
+(título + demo attract validados en CRT), **controles ✓** (nunchuck SCL=GPIO9, start GPIO13,
+pot GPIO8), **audio ✓** (GPIO18; motor/explosión probados en juego). Pendiente (Fases 2–4):
+sprites/bgLayer pre-renderizados en PSRAM y optimización de render. Detalles técnicos y quirks
+LEDC en WORKLOG #53.
+
+| Archivo | Contenido |
+|---------|-----------|
+| `esp32LanderS3.ino` | setup/loop igual que composite (pm lock, nunchuck, audio, acumulador GAME_DT); flags temporales `AUDIO_BRINGUP`/`AUDIO_TEST_TONE` |
+| `src/video_s3.h/cpp` | Driver de video propio: registros LCD_CAM + GDMA ring (26 descs × 3930 B, EOF→notificación a loopTask), `composeStaticLines()` precomputa lo no visible una vez |
+| `src/renderer_s3.h/cpp` | `RendererS3 : RendererCanvas` sobre el framebuffer de video |
+| resto de `src/` | Copias del core del juego + `nunchuck.*` (SCL=9) + `audio.*` (pin 18, sin DAC, LEDC_USE_APB_CLK) |
+
+- **Quirks LEDC S3 (audio)**: reloj por defecto es XTAL 40 MHz → hay que llamar
+  `ledcSetClockSource(LEDC_USE_APB_CLK)` antes de attach para 312.5 kHz @ 8-bit; no existe
+  `LEDC_HIGH_SPEED_MODE`; **el duty solo se adopta pulsando AMBOS** `conf1.duty_start=1` Y
+  `conf0.low_speed_update=1` tras escribir el registro (cada uno solo = silencio, `duty_rd=0`).
+- Compila: ~641 KB flash (48%), RAM estática ~209 KB.
 
 ## Port a VGA (paralelo, rama `vga-out`)
 

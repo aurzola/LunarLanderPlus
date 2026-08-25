@@ -1259,3 +1259,35 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       (antes solo el primer ciclo y luego al azar 1..12); `demoFirstLevelPending` queda sin
       consumir. REVERTIR al primer-ciclo-fijo.
     - Verificado: `./test_pc` OK, `sync.sh` OK (esp32Lander == composite == VGA), subido a CRT.
+52. **PENDIENTE (hardware) — Amplificador tentativo para Video Monitor Monocromo (16/8/2026)**:
+    módulo XPT8871 (clase AB/D, mono, 3 W @ 4 Ω @ 5 V, entrada ~15 kΩ) conectado a la salida de
+    audio (GPIO26 → cap 1–10 µF → módulo → parlante). **NUNCA SONÓ.** Hipótesis abiertas:
+    módulo defectuoso/soldadura fría, falta el circuito amplificador previo (filtro RC de 2 polos
+    para el portador PWM de 312.5 kHz que el XPT8871 deja pasar por su BW ~2.5 MHz → intermodula
+    y suena apagado), alimentación insuficiente (dar 5 V externos), o que se necesite otro
+    amplificador. Detalle completo, esquema del filtro y checklist de pruebas en
+    `docs/hardware.md` (sección "Amplificador tentativo para Video Monitor Monocromo").
+    No toca lógica de juego → no aparece en `AGENTS.md`.
+53. **Migración del juego a ESP32-S3 (rama `s3-port`; 24/8/2026, en progreso)**: port completo
+    a la placa S3 (8 MB PSRAM octal) con video compuesto por **driver directo LCD_CAM + anillo
+    GDMA auto-enlazado** (sin esp_lcd): 26 descriptores × 3930 B sobre un fieldBuf de 102180 B
+    (26 campos NTSC), pclk exacto 80/13 MHz vía PLL_F160M ÷26 (`lcd_clk_sel=3`,
+    `clkm_div_num=25`, `lcd_clk_equ_sysclk=1`), ruteo de pines con
+    `esp_rom_gpio_connect_out_signal(LCD_DATA_OUT0_IDX+i)`, EOF del último descriptor → ISR →
+    notificación a `loopTask` y `video_wait_frame()` = `ulTaskNotifyTake` + `composeField()`
+    (~2160 µs ≪ 16.6 ms). Esto eliminó el artefacto diagonal superior del esp_lcd (costura DMA
+    entre transferencias). Estado: **Fase 0 (video) ✓**, **Fase 1 (juego corriendo) ✓**
+    (título + demo attract validados en CRT), **controles (nunchuck SCL=9) ✓**,
+    **audio GPIO18 ✓** (motor/explosión probados en juego). Pendiente Fases 2–4:
+    sprites/bgLayer pre-renderizados en PSRAM + optimización.
+    - **Quirks LEDC del S3 descubiertos (audio)**: (1) el core usa reloj **XTAL 40 MHz por
+      defecto** para LEDC en S3 → 312.5 kHz @ 8-bit imposible ("div_param=0"); fix:
+      `ledcSetClockSource(LEDC_USE_APB_CLK)` antes de `ledcAttachChannel`. (2) No existe
+      `LEDC_HIGH_SPEED_MODE` (usar `LEDC_LOW_SPEED_MODE`). (3) **El duty solo se adopta si se
+      pulsan AMBOS bits tras escribir el registro**: `conf1.duty_start=1` Y
+      `conf0.low_speed_update=1` — cada uno solo deja `duty_rd=0` y silencio total (pin a 0 V).
+    - Notas de hardware: audio pasa por amplificador externo (el pitido de prueba 1 kHz suena
+      fuerte); dos episodios de "no hay video" resultaron ser contactos flojos del cableado, no
+      software (firmware seguía componiendo campos según `[perf]`). Sketch de prueba de audio:
+      `/tmp/opencode/audioTest/audioTest.ino`. Debug de registros LEDC disponible vía
+      `Audio::debugRegs()` (imprime conf0/conf1/duty/duty_rd/timer).
