@@ -7,6 +7,9 @@
 #if defined(ARDUINO)
 #include <Arduino.h>
 #endif
+#if defined(ESP32)
+#include <esp_random.h>
+#endif
 
 static const int TITLE_STAR_COUNT = 32;
 static const int titleStars[][2] = {
@@ -109,7 +112,7 @@ Game::Game()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, level == 1);
+    tanker.reset(level, terrain, ship.fuel);
     wormhole.disable();
     stormHitTimer = 0;
     setZoom(false);
@@ -144,7 +147,7 @@ void Game::newGame()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, level == 1);
+    tanker.reset(level, terrain, ship.fuel);
     acidrain.reset(level, terrain);
     quake.reset(level, terrain, ship);
     spawnWormhole();
@@ -204,7 +207,7 @@ void Game::nextLevel()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, level == 1);
+    tanker.reset(level, terrain, ship.fuel);
     acidrain.reset(level, terrain);
     quake.reset(level, terrain, ship);
     spawnWormhole();
@@ -236,6 +239,9 @@ void Game::startDemo()
 {
     demo = true;
     demoHoldAltitude = false;
+#if defined(ESP32)
+    srand(esp_random());
+#endif
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
     // Demo level: random 1..DEMO_MAX_LEVEL every cycle (DEMO_LEVEL_FORCE
@@ -257,11 +263,8 @@ void Game::startDemo()
             level = 1 + rand() % DEMO_MAX_LEVEL;
     }
     score = 0;
-    // Demo starts low on fuel so the tanker refuel is a visible, meaningful
-    // part of the attract loop (full tank would make the dock instant).
-    fuel = FUEL_MAX * 0.3f;
-    ship.fuel = FUEL_MAX * 0.3f;
-    hullIntegrity = 100;
+    float savedHull = demo ? hullIntegrity : 100.0f;
+    hullIntegrity = savedHull;
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
@@ -283,7 +286,7 @@ void Game::startDemo()
     if (showcase) rings.setEnabled(false);
     twister.reset(level, terrain);
     if (showcase) twister.setEnabled(false);
-    tanker.reset(level, terrain, ship.fuel, true); // force: tanker always in demo
+    tanker.reset(level, terrain, ship.fuel);
     acidrain.reset(level, terrain);
     if (showcase) acidrain.setEnabled(false);
     quake.reset(level, terrain, ship);
@@ -305,9 +308,11 @@ void Game::startDemo()
     // Random initial altitude: the demo ship always spawns at a variable
     // height within the band, so each attract run starts differently.
     {
+        float savedFuel = ship.fuel;
         int span = (int)(DEMO_SPAWN_Y_MAX - DEMO_SPAWN_Y_MIN);
         float sy = DEMO_SPAWN_Y_MIN + (float)(rand() % span);
         ship.reset(110, sy);
+        ship.fuel = savedFuel;
     }
     ship.velX = 0.06f;
     setZoom(false);
@@ -1406,6 +1411,10 @@ void Game::update()
             }
         }
         ship.update();
+        if (demo && ship.fuel <= 0) {
+            ship.fuel = FUEL_MAX;
+            fuel = FUEL_MAX;
+        }
         if (geysers.inPlume(ship.posX, ship.posY))
             ship.velY -= GEYSER_PUSH * (ship.gravity / GRAVITY);
 
@@ -1551,8 +1560,6 @@ void Game::draw(Renderer &r)
     r.clear();
 
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
-    if (state != STATE_WAITING && atmosphereInView())
-        atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
 
     int warnY = 62;
 
@@ -1806,6 +1813,8 @@ void Game::draw(Renderer &r)
         } else {
             terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         }
+        if (state != STATE_WAITING && atmosphereInView())
+            atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
         {
             // Geysers: only draw when at least one vent (plus plume reach) is
             // in view. Vents sit on terrain, so horizontal visibility is enough.
@@ -1930,7 +1939,7 @@ void Game::draw(Renderer &r)
             const std::vector<TerrainLine> &tl = terrain.getLines();
             int blink = (ship.counter / 20) & 1;
             for (int i = 0; i < (int)tl.size(); i++) {
-                if (tl[i].labelX < 0) continue;
+                if (tl[i].labelX < 0 || !tl[i].landable) continue;
                 float zx1 = tl[i].x1, zx2 = tl[i].x2;
                 int j = i;
                 while (j + 1 < (int)tl.size() && tl[j + 1].landable) {
@@ -2028,12 +2037,14 @@ void Game::draw(Renderer &r)
             }
 
             if (demo) r.text(22, 62, "DEMO");
+#if SHOW_DEBUG_SCALES
             snprintf(buf, sizeof buf, "SCL %.3f", ship.scale);
             r.text(250, 92, buf);
             snprintf(buf, sizeof buf, "VWS %.3f", viewScale);
             r.text(250, 102, buf);
             snprintf(buf, sizeof buf, "TK %.3f", Tanker::drawScaleFor(ship.scale, viewScale));
             r.text(250, 112, buf);
+#endif
             bool windShown = windEnabled;
             if (windShown) {
                 if (!glitch) {
@@ -2084,21 +2095,21 @@ void Game::draw(Renderer &r)
         // the other moon. Plain centered text, same style as the landing/crash
         // messages.
         if (recycledTimer > 0.0f) {
-            centerText(90, "CONGRATULATIONS,");
-            centerText(102, "YOU'VE BEEN RECYCLED!");
+            centerText(170, "CONGRATULATIONS,");
+            centerText(182, "YOU'VE BEEN RECYCLED!");
         }
 
         if (state == STATE_LANDED) {
             if (landPerfect) {
-                centerText(90, "CONGRATULATIONS");
-                centerText(102, "PERFECT LANDING");
+                centerText(170, "CONGRATULATIONS");
+                centerText(182, "PERFECT LANDING");
             } else {
-                centerText(96, "GOOD LANDING");
+                centerText(176, "GOOD LANDING");
             }
         } else if (state == STATE_CRASHED) {
             if (lavaBurn) {
-                centerText(90, "YOU BURNED");
-                centerText(102, "LAVA DESTROYED THE SHIP");
+                centerText(170, "YOU BURNED");
+                centerText(182, "LAVA DESTROYED THE SHIP");
             } else if (ringHit) {
                     if (zoomedIn) {
                     float bandSy = rings.centerBandY(terrain, ship.posX) * viewScale + viewY;
@@ -2108,27 +2119,27 @@ void Game::draw(Renderer &r)
                     centerText(yTxt, "YOU CRASHED");
                     centerText(yTxt + 12, "STRUCK BY ORBITAL DEBRIS");
                 } else {
-                    centerText(116, "YOU CRASHED");
-                    centerText(128, "STRUCK BY ORBITAL DEBRIS");
+                    centerText(170, "YOU CRASHED");
+                    centerText(182, "STRUCK BY ORBITAL DEBRIS");
                 }
             } else if (twisterCrash) {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "TWISTER SMASHED THE SHIP");
+                centerText(170, "YOU CRASHED");
+                centerText(182, "TWISTER SMASHED THE SHIP");
             } else if (tankerCrash) {
-                centerText(90, "BOTH DESTROYED");
-                centerText(102, "COLLIDED WITH THE TANKER");
+                centerText(170, "BOTH DESTROYED");
+                centerText(182, "COLLIDED WITH THE TANKER");
             } else if (quakeCrash) {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "THE GROUND GAVE WAY");
+                centerText(170, "YOU CRASHED");
+                centerText(182, "THE GROUND GAVE WAY");
             } else if (acidBurn) {
-                centerText(96, "ACID RAIN CORRODED THE SHIP");
+                centerText(176, "ACID RAIN CORRODED THE SHIP");
             } else {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "FUEL TANKS DESTROYED");
+                centerText(170, "YOU CRASHED");
+                centerText(182, "FUEL TANKS DESTROYED");
             }
         } else if (state == STATE_GAMEOVER) {
-            centerText(90, "OUT OF FUEL");
-            centerText(102, "GAME OVER");
+            centerText(170, "OUT OF FUEL");
+            centerText(182, "GAME OVER");
         }
 
             if (tanker.docked && tanker.fuelFlowing) {
@@ -2145,7 +2156,7 @@ void Game::draw(Renderer &r)
             }
 
             if (fuelMaxTimer > 0.0f) {
-            centerText(96, "FUEL MAX");
+            centerText(106, "FUEL MAX");
         }
 
         if (introTimer > 0) {

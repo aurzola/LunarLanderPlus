@@ -11,7 +11,7 @@ Tanker::Tanker()
 {
 }
 
-void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
+void Tanker::reset(int level, const Terrain& terrain, float fuel)
 {
     active = false;
     docked = false;
@@ -23,12 +23,10 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
     fuelFlowing = false;
 
     if (level < TANKER_START_LEVEL && !(TANKER_FORCE_LEVEL1 && level == 1)) return;
-    // The air tanker only makes sense on a low tank, but force (demo/test)
-    // bypasses this check so the tanker appears for showcasing purposes.
-    if (!force && fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
+    if (fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
     // Ganymede's debris rings make a high-altitude rendezvous impossible.
     if (moonHasRings(level)) return;
-    if (!force && rand() % 100 >= TANKER_CHANCE_PERCENT) return;
+    if (rand() % 100 >= TANKER_CHANCE_PERCENT) return;
 
     const std::vector<TerrainLine>& tl = terrain.getLines();
     float w = terrain.getWidth();

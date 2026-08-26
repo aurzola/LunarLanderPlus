@@ -1403,3 +1403,35 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       de los demos visuales de PC actualizados (volcano/quake 2→8, geyser 7→4, rings 4→6, titan
       6→5, twister 8→7, acidrain 3→2). `test_pc` 1066/1066, demos PC con selftest OK, sketch S3
       compila (645 KB / 49 %, RAM 211 KB).
+
+## 26/8/2026 — Demo acumulativo, tanker sin force, fix orden de niebla de Titán
+
+- **Tanker: eliminado parámetro `force`**: `Tanker::reset()` ahora tiene 3 args
+  `(level, terrain, fuel)`. El fuel gate (`fuel < 50% FUEL_MAX`) siempre se aplica; el demo ya
+  no fuerza la aparición de la cisterna. El repostaje aparece solo cuando el fuel está bajo,
+  igual que en partida normal. `tanker.h`, `tanker.cpp`, 4 call sites en `game.cpp` (constructor,
+  `newGame`, `nextLevel`, `startDemo`) y tests en `test_pc.cpp` actualizados.
+- **Demo: fuel y hull acumulativos**: `startDemo()` preserva `ship.fuel` y `hullIntegrity` entre
+  ciclos del demo (antes `ship.reset()` los ponía a `FUEL_MAX`/100 siempre). Solo se resetean a
+  1000/100 cuando el fuel llega a 0 durante el vuelo (reset automático en `update()`). El demo
+  puede empezar un nivel con fuel parcial si el anterior terminó con crash/land.
+- **Demo: re-seed en ESP32**: `srand(esp_random())` en `startDemo()` para mayor variedad en el
+  demo en cada ciclo. Sin efecto en PC (usa `srand(42)` de los tests).
+- **HUD: flag `SHOW_DEBUG_SCALES`** en `config.h` (default `false`): envuelve las líneas
+  `SCL`/`VWS`/`TK` del HUD en `#if SHOW_DEBUG_SCALES`. Activar para debug de zoom en placa.
+- **FUEL MAX: texto movido** de `centerText(96, ...)` a `centerText(106, ...)` para quedar debajo
+  del marco PiP (pipY=22 + PIP_SIZE=76 + 8 = 106).
+- **Atmósfera de Titán: fix de draw order**: `atmosphere.drawSky()` movido de **antes** del
+  terreno (donde el terreno la tapaba) a **después** del terreno y **antes** de la nave. Las
+  bandas de niebla ahora se superponen al terreno correctamente y ocultan la nave al cruzarlas.
+- **Tests**: nuevo `testShipVisibility` (verifica que la niebla solo oculta la nave en Titán);
+  tests del tanker actualizados (sin `force`); 1073 checks, todos pasan.
+- **Quake movido de Ío a Callisto**: `moonHasQuakes` ahora retorna `true` para `moonIndex==4`
+  (Callisto, nivel 3) en vez de `moonIndex==1` (Ío). Ío queda solo con volcanes (sin conflicto
+  lava+terremoto). `moonEffectFree()` ahora solo deja LUNA como host de wormhole (Callisto ya no
+  es libre). Tests y quake_demo actualizados (default level 3). AGENTS.md actualizado.
+- **Luces de aproximación post-quake**: verificación de `!tl[i].landable` agregada al código de
+  luces parpadeantes en `game.cpp:1942` (defensa extra; `ruptureZone` ya pone `labelX=-1` y
+  `landable=false`). Además `ruptureZone` ahora limpia `zi.labelX = -1` en el `ZoneInfo`.
+- **Mensajes de crash/aterrizaje movidos a zona inferior**: `centerText` de todos los mensajes
+  (landed/crashed/gameover/recycled) movidos de y=90-128 a y=170-182 (debajo del terreno).

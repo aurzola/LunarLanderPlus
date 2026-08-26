@@ -810,41 +810,29 @@ static int testTanker()
     tn1.reset(1, t1, 100.0f);
     if (!TANKER_FORCE_LEVEL1) CHECK(!tn1.active);
 
-    // A full tank never summons the tanker (without force).
+    // A full tank never summons the tanker.
     Tanker tnFull;
     tnFull.reset(2, t1, FUEL_MAX);
     CHECK(!tnFull.active);
 
-    // Forced spawn bypasses level, chance AND fuel gates: the tanker appears
-    // even with a full tank so the demo can showcase the refueling mechanic.
-    bool fullForced = false;
-    for (int s = 0; s < 50 && !fullForced; s++) {
-        srand(20000 + s);
-        Terrain tfF;
-        tfF.generate(2);
-        Tanker tkFull;
-        tkFull.reset(2, tfF, FUEL_MAX, true);
-        if (tkFull.active) fullForced = true;
-    }
-    CHECK(fullForced);
-
-    bool forcedSpawn = false;
-    for (int s = 0; s < 200 && !forcedSpawn; s++) {
+    // Low fuel allows the tanker (subject to random chance).
+    bool lowFuelSpawn = false;
+    for (int s = 0; s < 200 && !lowFuelSpawn; s++) {
         srand(10000 + s);
         Terrain tf;
         tf.generate(2);
         Tanker tkf;
-        tkf.reset(2, tf, FUEL_MAX * 0.4f, true);
-        if (tkf.active) forcedSpawn = true;
+        tkf.reset(2, tf, FUEL_MAX * 0.4f);
+        if (tkf.active) lowFuelSpawn = true;
     }
-    CHECK(forcedSpawn);
+    CHECK(lowFuelSpawn);
 
     // Ganymede debris rings: no tanker there, even forced.
     srand(7);
     Terrain tg;
     tg.generate(6);
     Tanker tnG;
-    tnG.reset(6, tg, 100.0f, true);
+    tnG.reset(6, tg, 100.0f);
     CHECK(!tnG.active);
 
     // Titan: the tanker hovers between the two fog bands, closer to the first.
@@ -854,7 +842,7 @@ static int testTanker()
         Terrain tt;
         tt.generate(5);
         Tanker tkT;
-        tkT.reset(5, tt, 100.0f, true);
+        tkT.reset(5, tt, 100.0f);
         if (!tkT.active) continue;
         titanSeen = true;
         CHECK(tkT.baseY == TANKER_TITAN_Y);
@@ -967,7 +955,7 @@ static int testTanker()
         // tolerance with the joystick nudge and confirm the link auto-releases
         // after BREAK_TIME.
         Tanker tkBr;
-        tkBr.reset(2, t, 100.0f, true);
+        tkBr.reset(2, t, 100.0f);
         Ship shipBr;
         shipBr.reset(tkBr.drogueX(), tkBr.drogueY() + TANKER_NOZZLE_LEN);
         shipBr.scale = 1.0f;
@@ -990,8 +978,8 @@ static int testTanker()
         CHECK(tk.bodyX > startX);
 
         Tanker tk2;
-        tk2.reset(2, t, 100.0f, true);
-        CHECK(tk2.active == true);
+        tk2.reset(2, t, 100.0f);
+        CHECK(!tk2.active);
     }
     CHECK(spawned);
 
@@ -1041,7 +1029,7 @@ static int testTanker()
         Terrain td;
         td.generate(2);
         Tanker tkd;
-        tkd.reset(2, td, 100.0f, true);
+        tkd.reset(2, td, 100.0f);
         if (!tkd.active) continue;
         CHECK(tkd.hitsHull(tkd.bodyX, tkd.bodyY));
         CHECK(tkd.hitsHull(tkd.bodyX, tkd.bodyY - 60.0f) == false);
@@ -1138,10 +1126,10 @@ static int testParachute()
 static int testWormhole()
 {
     // The wormhole only hosts on effect-free moons (never combines with
-    // another effect): LUNA/CALLISTO yes, the rest no.
+    // another effect): LUNA yes, the rest no (each has its own effect).
     CHECK(moonEffectFree(1) == true);   // LUNA
     CHECK(moonEffectFree(2) == false);  // EUROPA (acid rain)
-    CHECK(moonEffectFree(3) == true);   // CALLISTO
+    CHECK(moonEffectFree(3) == false);  // CALLISTO (quakes)
     CHECK(moonEffectFree(4) == false);  // ENCELADUS (geysers)
     CHECK(moonEffectFree(5) == false);  // TITAN (fog)
     CHECK(moonEffectFree(6) == false);  // GANYMEDES (rings)
@@ -1519,25 +1507,25 @@ static int testAcidRain()
 
 static int testQuake()
 {
-    // Activation: only on Io, inactive on other moons.
-    CHECK(moonHasQuakes(8) == true);   // level 8 = IO
-    CHECK(moonHasQuakes(16) == true);  // next cycle
+    // Activation: only on Callisto, inactive on other moons.
+    CHECK(moonHasQuakes(3) == true);   // level 3 = CALLISTO
+    CHECK(moonHasQuakes(11) == true);  // next cycle
     CHECK(moonHasQuakes(1) == false);  // LUNA
     CHECK(moonHasQuakes(2) == false);  // EUROPA
 
     Terrain t;
-    t.generate(8); // IO
+    t.generate(3); // CALLISTO
     CHECK(t.zoneCount() == 4);
 
     Ship s;
     s.reset(200, 150);
 
     Quake q;
-    q.reset(8, t, s);
+    q.reset(3, t, s);
     CHECK(q.active());
     CHECK(q.phase() == Quake::IDLE);
 
-    // Inactive on non-Io moons.
+    // Inactive on non-Callisto moons.
     Quake q2;
     q2.reset(1, t, s); // LUNA
     CHECK(!q2.active());
@@ -1608,7 +1596,7 @@ static int testQuake()
     CHECK(res == 2);
 
     // A regenerated level forgets the old ruptures.
-    t.generate(8);
+    t.generate(3); // CALLISTO
     CHECK(!t.isRupturedAt(q.strikeX()));
     for (int i = 0; i < t.zoneCount(); i++) CHECK(!t.zoneBroken(i));
 
@@ -1617,9 +1605,9 @@ static int testQuake()
     g.input.startPressed = true;
     g.update();
     g.input.startPressed = false;
-    g.level = 8; // IO
-    g.terrain.generate(8);
-    g.quake.reset(8, g.terrain, g.ship);
+    g.level = 3; // CALLISTO
+    g.terrain.generate(3);
+    g.quake.reset(3, g.terrain, g.ship);
     g.introTimer = 0.0f;
     g.wormhole.disable();
     CHECK(!g.quakeCrashGet());
@@ -1656,7 +1644,7 @@ static int testQuake()
     g2.input.startPressed = true;
     g2.update();
     g2.input.startPressed = false;
-    g2.level = 8;
+    g2.level = 3; // CALLISTO
     g2.newGame();
     g2.introTimer = 0.0f;
     g2.wormhole.disable();
@@ -1934,6 +1922,73 @@ static int testViewportCull()
     return 0;
 }
 
+static int testShipVisibility()
+{
+    // The ship must always be visible during STATE_PLAYING, except when hidden
+    // by Titan's fog bands (atmosphere.hidesShip). Verify that drawing a game
+    // on a non-Titan level always produces ship pixels, and that on Titan the
+    // fog can suppress them.
+
+    // Non-Titan level (Luna, level 1): ship at a known position.
+    {
+        srand(100);
+        Game g;
+        g.newGame();
+        g.introTimer = 0;
+        g.ship.posX = 400.0f;
+        g.ship.posY = 300.0f;
+        g.ship.velX = 0;
+        g.ship.velY = 0;
+        g.ship.rotation = 0;
+        g.ship.targetRotation = 0;
+        g.ship.scale = 1.0f;
+        g.ship.active = true;
+        g.ship.exploding = false;
+        g.ship.dissolving = false;
+        g.update();
+        CountRenderer r;
+        g.draw(r);
+        CHECK(r.px > 0);
+    }
+
+    // Titan (level 5 = moonIndex 5): fog hides the ship in band zones but not
+    // everywhere.
+    {
+        srand(200);
+        Game g;
+        g.level = 5;
+        g.terrain.generate(5);
+        g.atmosphere.reset(5);
+        CHECK(g.atmosphere.active());
+
+        // Scan a vertical line at x=400: some positions hidden, some clear.
+        bool sawHidden = false, sawClear = false;
+        for (float y = 50.0f; y < 600.0f; y += 2.0f) {
+            if (g.atmosphere.hidesShip(400.0f, y)) sawHidden = true;
+            else sawClear = true;
+        }
+        CHECK(sawHidden);
+        CHECK(sawClear);
+
+        // Outside bands: not hidden.
+        CHECK(!g.atmosphere.hidesShip(400.0f, 50.0f));
+        CHECK(!g.atmosphere.hidesShip(400.0f, 900.0f));
+    }
+
+    // Non-Titan level: atmosphere does not hide the ship at any position.
+    {
+        srand(300);
+        Game g;
+        g.level = 1;
+        g.terrain.init();
+        g.atmosphere.reset(1);
+        CHECK(!g.atmosphere.active());
+        CHECK(!g.atmosphere.hidesShip(400.0f, 300.0f));
+    }
+
+    return 0;
+}
+
 int main()
 {
     int failed = 0;
@@ -1960,6 +2015,7 @@ int main()
     r = testParachute();     if (r) failed++;
     r = testViewportCull();  if (r) failed++;
     r = testBgLayer();       if (r) failed++;
+    r = testShipVisibility(); if (r) failed++;
     if (failed) {
         printf("%d TEST GROUP(S) FAILED (%d checks total)\n", failed, checks);
         return 1;
