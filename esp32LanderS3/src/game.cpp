@@ -309,13 +309,20 @@ void Game::startDemo()
     // height within the band, so each attract run starts differently.
     {
         float savedFuel = ship.fuel;
-        int span = (int)(DEMO_SPAWN_Y_MAX - DEMO_SPAWN_Y_MIN);
-        float sy = DEMO_SPAWN_Y_MIN + (float)(rand() % span);
-        ship.reset(110, sy);
+        int spanX = (int)(DEMO_SPAWN_X_MAX - DEMO_SPAWN_X_MIN);
+        int spanY = (int)(DEMO_SPAWN_Y_MAX - DEMO_SPAWN_Y_MIN);
+        float sx = DEMO_SPAWN_X_MIN + (float)(rand() % spanX);
+        float sy = DEMO_SPAWN_Y_MIN + (float)(rand() % spanY);
+        printf("[demo] startDemo level=%d savedFuel=%.1f spawn=(%.0f,%.0f)\n",
+                      level, savedFuel, sx, sy);
+        ship.reset(sx, sy);
         ship.fuel = savedFuel;
+        printf("[demo] after restore ship.fuel=%.1f\n", ship.fuel);
     }
     ship.velX = 0.06f;
     setZoom(false);
+    viewX = -ship.posX * viewScale + SCREEN_W * 0.5f;
+    viewY = -ship.posY * viewScale + SCREEN_H * 0.5f;
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
     spawnWormhole(DEMO_WORMHOLE_FIRST);
@@ -420,12 +427,17 @@ void Game::setupDemoTarget()
 
 void Game::endDemoToTitle()
 {
+    printf("[demo] endDemoToTitle ship.fuel=%.1f hullIntegrity=%.1f\n",
+                  ship.fuel, hullIntegrity);
+    float savedFuel = ship.fuel;
     state = STATE_WAITING;
     demoTimer = DEMO_START_DELAY;
     terrain.init();
     setZoom(false);
     wormhole.disable();
     setupTitleShip();
+    ship.fuel = savedFuel;
+    printf("[demo] after setupTitleShip+restore ship.fuel=%.1f\n", ship.fuel);
 }
 
 void Game::spawnWormhole(bool force)
@@ -512,7 +524,10 @@ void Game::wormholeJump()
 
 void Game::setupTitleShip()
 {
+    float fuelBefore = ship.fuel;
     ship.reset(110, 150);
+    printf("[demo] setupTitleShip: reset wiped fuel %.1f -> %.1f\n",
+                  fuelBefore, ship.fuel);
     ship.velX = -0.35f;
     ship.posX = (SCREEN_W - 20.0f) / viewScale;
 }
@@ -546,6 +561,9 @@ void Game::runDemoAI()
             thrust = clampf(thrust + n * imp * 0.05f, 0.0f, 1.0f);
         else
             thrust = 0.0f;
+
+        float pulse = sinf((float)ship.counter * 0.04f) * 0.06f;
+        thrust = clampf(thrust + pulse, 0.0f, 1.0f);
 
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -647,6 +665,9 @@ void Game::runDemoAI()
         else
             thrust = 0.0f;
 
+        float pulse = sinf((float)ship.counter * 0.04f) * 0.06f;
+        thrust = clampf(thrust + pulse, 0.0f, 1.0f);
+
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
         input.thrust = thrust;
@@ -688,6 +709,9 @@ void Game::runDemoAI()
         thrust = clampf(thrust + n * imp * 0.08f, 0.0f, 1.0f);
     else
         thrust = 0.0f;
+
+    float pulse = sinf((float)ship.counter * 0.04f) * 0.06f;
+    thrust = clampf(thrust + pulse, 0.0f, 1.0f);
 
     float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
     input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -1515,6 +1539,8 @@ void Game::update()
         resetTimer -= dt;
         if (resetTimer <= 0) {
             if (demo) {
+                printf("[demo] level end state=%s fuel=%.1f\n",
+                              state == STATE_LANDED ? "LANDED" : "CRASHED", ship.fuel);
                 endDemoToTitle();
                 landFuelBonus = 0;
             } else if (state == STATE_LANDED) {

@@ -1404,6 +1404,21 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       6→5, twister 8→7, acidrain 3→2). `test_pc` 1066/1066, demos PC con selftest OK, sketch S3
       compila (645 KB / 49 %, RAM 211 KB).
 
+## 27/8/2026 — Demo spawn aleatorio, fix fuel entre ciclos, thrust orgánico
+
+- **Demo spawn**: la nave ahora aparece en posición completamente aleatoria en cada ciclo
+  — X∈[50,850] (`DEMO_SPAWN_X_MIN/MAX`), Y∈[80,350] (`DEMO_SPAWN_Y_MIN/MAX`). La cámara
+  se centra en la nave al spawnear (`viewX`/`viewY` ajustados al centro de pantalla).
+- **Fix fuel entre ciclos del demo**: `endDemoToTitle()` guardaba `ship.fuel` antes de
+  llamar `setupTitleShip()` (que llamaba `ship.reset()` → `fuel=FUEL_MAX`) y lo restauraba
+  después. Sin esto, el fuel se reseteaba a 1000 entre ciclos. `setupTitleShip()` ahora
+  muestra un debug printf indicando el wipe.
+- **Thrust orgánico en autopilot**: `sinf(counter·0.04)·0.06` añadido al thrust en los
+  3 modos del demo (crucero, altitude-hold, tanker) para evitar que el power/VY se quede
+  constante. Oscilación ±6% con período ~2.6 s.
+- **Tests**: 1073 checks pasan, `demo_sim` con spawn aleatorio muestra posiciones variadas.
+- **Docs**: AGENTS.md y WORKLOG.md actualizados.
+
 ## 26/8/2026 — Demo acumulativo, tanker sin force, fix orden de niebla de Titán
 
 - **Tanker: eliminado parámetro `force`**: `Tanker::reset()` ahora tiene 3 args

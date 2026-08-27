@@ -334,10 +334,15 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   desde 25/8/2026, rama `demo-random-progression`)**: tras `DEMO_START_DELAY=13 s` en el título,
   `Game::startDemo()` lanza un nivel al azar (1..12; `DEMO_MAX_LEVEL=12`) jugado por un
   **autopilot** (`Game::runDemoAI()`) hacia `demoTargetX/Y`. Cada ciclo re-tira el nivel al azar
-  (cualquier luna/efecto; `DEMO_LEVEL_FIRST=0`). **Fuel y hull acumulativos en demo (26/8/2026)**:
+  (cualquier luna/efecto; `DEMO_LEVEL_FIRST=0`). **Spawn aleatorio completo (27/8/2026)**: la nave
+  aparece en posición completamente aleatoria — X∈[50,850] y Y∈[80,350] (`DEMO_SPAWN_X_MIN/MAX`,
+  `DEMO_SPAWN_Y_MIN/MAX`); la cámara se centra al spawnear (`viewX`/`viewY` ajustados al centro
+  de pantalla). **Fuel y hull acumulativos en demo (26/8/2026)**:
   `ship.fuel` y `hullIntegrity` se preservan entre ciclos del demo; solo se resetean a
   `FUEL_MAX` / `100` cuando `ship.fuel` llega a 0 durante el vuelo (reset automático a
-  `FUEL_MAX`). La cisterna aparece solo cuando `fuel < 50 %` (sin `force`); `srand(esp_random())`
+  `FUEL_MAX`). El fuel se guarda/restaura tanto en `startDemo()` como en `endDemoToTitle()`
+  (el fix de `setupTitleShip` que borraba `ship.fuel` vía `ship.reset()`). La cisterna aparece
+  solo cuando `fuel < 50 %` (sin `force`); `srand(esp_random())`
   re-seeda en cada ciclo en ESP32 para variedad. `DEMO_FORCE_TANKER_CRASH=0` (el showcase de choque
   quedó desactivado). **Sensores ignorados en demo**: `readInputs()` del sketch
   no lee nunchuck/pot mientras `game.demo` (solo el botón start, que cancela el demo) — leerlos
@@ -346,10 +351,13 @@ Sketch Arduino autónomo (Arduino IDE o `arduino-cli`). Placa "ESP32 Dev Module"
   con `aX=(desVX−velX)·0.02 − windDir·windPush` y `aY=(velY−desVY)·0.03` (tope 0.00075), `desVY`
   según fase (0.12 crucero / 0.04 cerca / 0.03 aproximación); `aX` se atenúa cerca del suelo
   (`alt<12 → ×0.6`, `alt<2.5 → ×0.05`) para aterrizar erguido; freno de ascenso si `velY<-0.01`.
-  PWR rampea a `DEMO_POWER_RATE=0.4/s`. **A veces gana, a veces pierde** (~50 % "torpes",
-  `demoSkill` 0–0.35 y offset hasta ±110 u → aterrizan en la ladera; win-rate ~45 % validado con
-  `./demo_sim`). Al terminar muestra el resultado (`CRASH_RESET_DELAY`) y vuelve al título; `DEMO` en
-  HUD bajo `PWR` en `(22,62)`; cualquier `startPressed` cancela el demo (`demo=false`).
+  PWR rampea a `DEMO_POWER_RATE=0.4/s`. **Oscilación de thrust (27/8/2026)**: `sinf(counter·0.04)·0.06`
+  añadido al thrust en los 3 modos del autopilot (crucero, altitude-hold, tanker) para que el
+  power/VY varíe orgánicamente en vez de quedarse constante. **A veces gana, a veces pierde**
+  (~50 % "torpes", `demoSkill` 0–0.35 y offset hasta ±110 u → aterrizan en la ladera;
+  win-rate ~45 % validado con `./demo_sim`). Al terminar muestra el resultado (`CRASH_RESET_DELAY`)
+  y vuelve al título; `DEMO` en HUD bajo `PWR` en `(22,62)`; cualquier `startPressed` cancela el
+  demo (`demo=false`).
 - **Combustible (5/8/2026)**: **no se recarga entre niveles**; lo consumido queda consumido
   (`ship.fuel` se conserva en `nextLevel()`/`restartLevel()`, que antes lo reiniciaban vía
   `Ship::reset()`). El juego **NO termina al quedarse sin combustible en pleno vuelo**: se puede
@@ -604,4 +612,4 @@ pendientes y bugs activos:
   (el FB de video ya no cabía); se resolvió pasando las muestras de audio a flash (ver Sonido).
   RAM 101908 B (31%), arranque limpio verificado por serial. Pendiente re-probar en CRT.
 - **BUG PENDIENTE (demo, #23)**: a veces el juego no se renderiza completo por la **izquierda** de la pantalla — queda un espacio sin pintar o sin usar, notado principalmente en el auto-demo/attract mode. Hipótesis a investigar: la librería aquaticus escanea el framebuffer por raster esta vez; posible offset de inicio de línea horizontal (back porch del CRT) o un rect/borrado que no cubre el margen izquierdo en ciertos estados. Ver WORKLOG #23.
-- **TEMP**: `RING_FOG_BRIGHT=0` desactiva la niebla de las bandas de Ganímedes (decisión de diseño). `DEMO_LEVEL_FORCE=0` en PC y sketch (demo elige nivel al azar 1..12). **`DEMO_LEVEL_FIRST=0` (25/8/2026, rama `demo-random-progression`)**: la demo elige nivel al azar 1..12 en CADA ciclo (cualquier luna/efecto); el antiguo ciclo fijo en Luna n.º 1 quedó revertido. **`DEMO_WORMHOLE_FIRST=false` (16/9/2026: la demo ya NO fuerza el showcase de wormhole; cada ciclo elige nivel al azar 1..12, cualquier luna/efecto)**. **`DEMO_SPAWN_Y_MIN/MAX` (100/260)**: la nave de la demo aparece siempre a una altitud aleatoria en esa banda. `FOG_SCREEN_TOP=68` (cuadro de limpieza del HUD a la altura de MEM). **`SCL`/`VWS`/`TK` en el HUD (TEMP, rama `tanker-docking`)**: debug de `ship.scale`, `viewScale` y `Tanker::drawScaleFor` en `(250,92)`/`(250,102)`/`(250,112)` mientras la demo está activa; quitar al cerrar la rama.
+- **TEMP**: `RING_FOG_BRIGHT=0` desactiva la niebla de las bandas de Ganímedes (decisión de diseño). `DEMO_LEVEL_FORCE=0` en PC y sketch (demo elige nivel al azar 1..12). **`DEMO_LEVEL_FIRST=0` (25/8/2026, rama `demo-random-progression`)**: la demo elige nivel al azar 1..12 en CADA ciclo (cualquier luna/efecto); el antiguo ciclo fijo en Luna n.º 1 quedó revertido. **`DEMO_WORMHOLE_FIRST=false` (16/9/2026: la demo ya NO fuerza el showcase de wormhole; cada ciclo elige nivel al azar 1..12, cualquier luna/efecto)**. **`DEMO_SPAWN_X_MIN/MAX` (50/850), `DEMO_SPAWN_Y_MIN/MAX` (80/350)**: la nave de la demo aparece siempre en una posición completamente aleatoria — X e Y al azar dentro de esa banda, con la cámara centrada al spawnear. `FOG_SCREEN_TOP=68` (cuadro de limpieza del HUD a la altura de MEM). **`SCL`/`VWS`/`TK` en el HUD (TEMP, rama `tanker-docking`)**: debug de `ship.scale`, `viewScale` y `Tanker::drawScaleFor` en `(250,92)`/`(250,102)`/`(250,112)` mientras la demo está activa; quitar al cerrar la rama.

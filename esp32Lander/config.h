@@ -56,10 +56,10 @@ const int DEMO_LEVEL_FIRST = 0;         // 0 = cada ciclo de demo elige el nivel
                                         // luna); > 0 lo fija siempre
 const int START_LEVEL = 1;
 const bool SHOW_DEBUG_SCALES = false; // SCL/VWS/TK in HUD (temp debug)
-const float DEMO_SPAWN_Y_MIN = 100.0f; // banda aleatoria de altitud inicial de la
-                                       // demo (la nave aparece siempre variable,
-                                       // nunca fija)
-const float DEMO_SPAWN_Y_MAX = 260.0f;
+const float DEMO_SPAWN_X_MIN = 50.0f;
+const float DEMO_SPAWN_X_MAX = 850.0f;
+const float DEMO_SPAWN_Y_MIN = 80.0f;
+const float DEMO_SPAWN_Y_MAX = 350.0f;
 const float DEMO_POWER_RATE = 0.4f;
 const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)
 
