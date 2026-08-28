@@ -8,7 +8,7 @@
 int main(int argc, char **argv)
 {
     int seed = (argc > 1) ? atoi(argv[1]) : 1;
-    int level = (argc > 2) ? atoi(argv[2]) : 2;
+    int level = (argc > 2) ? atoi(argv[2]) : 8;
     srand(1000 + seed);
 
     RendererPC r((int)SCREEN_W, (int)SCREEN_H, "frames");

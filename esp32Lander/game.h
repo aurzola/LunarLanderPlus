@@ -97,6 +97,10 @@ public:
 private:
     float viewX, viewY, viewScale;
     bool zoomedIn;
+    // Zoom-independent approach altitude (measured from ship.posY center, not
+    // ship.bottom which changes with scale). Shared by the zoom thresholds in
+    // updateView() AND the minimap visibility in draw(), so they agree.
+    float approachAlt;
     float resetTimer;
     int landMultiplier;
     bool landPerfect;
@@ -112,7 +116,6 @@ private:
     float warpInT; // wormhole respawn: ship materializes (scale 0->1.5) over this
     float recycledTimer; // wormhole respawn: shows the "recycled" banner while > 0
     bool demoHoldAltitude;
-    bool demoFirstLevelPending; // TEMP: demo always opens on DEMO_LEVEL_FIRST (unused; revert)
     bool tankerZooming; // hysteresis: in the aerial-dock macro zoom
     bool lavaBurn;
     bool ringHit;

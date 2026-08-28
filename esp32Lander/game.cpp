@@ -7,6 +7,9 @@
 #if defined(ARDUINO)
 #include <Arduino.h>
 #endif
+#if defined(ESP32)
+#include <esp_random.h>
+#endif
 
 static const int TITLE_STAR_COUNT = 32;
 static const int titleStars[][2] = {
@@ -86,10 +89,9 @@ Game::Game()
       windEnabled(false), windStrength(0), windDir(1),
       hullIntegrity(100),
       viewX(0), viewY(0), viewScale(1.0f),
-      zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
+      zoomedIn(false), approachAlt(9999.0f), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
-      demoFirstLevelPending(true),
       tankerZooming(false),
       lavaBurn(false), ringHit(false), twisterCrash(false), tankerCrash(false),
       acidBurn(false), quakeCrash(false), explosionInited(false),
@@ -110,7 +112,7 @@ Game::Game()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, level == 1);
+    tanker.reset(level, terrain, ship.fuel);
     wormhole.disable();
     stormHitTimer = 0;
     setZoom(false);
@@ -145,7 +147,7 @@ void Game::newGame()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, level == 1);
+    tanker.reset(level, terrain, ship.fuel);
     acidrain.reset(level, terrain);
     quake.reset(level, terrain, ship);
     spawnWormhole();
@@ -205,7 +207,7 @@ void Game::nextLevel()
     atmosphere.reset(level);
     rings.reset(level, terrain);
     twister.reset(level, terrain);
-    tanker.reset(level, terrain, ship.fuel, level == 1);
+    tanker.reset(level, terrain, ship.fuel);
     acidrain.reset(level, terrain);
     quake.reset(level, terrain, ship);
     spawnWormhole();
@@ -237,14 +239,16 @@ void Game::startDemo()
 {
     demo = true;
     demoHoldAltitude = false;
+#if defined(ESP32)
+    srand(esp_random());
+#endif
     if (rand() % 100 < 50) demoSkill = (float)(rand() % 36) / 100.0f;
     else demoSkill = 0.6f + (float)(rand() % 41) / 100.0f;
-    // TEMP (16/9/2026): the demo ALWAYS opens on DEMO_LEVEL_FIRST (level 7,
-    // Encélado) so every attract cycle shows the same moon. REVERT to the
-    // first-cycle-only showcase (demoFirstLevelPending) + random 1..MAX_LEVEL.
+    // Demo level: random 1..DEMO_MAX_LEVEL every cycle (DEMO_LEVEL_FORCE
+    // pins it for testing, DEMO_LEVEL_FIRST > 0 would fix the opener).
     level = (DEMO_LEVEL_FORCE > 0) ? DEMO_LEVEL_FORCE
                                    : (DEMO_LEVEL_FIRST > 0) ? DEMO_LEVEL_FIRST
-                                                             : 1 + rand() % DEMO_MAX_LEVEL;
+                                                            : 1 + rand() % DEMO_MAX_LEVEL;
 
     const bool firstLevelShowcase = DEMO_LEVEL_FIRST > 0 && DEMO_LEVEL_FORCE <= 0;
 
@@ -259,11 +263,8 @@ void Game::startDemo()
             level = 1 + rand() % DEMO_MAX_LEVEL;
     }
     score = 0;
-    // Demo starts low on fuel so the tanker refuel is a visible, meaningful
-    // part of the attract loop (full tank would make the dock instant).
-    fuel = FUEL_MAX * 0.3f;
-    ship.fuel = FUEL_MAX * 0.3f;
-    hullIntegrity = 100;
+    float savedHull = demo ? hullIntegrity : 100.0f;
+    hullIntegrity = savedHull;
     state = STATE_PLAYING;
     if (level <= 1) terrain.init();
     else terrain.generate(level);
@@ -285,7 +286,7 @@ void Game::startDemo()
     if (showcase) rings.setEnabled(false);
     twister.reset(level, terrain);
     if (showcase) twister.setEnabled(false);
-    tanker.reset(level, terrain, ship.fuel, true); // force: tanker always in demo
+    tanker.reset(level, terrain, ship.fuel);
     acidrain.reset(level, terrain);
     if (showcase) acidrain.setEnabled(false);
     quake.reset(level, terrain, ship);
@@ -307,12 +308,21 @@ void Game::startDemo()
     // Random initial altitude: the demo ship always spawns at a variable
     // height within the band, so each attract run starts differently.
     {
-        int span = (int)(DEMO_SPAWN_Y_MAX - DEMO_SPAWN_Y_MIN);
-        float sy = DEMO_SPAWN_Y_MIN + (float)(rand() % span);
-        ship.reset(110, sy);
+        float savedFuel = ship.fuel;
+        int spanX = (int)(DEMO_SPAWN_X_MAX - DEMO_SPAWN_X_MIN);
+        int spanY = (int)(DEMO_SPAWN_Y_MAX - DEMO_SPAWN_Y_MIN);
+        float sx = DEMO_SPAWN_X_MIN + (float)(rand() % spanX);
+        float sy = DEMO_SPAWN_Y_MIN + (float)(rand() % spanY);
+        printf("[demo] startDemo level=%d savedFuel=%.1f spawn=(%.0f,%.0f)\n",
+                      level, savedFuel, sx, sy);
+        ship.reset(sx, sy);
+        ship.fuel = savedFuel;
+        printf("[demo] after restore ship.fuel=%.1f\n", ship.fuel);
     }
     ship.velX = 0.06f;
     setZoom(false);
+    viewX = -ship.posX * viewScale + SCREEN_W * 0.5f;
+    viewY = -ship.posY * viewScale + SCREEN_H * 0.5f;
     resetTimer = 0;
     introTimer = LEVEL_INTRO_TIME;
     spawnWormhole(DEMO_WORMHOLE_FIRST);
@@ -350,8 +360,10 @@ void Game::setupDemoTarget()
 
     // Aim the demo at the tanker's underside drogue when one is present, so the
     // autopilot flies up to it and plugs the probe in (aerial refueling). The
-    // runDemoAI tanker mode tracks the swaying drogue live.
-    if (tanker.active) {
+    // runDemoAI tanker mode tracks the swaying drogue live. Only engage when
+    // there is actually fuel to gain: with a full tank the autopilot would just
+    // re-dock over and over after each auto-disconnect and loop forever.
+    if (tanker.active && ship.fuel < FUEL_MAX) {
         demoTargetX = tanker.drogueX();
         demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
         demoSkill = 0.85f;
@@ -417,12 +429,17 @@ void Game::setupDemoTarget()
 
 void Game::endDemoToTitle()
 {
+    printf("[demo] endDemoToTitle ship.fuel=%.1f hullIntegrity=%.1f\n",
+                  ship.fuel, hullIntegrity);
+    float savedFuel = ship.fuel;
     state = STATE_WAITING;
     demoTimer = DEMO_START_DELAY;
     terrain.init();
     setZoom(false);
     wormhole.disable();
     setupTitleShip();
+    ship.fuel = savedFuel;
+    printf("[demo] after setupTitleShip+restore ship.fuel=%.1f\n", ship.fuel);
 }
 
 void Game::spawnWormhole(bool force)
@@ -481,7 +498,9 @@ void Game::wormholeJump()
     int cur = moonIndex(level);
     int nidx = cur;
     while (nidx == cur) nidx = rand() % 8;
-    level = 8 + nidx; // nextLevel() does level++ first -> 9..16, a different moon
+    // The cycle order is not the identity: jump to the SLOT that plays moon
+    // nidx. nextLevel() does level++ first -> lands on moon nidx.
+    level = 8 + moonSlotOfIndex(nidx);
     nextLevel();
     // No level intro on a teleport: the new moon starts playing right away and
     // the ship materializes with a fade-in (warpInT ramps ship.scale 0->1.5).
@@ -507,7 +526,10 @@ void Game::wormholeJump()
 
 void Game::setupTitleShip()
 {
+    float fuelBefore = ship.fuel;
     ship.reset(110, 150);
+    printf("[demo] setupTitleShip: reset wiped fuel %.1f -> %.1f\n",
+                  fuelBefore, ship.fuel);
     ship.velX = -0.35f;
     ship.posX = (SCREEN_W - 20.0f) / viewScale;
 }
@@ -541,6 +563,9 @@ void Game::runDemoAI()
             thrust = clampf(thrust + n * imp * 0.05f, 0.0f, 1.0f);
         else
             thrust = 0.0f;
+
+        float pulse = sinf((float)ship.counter * 0.04f) * 0.06f;
+        thrust = clampf(thrust + pulse, 0.0f, 1.0f);
 
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -594,6 +619,15 @@ void Game::runDemoAI()
     // the autopilot keeps making tiny corrections so the 1-second lock holds
     // and fuel keeps flowing.
     if (demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
+        // Once the tank is full there is nothing left to gain: the tanker auto-
+        // disconnects but stays on station (no departure), so without this guard
+        // the autopilot would re-dock the full tank over and over and loop.
+        // Hand back to the normal landing autopilot (re-point to a pad) once.
+        if (ship.fuel >= FUEL_MAX) {
+            demoTankerPhase = -1;
+            setupDemoTarget();
+            return;
+        }
         float tx = tanker.drogueX();
         float ty = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
 
@@ -642,6 +676,9 @@ void Game::runDemoAI()
         else
             thrust = 0.0f;
 
+        float pulse = sinf((float)ship.counter * 0.04f) * 0.06f;
+        thrust = clampf(thrust + pulse, 0.0f, 1.0f);
+
         float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
         input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
         input.thrust = thrust;
@@ -683,6 +720,9 @@ void Game::runDemoAI()
         thrust = clampf(thrust + n * imp * 0.08f, 0.0f, 1.0f);
     else
         thrust = 0.0f;
+
+    float pulse = sinf((float)ship.counter * 0.04f) * 0.06f;
+    thrust = clampf(thrust + pulse, 0.0f, 1.0f);
 
     float ta = clampf(angle, -90.0f, 90.0f) * (PI / 180.0f);
     input.angle += (ta - input.angle) * DEMO_ANGLE_SMOOTH;
@@ -979,7 +1019,7 @@ void Game::updateView()
     // makes the altitude jump ~14u the instant the zoom flips, which
     // oscillated the zoom around the threshold. Measure from the ship's
     // center (posY), which is zoom-independent.
-    float approachAlt = 9999.0f;
+    approachAlt = 9999.0f;
     const std::vector<TerrainLine> &tls = terrain.getLines();
     for (int i = 0; i < (int)tls.size(); i++) {
         if (ship.posX >= tls[i].x1 && ship.posX <= tls[i].x2) {
@@ -1406,6 +1446,10 @@ void Game::update()
             }
         }
         ship.update();
+        if (demo && ship.fuel <= 0) {
+            ship.fuel = FUEL_MAX;
+            fuel = FUEL_MAX;
+        }
         if (geysers.inPlume(ship.posX, ship.posY))
             ship.velY -= GEYSER_PUSH * (ship.gravity / GRAVITY);
 
@@ -1506,6 +1550,8 @@ void Game::update()
         resetTimer -= dt;
         if (resetTimer <= 0) {
             if (demo) {
+                printf("[demo] level end state=%s fuel=%.1f\n",
+                              state == STATE_LANDED ? "LANDED" : "CRASHED", ship.fuel);
                 endDemoToTitle();
                 landFuelBonus = 0;
             } else if (state == STATE_LANDED) {
@@ -1551,8 +1597,6 @@ void Game::draw(Renderer &r)
     r.clear();
 
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
-    if (state != STATE_WAITING && atmosphereInView())
-        atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
 
     int warnY = 62;
 
@@ -1806,6 +1850,8 @@ void Game::draw(Renderer &r)
         } else {
             terrain.draw(r, viewX, viewY, viewScale, ship.counter);
         }
+        if (state != STATE_WAITING && atmosphereInView())
+            atmosphere.drawSky(r, terrain, viewX, viewY, viewScale);
         {
             // Geysers: only draw when at least one vent (plus plume reach) is
             // in view. Vents sit on terrain, so horizontal visibility is enough.
@@ -1930,7 +1976,7 @@ void Game::draw(Renderer &r)
             const std::vector<TerrainLine> &tl = terrain.getLines();
             int blink = (ship.counter / 20) & 1;
             for (int i = 0; i < (int)tl.size(); i++) {
-                if (tl[i].labelX < 0) continue;
+                if (tl[i].labelX < 0 || !tl[i].landable) continue;
                 float zx1 = tl[i].x1, zx2 = tl[i].x2;
                 int j = i;
                 while (j + 1 < (int)tl.size() && tl[j + 1].landable) {
@@ -2028,12 +2074,14 @@ void Game::draw(Renderer &r)
             }
 
             if (demo) r.text(22, 62, "DEMO");
+#if SHOW_DEBUG_SCALES
             snprintf(buf, sizeof buf, "SCL %.3f", ship.scale);
             r.text(250, 92, buf);
             snprintf(buf, sizeof buf, "VWS %.3f", viewScale);
             r.text(250, 102, buf);
             snprintf(buf, sizeof buf, "TK %.3f", Tanker::drawScaleFor(ship.scale, viewScale));
             r.text(250, 112, buf);
+#endif
             bool windShown = windEnabled;
             if (windShown) {
                 if (!glitch) {
@@ -2084,21 +2132,21 @@ void Game::draw(Renderer &r)
         // the other moon. Plain centered text, same style as the landing/crash
         // messages.
         if (recycledTimer > 0.0f) {
-            centerText(90, "CONGRATULATIONS,");
-            centerText(102, "YOU'VE BEEN RECYCLED!");
+            centerText(170, "CONGRATULATIONS,");
+            centerText(182, "YOU'VE BEEN RECYCLED!");
         }
 
         if (state == STATE_LANDED) {
             if (landPerfect) {
-                centerText(90, "CONGRATULATIONS");
-                centerText(102, "PERFECT LANDING");
+                centerText(170, "CONGRATULATIONS");
+                centerText(182, "PERFECT LANDING");
             } else {
-                centerText(96, "GOOD LANDING");
+                centerText(176, "GOOD LANDING");
             }
         } else if (state == STATE_CRASHED) {
             if (lavaBurn) {
-                centerText(90, "YOU BURNED");
-                centerText(102, "LAVA DESTROYED THE SHIP");
+                centerText(170, "YOU BURNED");
+                centerText(182, "LAVA DESTROYED THE SHIP");
             } else if (ringHit) {
                     if (zoomedIn) {
                     float bandSy = rings.centerBandY(terrain, ship.posX) * viewScale + viewY;
@@ -2108,27 +2156,27 @@ void Game::draw(Renderer &r)
                     centerText(yTxt, "YOU CRASHED");
                     centerText(yTxt + 12, "STRUCK BY ORBITAL DEBRIS");
                 } else {
-                    centerText(116, "YOU CRASHED");
-                    centerText(128, "STRUCK BY ORBITAL DEBRIS");
+                    centerText(170, "YOU CRASHED");
+                    centerText(182, "STRUCK BY ORBITAL DEBRIS");
                 }
             } else if (twisterCrash) {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "TWISTER SMASHED THE SHIP");
+                centerText(170, "YOU CRASHED");
+                centerText(182, "TWISTER SMASHED THE SHIP");
             } else if (tankerCrash) {
-                centerText(90, "BOTH DESTROYED");
-                centerText(102, "COLLIDED WITH THE TANKER");
+                centerText(170, "BOTH DESTROYED");
+                centerText(182, "COLLIDED WITH THE TANKER");
             } else if (quakeCrash) {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "THE GROUND GAVE WAY");
+                centerText(170, "YOU CRASHED");
+                centerText(182, "THE GROUND GAVE WAY");
             } else if (acidBurn) {
-                centerText(96, "ACID RAIN CORRODED THE SHIP");
+                centerText(176, "ACID RAIN CORRODED THE SHIP");
             } else {
-                centerText(90, "YOU CRASHED");
-                centerText(102, "FUEL TANKS DESTROYED");
+                centerText(170, "YOU CRASHED");
+                centerText(182, "FUEL TANKS DESTROYED");
             }
         } else if (state == STATE_GAMEOVER) {
-            centerText(90, "OUT OF FUEL");
-            centerText(102, "GAME OVER");
+            centerText(170, "OUT OF FUEL");
+            centerText(182, "GAME OVER");
         }
 
             if (tanker.docked && tanker.fuelFlowing) {
@@ -2145,7 +2193,7 @@ void Game::draw(Renderer &r)
             }
 
             if (fuelMaxTimer > 0.0f) {
-            centerText(96, "FUEL MAX");
+            centerText(106, "FUEL MAX");
         }
 
         if (introTimer > 0) {
@@ -2172,7 +2220,11 @@ void Game::draw(Renderer &r)
         bool dockZone = tanker.active && !tanker.done &&
                         fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
                         fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
-        bool inApproach = ship.altitude < APPROACH_ALT;
+        // Use the same zoom-independent approach altitude as the zoom thresholds
+        // in updateView() (measured from posY, not ship.bottom which moves with
+        // scale). ship.altitude jumps ~14u the instant zoom flips the scale, so
+        // it used to drop the minimap intermittently during descent.
+        bool inApproach = approachAlt < APPROACH_ALT;
         if (inApproach && !dockZone) {
             const float MX = 112, MY = 22, MW = 96, MH = 49;
             r.line(MX, MY, MX + MW, MY);

@@ -11,7 +11,7 @@
 int main(int argc, char **argv)
 {
     int seed = (argc > 1) ? atoi(argv[1]) : 1;
-    int level = (argc > 2) ? atoi(argv[2]) : 2;
+    int level = (argc > 2) ? atoi(argv[2]) : 3;
     srand(1000 + seed);
 
     RendererPC r((int)SCREEN_W, (int)SCREEN_H, "frames");
@@ -22,15 +22,15 @@ int main(int argc, char **argv)
     t.generate(level);
     ship.reset(200, 150);
 
-    // Quakes only fire on Io.
+    // Quakes only fire on Callisto.
     q.reset(level, t, ship);
     for (int tries = 0; tries < 100 && !q.active(); tries++) {
-        level = 2;
+        level = 3;
         t.generate(level);
         q.reset(level, t, ship);
     }
     if (!q.active()) {
-        fprintf(stderr, "FAIL: quake did not activate (level %d is not Io)\n", level);
+        fprintf(stderr, "FAIL: quake did not activate (level %d is not Callisto)\n", level);
         return 1;
     }
     printf("quake demo level=%d zones=%d\n", level, t.zoneCount());

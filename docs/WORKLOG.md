@@ -1374,3 +1374,105 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       en laderas), cobertura de lava variable por pad (0.4–0.8), `setZoom(false)` al resetear la
       nave, tests ampliados (slope test del bgLayer + test tanker con force fuel). `test_pc`
       1144/1144, `demo_sim` sin cambios de win-rate.
+
+57. **Demo con niveles al azar de nuevo + progresión de dificultad del juego normal
+    (rama `demo-random-progression`, 25/8/2026)**.
+    - **Demo vuelve a elegir nivel al azar en CADA ciclo**: `DEMO_LEVEL_FIRST=1` → `0` (config.h),
+      así el attract mode ya no abre siempre en Luna/nivel 1 con la cisterna; cada ciclo muestra
+      cualquier luna 1..`DEMO_MAX_LEVEL`. Se elimina el campo muerto `demoFirstLevelPending`
+      (game.h/game.cpp). La demo sigue forzando la cisterna (`force=true`) y arrancando al 30 % de
+      combustible, así el repostaje puede aparecer en cualquier luna donde el tanque esté permitido
+      (excluido de Ganímedes por los anillos, y de las lunas con agujero de gusano vía
+      `isolateForWormhole`).
+    - **Juego normal: dificultad progresiva por ciclo de 8 niveles**. Nueva tabla
+      `MOON_DIFFICULTY_ORDER` en `moons.h`: mapea cada slot del ciclo `(level-1)%8` a una luna,
+      caminando de las calmas a las hostiles:
+      `LUNA → EUROPA (lluvia ácida) → CALLISTO (tranquila, host de wormhole) → ENCELADUS
+      (géiseres) → TITAN (niebla) → GANYMEDES (anillos) → TRITON (torbellino) → IO (volcanes +
+      terremotos, gravedad más pesada)`. `moonIndex()` devuelve ahora el índice de tabla del slot
+      (antes identidad); las predicciones `moonHas*`, `moonGravity`, `moonName` y `moonEffectFree`
+      siguen funcionando porque comparan contra el índice de la tabla. La dificultad del terreno
+      procedural (amplitud `4+level`, tope 12) ya escalaba sola y no se toca.
+    - **Fix `wormholeJump()` con el orden nuevo**: el teletransporte elegía `level = 8+nidx` con
+      `nidx` como índice de tabla, lo que ya no garantiza aterrizar en OTRA luna con un orden no
+      identidad. Ahora usa `moonSlotOfIndex(nidx)` (inversa del orden) para saltar al slot cuya
+      luna es `nidx`.
+    - **Tests y demos al nuevo mapeo**: `test_pc` actualizado (todas las constantes de nivel por
+      luna: EUROPA 3→2, CALLISTO 5→3, ENCELADUS 7→4, TITAN 6→5, GANYMEDES 4→6, TRITON 8→7, IO 2→8;
+      `moonEffectFree`, `testMoon` documenta la rampa y comprueba `moonGravity(8)==1.10`). Defaults
+      de los demos visuales de PC actualizados (volcano/quake 2→8, geyser 7→4, rings 4→6, titan
+      6→5, twister 8→7, acidrain 3→2). `test_pc` 1066/1066, demos PC con selftest OK, sketch S3
+      compila (645 KB / 49 %, RAM 211 KB).
+
+## 28/8/2026 — Tanker auto-desconexión + cooldown, fix minimapa, restricciones de spawn, guarda demo
+
+- **Tanker auto-desconexión al llenar el tanque**: al llegar `ship.fuel == FUEL_MAX` la cisterna
+  suelta el probe con un leve empujón (`velX=-0.03`, `velY=0.04`, `posY+=2.0`) y **se queda en
+  estación** (sin `leaving`/`done`) para permitir un re-dock posterior (antes `leaving=true`, se iba
+  para siempre). `fuelFlowing=false`, se arman `dockLockTimer`/`dockBreakTimer=0`.
+- **`TANKER_REDOCK_COOLDOWN=2.0 s` (config.h)**: tras la auto-desconexión (o un `breakAway` con
+  motor) el probe no se vuelve a asentar durante el cooldown — `targeted()` y `checkDock()`
+  devuelven false mientras `redockCooldown > 0` — para que el módulo recién expulsado no chasquee
+  de vuelta a la cesta (sigue solapando el drogue al soltarse).
+- **Restricciones de spawn restauradas**: la cisterna solo aparece con `fuel < 50 % FUEL_MAX`,
+  excluida de Ganímedes (`moonHasRings`) y con `TANKER_CHANCE_PERCENT=70 %`. Se eliminaron los
+  TEMP de debug que las desactivaban (la placa ya no muestra la cisterna en todo momento).
+- **Guarda anti-bucle del autopilot de demo**: `setupDemoTarget()` solo entra en modo cisterna si
+  `ship.fuel < FUEL_MAX`, y `runDemoAI()` al llegar `fuel >= FUEL_MAX` en modo tanque sale a
+  `demoTankerPhase=-1` y re-apunta a una plataforma de aterrizaje — la demo ya no queda pegada
+  re-acoplándose a una cisterna que nunca más se va (`demo_sim` 40 semillas sin colgar).
+- **Fix minimapa intermitente en la 2ª fase**: `approachAlt` pasó a ser miembro de `Game`
+  (calculado en `updateView()`, desde `ship.posY` sin escala). El minimapa de aproximación
+  (`inApproach` en `Game::draw()`) usa esa misma medida en vez de `ship.altitude` (basada en
+  `ship.bottom = posY+14·scale`, que salta ~14 u al entrar el zoom) → el minimapa desaparecía de
+  forma intermitente durante el descenso; zoom y minimapa comparten umbral y base de medición.
+- **Tests**: `test_pc` pasa 1080 checks (incluye re-dock tras auto-desconexión, cooldown, fuel gate
+  restaurado, Ganímedes sin cisterna, warp completo). `demo_sim` 40 semillas: 18 WIN / 22 LOSE, sin
+  colgarse. AGENTS.md y WORKLOG.md actualizados.
+
+## 27/8/2026 — Demo spawn aleatorio, fix fuel entre ciclos, thrust orgánico
+
+- **Demo spawn**: la nave ahora aparece en posición completamente aleatoria en cada ciclo
+  — X∈[50,850] (`DEMO_SPAWN_X_MIN/MAX`), Y∈[80,350] (`DEMO_SPAWN_Y_MIN/MAX`). La cámara
+  se centra en la nave al spawnear (`viewX`/`viewY` ajustados al centro de pantalla).
+- **Fix fuel entre ciclos del demo**: `endDemoToTitle()` guardaba `ship.fuel` antes de
+  llamar `setupTitleShip()` (que llamaba `ship.reset()` → `fuel=FUEL_MAX`) y lo restauraba
+  después. Sin esto, el fuel se reseteaba a 1000 entre ciclos. `setupTitleShip()` ahora
+  muestra un debug printf indicando el wipe.
+- **Thrust orgánico en autopilot**: `sinf(counter·0.04)·0.06` añadido al thrust en los
+  3 modos del demo (crucero, altitude-hold, tanker) para evitar que el power/VY se quede
+  constante. Oscilación ±6% con período ~2.6 s.
+- **Tests**: 1073 checks pasan, `demo_sim` con spawn aleatorio muestra posiciones variadas.
+- **Docs**: AGENTS.md y WORKLOG.md actualizados.
+
+## 26/8/2026 — Demo acumulativo, tanker sin force, fix orden de niebla de Titán
+
+- **Tanker: eliminado parámetro `force`**: `Tanker::reset()` ahora tiene 3 args
+  `(level, terrain, fuel)`. El fuel gate (`fuel < 50% FUEL_MAX`) siempre se aplica; el demo ya
+  no fuerza la aparición de la cisterna. El repostaje aparece solo cuando el fuel está bajo,
+  igual que en partida normal. `tanker.h`, `tanker.cpp`, 4 call sites en `game.cpp` (constructor,
+  `newGame`, `nextLevel`, `startDemo`) y tests en `test_pc.cpp` actualizados.
+- **Demo: fuel y hull acumulativos**: `startDemo()` preserva `ship.fuel` y `hullIntegrity` entre
+  ciclos del demo (antes `ship.reset()` los ponía a `FUEL_MAX`/100 siempre). Solo se resetean a
+  1000/100 cuando el fuel llega a 0 durante el vuelo (reset automático en `update()`). El demo
+  puede empezar un nivel con fuel parcial si el anterior terminó con crash/land.
+- **Demo: re-seed en ESP32**: `srand(esp_random())` en `startDemo()` para mayor variedad en el
+  demo en cada ciclo. Sin efecto en PC (usa `srand(42)` de los tests).
+- **HUD: flag `SHOW_DEBUG_SCALES`** en `config.h` (default `false`): envuelve las líneas
+  `SCL`/`VWS`/`TK` del HUD en `#if SHOW_DEBUG_SCALES`. Activar para debug de zoom en placa.
+- **FUEL MAX: texto movido** de `centerText(96, ...)` a `centerText(106, ...)` para quedar debajo
+  del marco PiP (pipY=22 + PIP_SIZE=76 + 8 = 106).
+- **Atmósfera de Titán: fix de draw order**: `atmosphere.drawSky()` movido de **antes** del
+  terreno (donde el terreno la tapaba) a **después** del terreno y **antes** de la nave. Las
+  bandas de niebla ahora se superponen al terreno correctamente y ocultan la nave al cruzarlas.
+- **Tests**: nuevo `testShipVisibility` (verifica que la niebla solo oculta la nave en Titán);
+  tests del tanker actualizados (sin `force`); 1073 checks, todos pasan.
+- **Quake movido de Ío a Callisto**: `moonHasQuakes` ahora retorna `true` para `moonIndex==4`
+  (Callisto, nivel 3) en vez de `moonIndex==1` (Ío). Ío queda solo con volcanes (sin conflicto
+  lava+terremoto). `moonEffectFree()` ahora solo deja LUNA como host de wormhole (Callisto ya no
+  es libre). Tests y quake_demo actualizados (default level 3). AGENTS.md actualizado.
+- **Luces de aproximación post-quake**: verificación de `!tl[i].landable` agregada al código de
+  luces parpadeantes en `game.cpp:1942` (defensa extra; `ruptureZone` ya pone `labelX=-1` y
+  `landable=false`). Además `ruptureZone` ahora limpia `zi.labelX = -1` en el `ZoneInfo`.
+- **Mensajes de crash/aterrizaje movidos a zona inferior**: `centerText` de todos los mensajes
+  (landed/crashed/gameover/recycled) movidos de y=90-128 a y=170-182 (debajo del terreno).

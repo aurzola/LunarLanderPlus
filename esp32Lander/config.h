@@ -51,12 +51,15 @@ const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nive
                                         // activarlo, el primer nivel del demo abre el
                                         // wormhole (traga + teleport) y el autopilot
                                         // sigue en la luna destino sin wormhole
-const int DEMO_LEVEL_FIRST = 1;         // demo siempre arranca en Luna (nivel 1) con tanque
+const int DEMO_LEVEL_FIRST = 0;         // 0 = cada ciclo de demo elige el nivel
+                                        // al azar 1..DEMO_MAX_LEVEL (cualquier
+                                        // luna); > 0 lo fija siempre
 const int START_LEVEL = 1;
-const float DEMO_SPAWN_Y_MIN = 100.0f; // banda aleatoria de altitud inicial de la
-                                       // demo (la nave aparece siempre variable,
-                                       // nunca fija)
-const float DEMO_SPAWN_Y_MAX = 260.0f;
+const bool SHOW_DEBUG_SCALES = false; // SCL/VWS/TK in HUD (temp debug)
+const float DEMO_SPAWN_X_MIN = 50.0f;
+const float DEMO_SPAWN_X_MAX = 850.0f;
+const float DEMO_SPAWN_Y_MIN = 80.0f;
+const float DEMO_SPAWN_Y_MAX = 350.0f;
 const float DEMO_POWER_RATE = 0.4f;
 const float DEMO_ANGLE_SMOOTH = 0.06f; // joystick-like ramping (lerp per tick toward target)
 
@@ -313,6 +316,10 @@ const float TANKER_DOCK_BREAK_TIME = 1.5f;
 const float TANKER_DOCK_BREAK_TOL_X = 28.0f;
 const float TANKER_DOCK_BREAK_TOL_Y = 22.0f;
 const float TANKER_CONE_GUIDE = 20.0f; // sec^-1: strong funnel centering pull
+// After undocking there is a short cooldown during which the probe will not
+// re-seat, so a freshly ejected module does not snap straight back into the
+// basket (it is still overlapping the drogue when it breaks away).
+const float TANKER_REDOCK_COOLDOWN = 2.0f; // seconds
 
 // Player parachute: a one-shot steerable canopy deployed with C+Z during
 // flight. Once deployed it cannot be retracted. While open the free fall is

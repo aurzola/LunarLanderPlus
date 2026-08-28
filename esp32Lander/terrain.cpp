@@ -390,6 +390,7 @@ void Terrain::ruptureZone(int zone)
     ZoneInfo &zi = zones_[zone];
     if (zi.broken) return;
     zi.broken = true;
+    zi.labelX = -1;
     revision_++;
 
     int s = zi.startIdx;

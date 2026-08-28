@@ -19,11 +19,31 @@ static const MoonInfo MOONS[] = {
 
 static const int MOON_COUNT = (int)(sizeof(MOONS) / sizeof(MOONS[0]));
 
+// Gameplay order of the 8-level cycle, walking from calm moons to hostile
+// ones so the normal game ramps up in difficulty:
+//   1 LUNA      (grav 1.00, no hazard) - baseline
+//   2 EUROPA    (0.85, acid rain)      - first soft hazard
+//   3 CALLISTO  (0.90, quakes)         - tectonic quakes, wormhole host
+//   4 ENCELADUS (0.70, geysers)        - floaty gravity + plume push
+//   5 TITAN     (0.90, fog/atmosphere) - low visibility, drag
+//   6 GANYMEDES (0.95, debris rings)   - rock collisions, zoom weaving
+//   7 TRITON    (0.75, twister)        - vortex capture
+//   8 IO        (1.10, lava)           - finale, heaviest gravity
+static const int MOON_DIFFICULTY_ORDER[MOON_COUNT] = {0, 2, 4, 6, 5, 3, 7, 1};
+
 static inline int moonIndex(int level)
 {
-    int i = (level - 1) % MOON_COUNT;
-    if (i < 0) i += MOON_COUNT;
-    return i;
+    int s = (level - 1) % MOON_COUNT;
+    if (s < 0) s += MOON_COUNT;
+    return MOON_DIFFICULTY_ORDER[s];
+}
+
+// Inverse map: the slot within the cycle that plays moon table index idx.
+static inline int moonSlotOfIndex(int idx)
+{
+    for (int s = 0; s < MOON_COUNT; s++)
+        if (MOON_DIFFICULTY_ORDER[s] == idx) return s;
+    return 0;
 }
 
 static inline const char *moonName(int level)
@@ -68,7 +88,7 @@ static inline bool moonHasAcidRain(int level)
 
 static inline bool moonHasQuakes(int level)
 {
-    return moonIndex(level) == 1; // IO (tectonic quakes)
+    return moonIndex(level) == 4; // CALLISTO (tectonic quakes)
 }
 
 // Moons with no ambient effect of their own (no geysers, volcanoes, fog,

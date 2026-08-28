@@ -11,7 +11,7 @@ Tanker::Tanker()
 {
 }
 
-void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
+void Tanker::reset(int level, const Terrain& terrain, float fuel)
 {
     active = false;
     docked = false;
@@ -21,14 +21,13 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
     dockLockTimer = 0.0f;
     dockBreakTimer = 0.0f;
     fuelFlowing = false;
+    redockCooldown = 0.0f;
 
     if (level < TANKER_START_LEVEL && !(TANKER_FORCE_LEVEL1 && level == 1)) return;
-    // The air tanker only makes sense on a low tank, but force (demo/test)
-    // bypasses this check so the tanker appears for showcasing purposes.
-    if (!force && fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
+    if (fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
     // Ganymede's debris rings make a high-altitude rendezvous impossible.
     if (moonHasRings(level)) return;
-    if (!force && rand() % 100 >= TANKER_CHANCE_PERCENT) return;
+    if (rand() % 100 >= TANKER_CHANCE_PERCENT) return;
 
     const std::vector<TerrainLine>& tl = terrain.getLines();
     float w = terrain.getWidth();
@@ -77,7 +76,7 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
 
 bool Tanker::targeted() const
 {
-    return active && !docked && !leaving && !done;
+    return active && !docked && !leaving && !done && redockCooldown <= 0.0f;
 }
 
 static float drogueSway(float droguePhase, int port, float which)
@@ -99,6 +98,7 @@ float Tanker::drogueY() const
 bool Tanker::checkDock(const Ship& ship)
 {
     if (!active || docked || leaving || done) return false;
+    if (redockCooldown > 0.0f) return false;
 
     float rad = ship.rotation * PI / 180.0f;
     // The refuel probe sticks out of the module hull: at rotation 0 it points
@@ -145,6 +145,8 @@ void Tanker::move(float dt)
 bool Tanker::update(float dt, Ship& ship)
 {
     if (!active || done) return false;
+
+    if (redockCooldown > 0.0f) redockCooldown -= dt;
 
     if (docked) {
         move(dt);
@@ -206,11 +208,18 @@ bool Tanker::update(float dt, Ship& ship)
             ship.fuel += TANKER_REFUEL_RATE * dt;
             if (ship.fuel > FUEL_MAX) ship.fuel = FUEL_MAX;
             if (ship.fuel >= FUEL_MAX) {
-                ship.velX = 0;
-                ship.velY = 0;
+                // Automatic disconnect at full tank: drop the probe and give a
+                // gentle kick so the ship clears the drogue. The tanker stays on
+                // station (no leaving/done) so the player can re-dock later; the
+                // cooldown keeps it from snapping straight back in.
                 docked = false;
-                leaving = true;
                 fuelFlowing = false;
+                dockLockTimer = 0.0f;
+                dockBreakTimer = 0.0f;
+                redockCooldown = TANKER_REDOCK_COOLDOWN;
+                ship.velX = -0.03f;
+                ship.velY = 0.04f;
+                ship.posY += 2.0f;
                 return true;
             }
         }
@@ -240,6 +249,9 @@ void Tanker::breakAway(Ship& ship)
     fuelFlowing = false;
     dockLockTimer = 0.0f;
     dockBreakTimer = 0.0f;
+    // Brief cooldown so the freshly ejected module does not snap straight back
+    // into the basket (it is still overlapping the drogue right after release).
+    redockCooldown = TANKER_REDOCK_COOLDOWN;
     // Eject the module in the direction of the current offset so it visibly
     // leaves the basket. The tanker stays on station for a reconnect.
     ship.velX = (dockOffsetX > 0.0f ? 1.0f : -1.0f) * 0.04f;

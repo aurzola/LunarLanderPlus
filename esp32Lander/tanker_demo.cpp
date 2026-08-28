@@ -13,7 +13,7 @@ int main(int argc, char **argv)
     g.newGame();
     g.level = 2;
     g.terrain.generate(2);
-    g.tanker.reset(2, g.terrain, 100.0f, true);
+    g.tanker.reset(2, g.terrain, 100.0f);
 
     if (!g.tanker.active) {
         printf("Tanker not active for seed %d\n", seed);
