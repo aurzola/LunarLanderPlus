@@ -44,15 +44,14 @@ void RendererS3::drawLayer(const uint8_t *layer, int lw, int lh,
     const int32_t x0_16 = (int32_t)((-offX * inv) * 65536.0f);
 
     int wxMin = (int)floorf(-offX * inv);
-    if (wxMin < 0) wxMin = 0;
     int wxMax = (int)ceilf(((float)w_ - offX) * inv);
-    if (wxMax > lw - 1) wxMax = lw - 1;
-    if (wxMin > wxMax) return;
 
     int sxStart = (int)(wxMin * scale + offX);
     int sxEnd = (int)(wxMax * scale + offX);
     if (sxStart < 0) sxStart = 0;
     if (sxEnd > w_) sxEnd = w_;
+
+    if (lw <= 0) return;
 
     for (int sy = 0; sy < h_; sy++) {
         int ly = (int)((sy - offY) * inv);
@@ -60,8 +59,20 @@ void RendererS3::drawLayer(const uint8_t *layer, int lw, int lh,
         const uint8_t *lrow = layer + (size_t)ly * lw;
         uint8_t *frow = fb_ + (size_t)sy * w_;
         int32_t wx16 = x0_16 + (int32_t)((float)sxStart * inv * 65536.0f);
-        for (int sx = sxStart; sx < sxEnd; sx++, wx16 += step16)
-            frow[sx] = lrow[wx16 >> 16];
+        for (int sx = sxStart; sx < sxEnd; sx++, wx16 += step16) {
+            // Wrap horizontally: the baked strip is one tile of a circular
+            // world, so screen X beyond it samples the neighbouring copy
+            // (instead of clamping, which painted a solid vertical stripe of
+            // the edge column at the left/right screen edges).
+            int idx = wx16 >> 16;
+            if (idx >= 0 && idx < lw) {
+                frow[sx] = lrow[idx];
+            } else {
+                idx %= lw;
+                if (idx < 0) idx += lw;
+                frow[sx] = lrow[idx];
+            }
+        }
     }
 }
 

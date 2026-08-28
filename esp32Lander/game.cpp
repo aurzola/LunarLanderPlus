@@ -159,6 +159,7 @@ void Game::newGame()
     tankerCrash = false;
     acidBurn = false;
     quakeCrash = false;
+    twisterCrash = false;
     explosionInited = false;
     terrain.clearCrater();
 }
@@ -218,6 +219,7 @@ void Game::nextLevel()
     tankerCrash = false;
     acidBurn = false;
     quakeCrash = false;
+    twisterCrash = false;
     explosionInited = false;
     terrain.clearCrater();
     state = STATE_PLAYING;
@@ -303,6 +305,7 @@ void Game::startDemo()
     tankerCrash = false;
     acidBurn = false;
     quakeCrash = false;
+    twisterCrash = false;
     explosionInited = false;
     terrain.clearCrater();
     // Random initial altitude: the demo ship always spawns at a variable
@@ -360,10 +363,11 @@ void Game::setupDemoTarget()
 
     // Aim the demo at the tanker's underside drogue when one is present, so the
     // autopilot flies up to it and plugs the probe in (aerial refueling). The
-    // runDemoAI tanker mode tracks the swaying drogue live. Only engage when
-    // there is actually fuel to gain: with a full tank the autopilot would just
-    // re-dock over and over after each auto-disconnect and loop forever.
-    if (tanker.active && ship.fuel < FUEL_MAX) {
+    // runDemoAI tanker mode tracks the swaying drogue live. Only engage when the
+    // tank is genuinely low (same <50% gate as the tanker spawn): a tanker left
+    // over from an earlier low-fuel level stays on station, and with a merely
+    // topped-up tank the autopilot would re-dock over and over to no gain.
+    if (tanker.active && ship.fuel < FUEL_MAX * TANKER_FUEL_FRACTION) {
         demoTargetX = tanker.drogueX();
         demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
         demoSkill = 0.85f;
@@ -536,6 +540,18 @@ void Game::setupTitleShip()
 
 void Game::runDemoAI()
 {
+    // If the tank is already full there is nothing left to gain: the tanker
+    // auto-disconnects and stays on station, so without this guard the demo
+    // would keep re-docking the full tank forever. This must run regardless of
+    // the current dock/target state: right after the auto-disconnect both
+    // tanker.docked and tanker.targeted() are false (cooldown), so the tanker
+    // block below would never fire and the autopilot would wait out the
+    // cooldown and re-dock. Exit tanker mode once and point at a landing pad.
+    if (demoTankerPhase >= 0 && ship.fuel >= FUEL_MAX) {
+        demoTankerPhase = -1;
+        setupDemoTarget();
+    }
+
     // Cruise phase after aerial refueling: descend toward the pad while flying
     // horizontally, then hand over to the normal descent controller.
     if (demoHoldAltitude) {
@@ -619,15 +635,6 @@ void Game::runDemoAI()
     // the autopilot keeps making tiny corrections so the 1-second lock holds
     // and fuel keeps flowing.
     if (demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
-        // Once the tank is full there is nothing left to gain: the tanker auto-
-        // disconnects but stays on station (no departure), so without this guard
-        // the autopilot would re-dock the full tank over and over and loop.
-        // Hand back to the normal landing autopilot (re-point to a pad) once.
-        if (ship.fuel >= FUEL_MAX) {
-            demoTankerPhase = -1;
-            setupDemoTarget();
-            return;
-        }
         float tx = tanker.drogueX();
         float ty = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
 
@@ -893,7 +900,7 @@ void Game::bakeBg()
     LayerPainter p;
     p.begin(worldBg.data(), worldBg.width(), worldBg.height());
     p.clear();
-    terrain.draw(p, 0.0f, 0.0f, 1.0f, 0, false, false);
+    terrain.draw(p, 0.0f, 0.0f, 1.0f, 0, false, false, false);
     bgBakedRev = terrain.revision();
     bgBaked = true;
 }
@@ -1372,6 +1379,15 @@ void Game::update()
                 fuelMaxTimer = 1.5f;
                 fuel = ship.fuel;
                 if (demo) {
+                    // The tank is full: there is nothing left to refuel, so send
+                    // the tanker on its way (leaving -> done). Without this the
+                    // freshly expelled module stays right at the drogue and, once
+                    // the re-dock cooldown lapses, the physical checkDock latch in
+                    // checkCollisions pulls it straight back in — the demo would
+                    // keep re-docking the full tank forever no matter how the demo
+                    // AI changes its phase. The human player keeps the stay-on-
+                    // station re-dock option.
+                    tanker.leaving = true;
                     const std::vector<TerrainLine> &tl2 = terrain.getLines();
                     float bestD = 1e9f;
                     int bestI = -1;

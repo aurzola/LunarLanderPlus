@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include "terrain.h"
 #include "renderer.h"
 #include "config.h"
@@ -244,31 +245,52 @@ void Terrain::generate(int level)
 
 void Terrain::drawLabels(Renderer &r, float viewX, float viewY, float viewScale)
 {
+    const int RW = r.width();
+    int kMin = 0, kMax = 0;
+    if (tileWidth > 0.0f) {
+        float wxMin = (0.0f - viewX) / viewScale;
+        float wxMax = (RW - viewX) / viewScale;
+        kMin = (int)floorf(wxMin / tileWidth);
+        kMax = (int)floorf(wxMax / tileWidth);
+    }
     for (int i = 0; i < (int)lines.size(); i++) {
         const TerrainLine &l = lines[i];
         if (!l.landable || l.multiplier <= 1 || l.labelX < 0) continue;
         char buf[16];
         snprintf(buf, sizeof buf, "%dx", l.multiplier);
-        float mx = l.labelX * viewScale + viewX;
-        float my = (l.y1 + 10.0f) * viewScale + viewY;
-        r.text(mx - 6, my, buf);
-        if (l.labelX == chuteLabelX) r.text(mx - 3, my + 8, "p");
+        for (int k = kMin; k <= kMax; k++) {
+            float mx = (l.labelX + (float)k * tileWidth) * viewScale + viewX;
+            float my = (l.y1 + 10.0f) * viewScale + viewY;
+            int wpx = (int)strlen(buf) * 6;
+            if (mx - wpx > RW + 5 || mx < -5) continue;
+            r.text(mx - 6, my, buf);
+            if (l.labelX == chuteLabelX) r.text(mx - 3, my + 8, "p");
+        }
     }
 }
 
 void Terrain::drawStarField(Renderer &r, float viewX, float viewY, float viewScale)
 {
     const int RW = r.width(), RH = r.height();
+    int kMin = 0, kMax = 0;
+    if (tileWidth > 0.0f) {
+        float wxMin = (0.0f - viewX) / viewScale;
+        float wxMax = (RW - viewX) / viewScale;
+        kMin = (int)floorf(wxMin / tileWidth);
+        kMax = (int)floorf(wxMax / tileWidth);
+    }
     for (int i = 0; i < (int)stars.size(); i++) {
-        float sx = stars[i].x * viewScale + viewX;
-        float sy = stars[i].y * viewScale + viewY;
-        if (sx < -5 || sx > RW + 5 || sy < -5 || sy > RH + 5) continue;
-        r.rect(sx, sy, 1, 1);
+        for (int k = kMin; k <= kMax; k++) {
+            float sx = (stars[i].x + (float)k * tileWidth) * viewScale + viewX;
+            float sy = stars[i].y * viewScale + viewY;
+            if (sx < -5 || sx > RW + 5 || sy < -5 || sy > RH + 5) continue;
+            r.rect(sx, sy, 1, 1);
+        }
     }
 }
 
 void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /*counter*/,
-                   bool drawStars, bool withLabels)
+                   bool drawStars, bool withLabels, bool wrap)
 {
     const int RW = r.width();
     float c1 = craterActive ? craterX - craterHalfW : 0.0f;
@@ -293,25 +315,46 @@ void Terrain::draw(Renderer &r, float viewX, float viewY, float viewScale, int /
         }
     };
 
-    for (int i = 0; i < (int)lines.size(); i++) {
-        const TerrainLine &l = lines[i];
+    // The world is a strip [0, tileWidth] but the viewport at normal zoom is
+    // wider than it, and the ship's X position wraps. Render a copy of the
+    // terrain for every tile offset that intersects the viewport so the world
+    // reads as a continuous circle instead of leaving an empty band at the
+    // left/right screen edges.
+    int kMin = 0, kMax = 0;
+    if (wrap && tileWidth > 0.0f) {
+        float wxMin = (0.0f - viewX) / viewScale;
+        float wxMax = (RW - viewX) / viewScale;
+        kMin = (int)floorf(wxMin / tileWidth);
+        kMax = (int)floorf(wxMax / tileWidth);
+    }
 
-        if (craterActive && l.x2 > c1 && l.x1 < c2) {
-            if (l.x1 >= c1 && l.x2 <= c2) {
-                // Whole segment erased by the crater: open gap in the surface.
-                continue;
+    for (int k = kMin; k <= kMax; k++) {
+        float d = (float)k * tileWidth;
+
+        for (int i = 0; i < (int)lines.size(); i++) {
+            const TerrainLine &l = lines[i];
+            float x1 = l.x1 + d;
+            float y1 = l.y1;
+            float x2 = l.x2 + d;
+            float y2 = l.y2;
+
+            if (craterActive && x2 > c1 && x1 < c2) {
+                if (x1 >= c1 && x2 <= c2) {
+                    // Whole segment erased by the crater: open gap in the surface.
+                    continue;
+                }
+                if (x1 < c1) drawSeg(x1, y1, c1, interp(x1, y1, x2, y2, c1), l);
+                if (x2 > c2) drawSeg(c2, interp(x1, y1, x2, y2, c2), x2, y2, l);
+            } else {
+                drawSeg(x1, y1, x2, y2, l);
             }
-            if (l.x1 < c1) drawSeg(l.x1, l.y1, c1, interp(l.x1, l.y1, l.x2, l.y2, c1), l);
-            if (l.x2 > c2) drawSeg(c2, interp(l.x1, l.y1, l.x2, l.y2, c2), l.x2, l.y2, l);
-        } else {
-            drawSeg(l.x1, l.y1, l.x2, l.y2, l);
-        }
 
-        if (i + 1 < (int)lines.size()) {
-            const TerrainLine &n = lines[i + 1];
-            if (l.x2 == n.x1 && l.y2 != n.y1) {
-                r.line(l.x2 * viewScale + viewX, l.y2 * viewScale + viewY,
-                       n.x1 * viewScale + viewX, n.y1 * viewScale + viewY);
+            if (i + 1 < (int)lines.size()) {
+                const TerrainLine &n = lines[i + 1];
+                if (l.x2 == n.x1 && l.y2 != n.y1) {
+                    r.line((l.x2 + d) * viewScale + viewX, l.y2 * viewScale + viewY,
+                           (n.x1 + d) * viewScale + viewX, n.y1 * viewScale + viewY);
+                }
             }
         }
     }

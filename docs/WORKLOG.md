@@ -1417,18 +1417,65 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
 - **Restricciones de spawn restauradas**: la cisterna solo aparece con `fuel < 50 % FUEL_MAX`,
   excluida de Ganímedes (`moonHasRings`) y con `TANKER_CHANCE_PERCENT=70 %`. Se eliminaron los
   TEMP de debug que las desactivaban (la placa ya no muestra la cisterna en todo momento).
-- **Guarda anti-bucle del autopilot de demo**: `setupDemoTarget()` solo entra en modo cisterna si
-  `ship.fuel < FUEL_MAX`, y `runDemoAI()` al llegar `fuel >= FUEL_MAX` en modo tanque sale a
-  `demoTankerPhase=-1` y re-apunta a una plataforma de aterrizaje — la demo ya no queda pegada
-  re-acoplándose a una cisterna que nunca más se va (`demo_sim` 40 semillas sin colgar).
+- **Guarda anti-bucle del autopilot de demo (corregida 28/8/2026)**: la demo no debe quedar pegada
+  re-acoplándose a la cisterna tras llenar el tanque. El bucle real tenía una **causa física además
+  de la del AI**: aunque `runDemoAI()` saliera del modo tanque (`demoTankerPhase=-1`) al llegar
+  `fuel>=FUEL_MAX`, la nave quedaba **flotando a la altura del drogue** (el auto-desenganche solo da
+  un empujoncito `velX=-0.03`/`velY=0.04`), y el **latch físico `checkDock()`/`beginDock()` de
+  `Game::checkCollisions()`** (que NO depende de `demoTankerPhase`) re-acoplaba la nave en cuanto
+  caducaba el cooldown de re-dock de 2 s — bucle sin fin. Fix completo:
+  (1) `setupDemoTarget()` solo apunta a la cisterna con déficit real (`ship.fuel <
+  FUEL_MAX·TANKER_FUEL_FRACTION`, gate igual al spawn), para no volver a apuntar con el tanque solo
+  "no lleno"; (2) `runDemoAI()` arranca con una guarda en el top (antes de `targeted()/docked()`,
+  porque tras el auto-desenganche ambas son false y el bloque cisterna no se ejecuta): si
+  `demoTankerPhase>=0 && fuel>=FUEL_MAX` → `demoTankerPhase=-1` + `setupDemoTarget()`; (3) **crítico —
+  en el auto-desenganche del demo `tanker.leaving = true`** (la cisterna se va a `done`), porque solo
+  así `targeted()` pasa a false y el latch físico `checkDock()` ya no puede re-acoplar aunque la nave
+  siga junto al drogue. El jugador humano conserva la estación (`sin leaving/done`) para re-dock.
+  Verificado con harness de acoplamientos: **0 multi-docks en 500 semillas** (`dockcheck`, contando
+  transiciones `docked` false→true; antes 47/300), `demo_sim` sin colgar (60 semillas: win 30 %).
 - **Fix minimapa intermitente en la 2ª fase**: `approachAlt` pasó a ser miembro de `Game`
   (calculado en `updateView()`, desde `ship.posY` sin escala). El minimapa de aproximación
   (`inApproach` en `Game::draw()`) usa esa misma medida en vez de `ship.altitude` (basada en
   `ship.bottom = posY+14·scale`, que salta ~14 u al entrar el zoom) → el minimapa desaparecía de
   forma intermitente durante el descenso; zoom y minimapa comparten umbral y base de medición.
 - **Tests**: `test_pc` pasa 1080 checks (incluye re-dock tras auto-desconexión, cooldown, fuel gate
-  restaurado, Ganímedes sin cisterna, warp completo). `demo_sim` 40 semillas: 18 WIN / 22 LOSE, sin
-  colgarse. AGENTS.md y WORKLOG.md actualizados.
+  restaurado, Ganímedes sin cisterna, warp completo). `demo_sim` 60 semillas: 18 WIN / 42 LOSE, sin
+  colgarse. Harness `dockcheck` 500 semillas: 0 multi-docks (la demo reposta a `FUEL_MAX`, la
+  cisterna se va y el demo vuela a aterrizar). AGENTS.md y WORKLOG.md actualizados.
+
+## 28/8/2026 (b) — Fix mensaje "TWISTER SMASHED" fantasma + wrap horizontal del mundo
+
+- **Bug 1 — mensaje de crash de torbellino espurio (fix)**: `twisterCrash` se reseteaba solo en
+  `restartLevel()` (game.cpp:180) y en el constructor, pero faltaba en los bloques de reset de
+  flags de `newGame()`, `nextLevel()` y `startDemo()`, que sí reseteaban los demás (`lavaBurn`,
+  `ringHit`, `tankerCrash`, `acidBurn`, `quakeCrash`). Un crash por torbellino en Tritón dejaba
+  `twisterCrash=true` stale, y un crash posterior en otra luna (p.ej. Luna) mostraba
+  `TWISTER SMASHED THE SHIP` por precedencia de mensaje en `game.cpp:2175`. Fix: añadir
+  `twisterCrash = false;` a los 3 bloques de reset de flags. `test_pc` 1080 checks OK.
+- **Bug 2 — franjas/bandas verticales en los bordes de pantalla (fix)**: en la vista normal la
+  cámara muestra ~933 u de mundo y el terreno es una franja finita `[0, tileWidth]` (~900) que no
+  enroscaba; la posición de la nave enrosca pero el terreno/estrellas/labels no, y `drawLayer`
+  (PC y S3) hacía **clamp** (no wrap) del muestreo X → pintaba la columna horneada del borde
+  extendida sobre la zona de sobresalto, dejando una franja en blanco + posible columna sólida.
+  **Solución (elegida por el usuario: "tile/wrap del terreno horizontalmente")**:
+  - `terrain.h`: `Terrain::draw(...)` gana `bool wrap = true`.
+  - `terrain.cpp`: `draw()` **tesela horizontalmente** (loop `k` de `floor(wxMin/tileWidth)` a
+    `floor(wxMax/tileWidth)`, desplazando las líneas `k*tileWidth`); `drawStarField()` y
+    `drawLabels()` también teselan; `#include <cstring>`.
+  - `game.cpp:903` (bakeBg): `terrain.draw(p, 0,0,1,0, false, false, false)` — el horneado NO
+    enrosca (un solo tile).
+  - `renderer_pc.cpp` y `esp32LanderS3/src/renderer_s3.cpp` `drawLayer()`: reemplazan el clamp
+    por **wrap por módulo horizontal**, con fast-path para muestras en rango (`idx>=0 && idx<lw`
+    directo; si no, `idx %= lw` arreglando negativos). El VGA usa la ruta vectorial (no tiene
+    `drawLayer`), así que no requiere edición.
+  - Verificación visual (análisis de píxeles en `demo_render 5`): en las ~24 frames de vista
+    normal con terreno a ancho completo, el terreno llega a **ambos bordes extremos** (los
+    samples tienen span=1.0 con left/right edge verdaderos); las lecturas de "dead-zone" restantes
+    son frames de zoom (la nave aterrizando muestra un tramo local) o de ubicación vertical del
+    terreno (picos altos quedan en la mitad superior), no bandas de borde.
+- **Build/upload**: `sync.sh` OK (S3/VGA comparten fuentes); S3 compila 646512 B (49%), RAM
+  211180 B; subido a `/dev/ttyACM0` (hash verificado). AGENTS.md y WORKLOG.md actualizados.
 
 ## 27/8/2026 — Demo spawn aleatorio, fix fuel entre ciclos, thrust orgánico
 

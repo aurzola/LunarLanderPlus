@@ -32,7 +32,7 @@ public:
     void init();
     void generate(int level);
     void draw(Renderer &r, float viewX, float viewY, float viewScale, int counter,
-              bool drawStars = true, bool withLabels = true);
+              bool drawStars = true, bool withLabels = true, bool wrap = true);
     void drawLabels(Renderer &r, float viewX, float viewY, float viewScale);
     void drawStarField(Renderer &r, float viewX, float viewY, float viewScale);
     const std::vector<TerrainLine>& getLines() const { return lines; }
