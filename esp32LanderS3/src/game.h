@@ -97,6 +97,10 @@ public:
 private:
     float viewX, viewY, viewScale;
     bool zoomedIn;
+    // Zoom-independent approach altitude (measured from ship.posY center, not
+    // ship.bottom which changes with scale). Shared by the zoom thresholds in
+    // updateView() AND the minimap visibility in draw(), so they agree.
+    float approachAlt;
     float resetTimer;
     int landMultiplier;
     bool landPerfect;

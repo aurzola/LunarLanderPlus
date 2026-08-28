@@ -89,7 +89,7 @@ Game::Game()
       windEnabled(false), windStrength(0), windDir(1),
       hullIntegrity(100),
       viewX(0), viewY(0), viewScale(1.0f),
-      zoomedIn(false), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
+      zoomedIn(false), approachAlt(9999.0f), resetTimer(0), landMultiplier(1), landPerfect(false), landFuelBonus(0),
       demoSkill(1.0f), demoTargetX(0), demoTargetY(0),
       windPhase(0), windFlipTimer(0), stormHitTimer(0), fuelMaxTimer(0), chuteTooLowTimer(0), warpInT(0), recycledTimer(0), demoHoldAltitude(false),
       tankerZooming(false),
@@ -360,8 +360,10 @@ void Game::setupDemoTarget()
 
     // Aim the demo at the tanker's underside drogue when one is present, so the
     // autopilot flies up to it and plugs the probe in (aerial refueling). The
-    // runDemoAI tanker mode tracks the swaying drogue live.
-    if (tanker.active) {
+    // runDemoAI tanker mode tracks the swaying drogue live. Only engage when
+    // there is actually fuel to gain: with a full tank the autopilot would just
+    // re-dock over and over after each auto-disconnect and loop forever.
+    if (tanker.active && ship.fuel < FUEL_MAX) {
         demoTargetX = tanker.drogueX();
         demoTargetY = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
         demoSkill = 0.85f;
@@ -617,6 +619,15 @@ void Game::runDemoAI()
     // the autopilot keeps making tiny corrections so the 1-second lock holds
     // and fuel keeps flowing.
     if (demoTankerPhase >= 0 && (tanker.targeted() || tanker.docked)) {
+        // Once the tank is full there is nothing left to gain: the tanker auto-
+        // disconnects but stays on station (no departure), so without this guard
+        // the autopilot would re-dock the full tank over and over and loop.
+        // Hand back to the normal landing autopilot (re-point to a pad) once.
+        if (ship.fuel >= FUEL_MAX) {
+            demoTankerPhase = -1;
+            setupDemoTarget();
+            return;
+        }
         float tx = tanker.drogueX();
         float ty = tanker.drogueY() + TANKER_NOZZLE_LEN * ship.scale;
 
@@ -1008,7 +1019,7 @@ void Game::updateView()
     // makes the altitude jump ~14u the instant the zoom flips, which
     // oscillated the zoom around the threshold. Measure from the ship's
     // center (posY), which is zoom-independent.
-    float approachAlt = 9999.0f;
+    approachAlt = 9999.0f;
     const std::vector<TerrainLine> &tls = terrain.getLines();
     for (int i = 0; i < (int)tls.size(); i++) {
         if (ship.posX >= tls[i].x1 && ship.posX <= tls[i].x2) {
@@ -2209,7 +2220,11 @@ void Game::draw(Renderer &r)
         bool dockZone = tanker.active && !tanker.done &&
                         fabsf(ship.posX - tanker.bodyX) < TANKER_DOCK_ZONE_X &&
                         fabsf(ship.posY - tanker.portY) < TANKER_DOCK_ZONE_Y;
-        bool inApproach = ship.altitude < APPROACH_ALT;
+        // Use the same zoom-independent approach altitude as the zoom thresholds
+        // in updateView() (measured from posY, not ship.bottom which moves with
+        // scale). ship.altitude jumps ~14u the instant zoom flips the scale, so
+        // it used to drop the minimap intermittently during descent.
+        bool inApproach = approachAlt < APPROACH_ALT;
         if (inApproach && !dockZone) {
             const float MX = 112, MY = 22, MW = 96, MH = 49;
             r.line(MX, MY, MX + MW, MY);

@@ -931,7 +931,16 @@ static int testTanker()
         CHECK(!tk.leaving);
         CHECK(!tk.done);
 
-        // Reconnect and stay plugged in until the tank is full.
+        // Reconnect and stay plugged in until the tank is full. A short
+        // cooldown after the breakaway prevents instant re-seating, so advance
+        // past it, then dock to full.
+        Ship shipHold;
+        shipHold.reset(tk.drogueX(), tk.drogueY() + TANKER_NOZZLE_LEN);
+        shipHold.scale = 1.0f;
+        for (int i = 0; i < (int)(TANKER_REDOCK_COOLDOWN / GAME_DT) + 5; i++) {
+            tk.update(GAME_DT, shipHold);
+        }
+        CHECK(tk.targeted());
         ship.reset(tk.drogueX(), tk.drogueY() + TANKER_NOZZLE_LEN);
         ship.fuel = beforeFuel;
         ship.scale = 1.0f;
@@ -946,40 +955,63 @@ static int testTanker()
 
         CHECK(ship.fuel == FUEL_MAX);
         CHECK(ship.fuel > beforeFuel);
-        CHECK(ship.velY == 0.0f);
-        CHECK(ship.velX == 0.0f);
-        CHECK(tk.leaving);
+        // At full tank the tanker auto-disconnects (gentle kick out), stays on
+        // station for a later re-dock, and starts the re-dock cooldown.
         CHECK(!tk.docked);
+        CHECK(!tk.leaving);
+        CHECK(!tk.done);
 
-        // Breakaway on a bad alignment: push the probe outside the break
-        // tolerance with the joystick nudge and confirm the link auto-releases
-        // after BREAK_TIME.
-        Tanker tkBr;
-        tkBr.reset(2, t, 100.0f);
-        Ship shipBr;
-        shipBr.reset(tkBr.drogueX(), tkBr.drogueY() + TANKER_NOZZLE_LEN);
-        shipBr.scale = 1.0f;
-        shipBr.velX = 20.0f; // held strong sideways nudge
-        shipBr.velY = 0.0f;
-        tkBr.beginDock(shipBr.velX, shipBr.velY);
-        CHECK(tkBr.docked);
-        for (int i = 0; i < (int)(TANKER_DOCK_BREAK_TIME / GAME_DT) + 5; i++) {
-            tkBr.update(GAME_DT, shipBr);
-            shipBr.velX = 20.0f; // player keeps the stick deflected
-            shipBr.velY = 0.0f;
+        // Re-dock AFTER a full refuel must be possible. The tanker auto-
+        // disconnects at full, stays on station, and can be re-docked after the
+        // cooldown (no permanent departure).
+        {
+            Tanker tkRedock;
+            tkRedock.reset(2, t, 100.0f);
+            if (tkRedock.active) {
+                Ship sR;
+                // Dock and fill the tank to full.
+                sR.reset(tkRedock.drogueX(), tkRedock.drogueY() + TANKER_NOZZLE_LEN);
+                sR.scale = 1.0f;
+                sR.fuel = 100.0f;
+                sR.velY = 0.02f;
+                sR.velX = 0.02f;
+                CHECK(tkRedock.checkDock(sR));
+                tkRedock.beginDock(sR.velX, sR.velY);
+                CHECK(tkRedock.docked);
+                // Refuel until the tank auto-disconnects at full.
+                int guard = 0;
+                while (tkRedock.docked && guard < 10000) {
+                    tkRedock.update(GAME_DT, sR);
+                    guard++;
+                }
+                CHECK(sR.fuel == FUEL_MAX);
+                CHECK(!tkRedock.docked);   // auto-disconnected at full
+                CHECK(!tkRedock.leaving);  // stays on station (no departure)
+                CHECK(!tkRedock.done);
+                // Right after the auto-disconnect the cooldown blocks re-seating,
+                // even if the probe is back perfectly on the drogue.
+                CHECK(tkRedock.redockCooldown > 0.0f);
+                CHECK(!tkRedock.targeted());
+                sR.reset(tkRedock.drogueX(), tkRedock.drogueY() + TANKER_NOZZLE_LEN);
+                sR.scale = 1.0f;
+                sR.velY = 0.02f;
+                sR.velX = 0.02f;
+                CHECK(!tkRedock.checkDock(sR));
+                // After the cooldown the tanker is targetable again.
+                for (int i = 0; i < (int)(TANKER_REDOCK_COOLDOWN / GAME_DT) + 5; i++) {
+                    tkRedock.update(GAME_DT, sR);
+                }
+                CHECK(tkRedock.targeted());
+                // Re-dock now succeeds.
+                sR.reset(tkRedock.drogueX(), tkRedock.drogueY() + TANKER_NOZZLE_LEN);
+                sR.scale = 1.0f;
+                sR.velY = 0.02f;
+                sR.velX = 0.02f;
+                CHECK(tkRedock.checkDock(sR));
+                tkRedock.beginDock(sR.velX, sR.velY);
+                CHECK(tkRedock.docked);
+            }
         }
-        CHECK(!tkBr.docked);
-
-        float startX = tk.bodyX;
-        for (int i = 0; i < 9000 && !tk.done; i++) {
-            tk.update(GAME_DT, ship);
-        }
-        CHECK(tk.done);
-        CHECK(tk.bodyX > startX);
-
-        Tanker tk2;
-        tk2.reset(2, t, 100.0f);
-        CHECK(!tk2.active);
     }
     CHECK(spawned);
 

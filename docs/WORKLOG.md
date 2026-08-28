@@ -1404,6 +1404,32 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
       6→5, twister 8→7, acidrain 3→2). `test_pc` 1066/1066, demos PC con selftest OK, sketch S3
       compila (645 KB / 49 %, RAM 211 KB).
 
+## 28/8/2026 — Tanker auto-desconexión + cooldown, fix minimapa, restricciones de spawn, guarda demo
+
+- **Tanker auto-desconexión al llenar el tanque**: al llegar `ship.fuel == FUEL_MAX` la cisterna
+  suelta el probe con un leve empujón (`velX=-0.03`, `velY=0.04`, `posY+=2.0`) y **se queda en
+  estación** (sin `leaving`/`done`) para permitir un re-dock posterior (antes `leaving=true`, se iba
+  para siempre). `fuelFlowing=false`, se arman `dockLockTimer`/`dockBreakTimer=0`.
+- **`TANKER_REDOCK_COOLDOWN=2.0 s` (config.h)**: tras la auto-desconexión (o un `breakAway` con
+  motor) el probe no se vuelve a asentar durante el cooldown — `targeted()` y `checkDock()`
+  devuelven false mientras `redockCooldown > 0` — para que el módulo recién expulsado no chasquee
+  de vuelta a la cesta (sigue solapando el drogue al soltarse).
+- **Restricciones de spawn restauradas**: la cisterna solo aparece con `fuel < 50 % FUEL_MAX`,
+  excluida de Ganímedes (`moonHasRings`) y con `TANKER_CHANCE_PERCENT=70 %`. Se eliminaron los
+  TEMP de debug que las desactivaban (la placa ya no muestra la cisterna en todo momento).
+- **Guarda anti-bucle del autopilot de demo**: `setupDemoTarget()` solo entra en modo cisterna si
+  `ship.fuel < FUEL_MAX`, y `runDemoAI()` al llegar `fuel >= FUEL_MAX` en modo tanque sale a
+  `demoTankerPhase=-1` y re-apunta a una plataforma de aterrizaje — la demo ya no queda pegada
+  re-acoplándose a una cisterna que nunca más se va (`demo_sim` 40 semillas sin colgar).
+- **Fix minimapa intermitente en la 2ª fase**: `approachAlt` pasó a ser miembro de `Game`
+  (calculado en `updateView()`, desde `ship.posY` sin escala). El minimapa de aproximación
+  (`inApproach` en `Game::draw()`) usa esa misma medida en vez de `ship.altitude` (basada en
+  `ship.bottom = posY+14·scale`, que salta ~14 u al entrar el zoom) → el minimapa desaparecía de
+  forma intermitente durante el descenso; zoom y minimapa comparten umbral y base de medición.
+- **Tests**: `test_pc` pasa 1080 checks (incluye re-dock tras auto-desconexión, cooldown, fuel gate
+  restaurado, Ganímedes sin cisterna, warp completo). `demo_sim` 40 semillas: 18 WIN / 22 LOSE, sin
+  colgarse. AGENTS.md y WORKLOG.md actualizados.
+
 ## 27/8/2026 — Demo spawn aleatorio, fix fuel entre ciclos, thrust orgánico
 
 - **Demo spawn**: la nave ahora aparece en posición completamente aleatoria en cada ciclo

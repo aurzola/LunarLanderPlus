@@ -40,6 +40,9 @@ public:
     float dockLockTimer = 0.0f;
     float dockBreakTimer = 0.0f;
     bool fuelFlowing = false;
+    // Re-dock cooldown after breaking away: the probe cannot re-seat while
+    // this is > 0, so a freshly ejected module does not snap straight back in.
+    float redockCooldown = 0.0f;
 
     // Drogue basket visual. x,y are screen coordinates of the basket balance
     // point (the physics align point), s the px-per-world-unit scale.

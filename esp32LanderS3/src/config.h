@@ -316,6 +316,10 @@ const float TANKER_DOCK_BREAK_TIME = 1.5f;
 const float TANKER_DOCK_BREAK_TOL_X = 28.0f;
 const float TANKER_DOCK_BREAK_TOL_Y = 22.0f;
 const float TANKER_CONE_GUIDE = 20.0f; // sec^-1: strong funnel centering pull
+// After undocking there is a short cooldown during which the probe will not
+// re-seat, so a freshly ejected module does not snap straight back into the
+// basket (it is still overlapping the drogue when it breaks away).
+const float TANKER_REDOCK_COOLDOWN = 2.0f; // seconds
 
 // Player parachute: a one-shot steerable canopy deployed with C+Z during
 // flight. Once deployed it cannot be retracted. While open the free fall is
