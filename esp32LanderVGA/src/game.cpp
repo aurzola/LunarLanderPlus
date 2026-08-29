@@ -2152,7 +2152,7 @@ void Game::draw(Renderer &r)
             if (acidrain.active()) {
                 if (!glitch) {
                     int hv = (int)hullIntegrity;
-                    bool hullAlarm = hv <= 10;
+                    bool hullAlarm = hv <= 15;
                     bool flashHull = hullAlarm && (ship.counter % 40) >= 26;
                     char numBuf[12];
                     snprintf(numBuf, sizeof numBuf, "%d", hv);

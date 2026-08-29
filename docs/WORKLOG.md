@@ -1591,3 +1591,15 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
   zoom-out, `≤350`), crucero 450 → zoom-out OK, y descenso bajo el plano (cráter) también
   `abs=0`. `test_pc` pasa **1100 checks**. `demo_sim` sin stuck/timeouts. Compile S3 OK
   (646632 B, 49 %). Subido a placa S3.
+
+## 28/8/2026 (f) — Alarma HULL: umbral de parpadeo subido a 15 %
+
+- **Reporte (CRT)**: el "no veo que parpadee" el HUD `HULL` era correcto — la lógica
+  `flashHull = hullAlarm && (counter%40)>=26` funcionaba, pero el umbral `hv <= 10` era
+  casi inalcanzable: el hull baja solo 0.5/s bajo lluvia (Europa), así que pasar de 10 a 0
+  (que además dispara el final) duraba ~20 s y la ventana era imperceptible.
+- **Fix**: `hullAlarm = hv <= 15` (15 %). La alarma avisa antes del peligro real sin ser
+  molesta. Se mantiene el parpadeo de la etiqueta `HULL` (`counter%40>=26`) y el número
+  siempre visible, y el HUD sigue mostrándose solo en niveles de Europa (`acidrain.active()`).
+- **Tests**: `test_pc` sigue en **1100 checks** (sin cambio de contrato); compile S3 OK.
+  Subido a placa S3.
