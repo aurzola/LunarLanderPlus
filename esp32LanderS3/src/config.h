@@ -54,8 +54,13 @@ const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nive
 const int DEMO_LEVEL_FIRST = 0;         // 0 = cada ciclo de demo elige el nivel
                                         // al azar 1..DEMO_MAX_LEVEL (cualquier
                                         // luna); > 0 lo fija siempre
+const bool DEMO_TANKER_FIRST = false;   // OFF: el demo elige nivel al azar y el tanque
+                                        // aparece solo con fuel < 50% (lógica normal).
+                                        // Al activarlo, el primer nivel del demo abre
+                                        // en fuel bajo con la cisterna + autopilot al
+                                        // drogue (show del dibujo, validación CRT).
 const int START_LEVEL = 1;
-const bool SHOW_DEBUG_SCALES = false; // SCL/VWS/TK in HUD (temp debug)
+#define SHOW_DEBUG_SCALES 0 // SC/VW/TK (ship.scale / viewScale / tanker draw scale) raw in HUD
 const float DEMO_SPAWN_X_MIN = 50.0f;
 const float DEMO_SPAWN_X_MAX = 850.0f;
 const float DEMO_SPAWN_Y_MIN = 80.0f;
@@ -268,39 +273,52 @@ const float TWISTER_SWAY_SPEED = 1.3f;      // rad/s
 const int TANKER_START_LEVEL = 1;
 const int TANKER_FORCE_LEVEL1 = 1; // force tanker in level 1 (unconditional)
 const int DEMO_FORCE_TANKER_CRASH = 0; // demo AI docks for refueling (no crash)
-const int TANKER_CHANCE_PERCENT = 70;
-const float TANKER_DRAW_SCALE = 1.5f;    // extra visual multiplier: the balloon geometry (13 u)
-                                          // is close to the ship (~10 u), so ×1.5 keeps the
-                                          // tanker noticeably bigger while sharing the ship's
-                                          // scale factor.  Physics hitbox (HULL_W/H) unchanged.
+const int TANKER_CHANCE_PERCENT = 100; // deterministic: always spawn when fuel < 50%
+// The tanker's intrinsic size in world units as a multiple of its base geometry.
+// TANKER_SIZE scales the whole tanker together — rendering geometry, collision
+// hitbox, portY, hose/drogue, docking tolerances, trigger zone and platform —
+// so resizing is a single knob with no screen/camera/zoom impact (view is
+// relative to viewScale/ship.scale, which are independent of tanker size). The
+// tanker is drawn with the SAME scale factor as the ship (ship.scale·viewScale);
+// it reads bigger than the ship because its base geometry is larger (balloon
+// ~13 u half-width vs ship ~10 u). The default reproduces the previous look,
+// which had a ×1.5 draw boost folded into this base geometry. The refuel probe
+// (TANKER_NOZZLE_LEN) is ship-side and does NOT scale with TANKER_SIZE.
+const float TANKER_SIZE = 1.2f;
+// The tanker's native balloon geometry is TANKER_GEOM× the ship's ~10 u radius.
+// This is where the former ×1.5 draw boost now lives: in the tanker's own
+// (unscaled) body size, not in a separate draw-scale factor. Only the tanker
+// body/drogue/hose rendering applies it; physics base constants (HULL_W/H, etc.)
+// and the ship are untouched.
+const float TANKER_GEOM = 1.5f;
 const float TANKER_HOVER_ALT = 420.0f;   // above APPROACH_EXIT_ALT (350) so the dock sits in
                                           // stable zoom-out territory: hovering in the
                                           // [200,350] dead-zone made the zoom flicker
 const float TANKER_TITAN_Y = 250.0f;     // Titan: between the two fog bands (1st ~205, 2nd ~343+), near the 1st
 const float TANKER_FUEL_FRACTION = 0.5f; // spawn only when fuel < FUEL_MAX * this
-const float TANKER_HULL_W = 22.0f;
+// Tanker physical/interface base dimensions at TANKER_SIZE=1.0. Each is
+// multiplied by TANKER_SIZE where used (see Tanker accessors), so a single
+// resize scales rendering, hitbox, portY, hose, docking tolerances and zone.
+const float TANKER_HULL_W = 22.0f;           // collision hull half-extents (world u, base)
 const float TANKER_HULL_H = 6.0f;
-const float TANKER_PLATFORM_W = 24.0f;
+const float TANKER_HULL_MARGIN = 3.0f;       // ship touching the hull destroys both
+const float TANKER_PLATFORM_W = 24.0f;       // flat spot the tanker needs under it
 const float TANKER_DRIFT_SPEED = 9.0f;
 const float TANKER_DRIFT_RANGE = 40.0f;
 const float TANKER_BOB_AMP = 3.0f;
 const float TANKER_BOB_SPEED = 0.9f;
-const float TANKER_DOCK_TOL_X = 20.0f;       // cone mouth: wide enough to seat easily
+const float TANKER_DOCK_TOL_X = 20.0f;       // cone mouth: wide enough to seat easily (base)
 const float TANKER_DOCK_TOL_Y = 14.0f;
-const float TANKER_DOCK_ZONE_X = 90.0f;
+const float TANKER_DOCK_ZONE_X = 90.0f;      // trigger box that turns on the dock zoom/PiP (base)
 const float TANKER_DOCK_ZONE_Y = 45.0f;
-const float TANKER_HOSE_LEN = 20.0f;         // drogue hangs this far from the hull
+const float TANKER_HOSE_LEN = 20.0f;         // drogue hangs this far from the hull (base)
 const float TANKER_APPROACH_X = 55.0f;       // demo pre-position: left of the drogue
-const float TANKER_DROGUE_RIM = 3.0f;        // basket mouth half-width (world u)
-const float TANKER_DROGUE_DEPTH = 3.5f;      // cone depth from target to mouth (world u)
-const float TANKER_DROGUE_BACK_R = 1.6f;     // filled target radius at the basket back
 // Picture-in-picture docking window: magnified contact point (basket + probe).
 const int PIP_SIZE = 76;                     // window size in px
 const float PIP_SCALE = SCREEN_H / 700.0f * 16.0f; // px per world unit inside the PiP
 const float TANKER_DROGUE_SWAY = 2.0f;       // drogue sway amplitude (world u) — reduced for easier docking
 const float TANKER_DROGUE_SWAY_SPEED = 1.2f; // rad/s, slower sway
 const float TANKER_REFUEL_RATE = 200.0f;     // fuel units per second while connected
-const float TANKER_HULL_MARGIN = 3.0f;       // ship touching the hull destroys both
 const float TANKER_LEAVE_SPEED = 1.4f;
 const float TANKER_LEAVE_DIST = 90.0f;
 const float TANKER_NOZZLE_LEN = 8.0f;    // module refuel probe offset from ship center

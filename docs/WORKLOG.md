@@ -1523,3 +1523,29 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
   `landable=false`). Además `ruptureZone` ahora limpia `zi.labelX = -1` en el `ZoneInfo`.
 - **Mensajes de crash/aterrizaje movidos a zona inferior**: `centerText` de todos los mensajes
   (landed/crashed/gameover/recycled) movidos de y=90-128 a y=170-182 (debajo del terreno).
+
+## 28/8/2026 (c) — TANKER_SIZE unificado, restartLevel re-rolla cisterna, spawn determinista
+
+- **`TANKER_SIZE=1.2` (config.h) — la cisterna como un solo knob**: multiplica **a la vez** el
+  render (body, gondola, hose, drogue vía `drawScale = ship.scale·viewScale·TANKER_SIZE` +
+  `TANKER_GEOM=1.5` para el cuerpo nativo) y la física/interface (hitbox `hullHalfW`/
+  `balloonHalfH`, `portY`/`hullHalfH`, `hoseLen`, tolerancias `dockTolX/Y` y `dockBreakTolX/Y`,
+  caja de trigger `dockZoneX/Y`, plataforma `platformW`, clamps del funnel `ctrlX/ctrlY`),
+  mediante accessors escalados en `tanker.h`. Se elimina `TANKER_DRAW_SCALE` (el antiguo boost
+  ×1.5 de dibujo vive ahora en la geometría base `TANKER_GEOM`); `Tanker::drawScaleFor()` devuelve
+  `ship.scale·viewScale` (mismo factor que la nave). `TANKER_NOZZLE_LEN` (probe de la nave) no
+  escala. Test de dock con rotación 90 actualizado (`shipW.reset` con `dockTolX()+NOZZLE_LEN+2`
+  para que el miss siga fuera de tolerancia a cualquier tamaño).
+- **`restartLevel()` re-rolla la cisterna**: se añade `tanker.reset(level, terrain, ship.fuel)`
+  en `game.cpp` — al repetir un nivel el fuel se conserva (<50 %) y el tanque reaparece
+  (antes no se re-colocaba y el nivel quedaba sin cisterna pese a tener fuel bajo).
+- **`TANKER_CHANCE_PERCENT=100`** (config.h): con el fuel gate `< 50 %` como única condición, el
+  spawn es **determinista** (antes 70 % aleatorio dejaba niveles sin cisterna con fuel bajo).
+- **`force` reinstalado en `Tanker::reset()`** (param con default `false`), solo para el showcase
+  del demo: `DEMO_TANKER_FIRST=false` (off) — al activarlo el primer ciclo del demo abre en fuel
+  bajo con la cisterna forzada (`tankerShowcase`) y todos los demás efectos apagados, sin
+  wormhole compartiendo el cielo.
+- **`SHOW_DEBUG_SCALES` → `#define 0`** (config.h) con etiquetas renombradas `SC`/`VW`/`TK`:
+  el debug de escalas del HUD queda oculto por defecto (antes `SCL`/`VWS`/`TK`).
+- **Tests**: `test_pc` pasa **1080 checks**; subido a placa S3 y verificado (hash OK).
+  AGENTS.md y WORKLOG actualizados.

@@ -1045,7 +1045,10 @@ static int testTanker()
         // 90, so the horizontal probe tip lands far out of the (now forgiving)
         // horizontal tolerance.
         Ship shipW;
-        shipW.reset(tk3.drogueX() - 30.0f, tk3.drogueY() + TANKER_NOZZLE_LEN);
+        // Place the probe well beyond the (TANKER_SIZE-scaled) horizontal dock
+        // tolerance so the wrong-rotation case stays a miss regardless of size.
+        shipW.reset(tk3.drogueX() - (tk3.dockTolX() + TANKER_NOZZLE_LEN + 2.0f),
+                    tk3.drogueY() + TANKER_NOZZLE_LEN);
         shipW.rotation = 90.0f;
         shipW.targetRotation = 90.0f;
         shipW.scale = 1.0f;
