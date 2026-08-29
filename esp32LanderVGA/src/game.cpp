@@ -1011,6 +1011,31 @@ void Game::setZoom(bool zoom, float zm)
     }
 }
 
+void Game::updateApproachAlt()
+{
+    // Approach altitude for the zoom thresholds: the ship's grade is measured
+    // TWO ways and combined with min(), so the final-approach zoom behaves on
+    // both scales:
+    //   1. relAlt — height above the LOCAL terrain interpolated at the ship's
+    //      X (yAt; vertical wall segments are skipped, they never define an
+    //      approach surface). Flying toward a high peak the ground rises under
+    //      the ship, the gap shrinks and the zoom-in fires even though the
+    //      absolute altitude is still above APPROACH_ALT (montane approach).
+    //   2. absAlt — height above the deepest landing-plane datum
+    //      (Terrain::padFloorY, the lowest pad base world-wide). This guards
+    //      the counter-case: a deep pit right next to a pad. Over the pit yAt
+    //      returns the pit floor, so relAlt alone would blow past zo and flip
+    //      the view to zoom-out while the ship is still a few units above the
+    //      landing plane — uncontrollable right at touchdown. absAlt keeps
+    //      approachAlt small there, so zoom-out only fires when the ship is
+    //      high in BOTH senses (rel > zo AND abs > zo).
+    const float groundY = terrain.yAt(ship.posX, -1.0f);
+    float relAlt = (groundY >= 0.0f) ? groundY - ship.posY - 14.0f : ship.altitude;
+    float absAlt = terrain.padFloorY() - ship.posY - 14.0f;
+    if (absAlt < 0.0f) absAlt = 0.0f;
+    approachAlt = (relAlt < absAlt) ? relAlt : absAlt;
+}
+
 void Game::updateView()
 {
     float margintop = SCREEN_H * 0.2f;
@@ -1048,16 +1073,9 @@ void Game::updateView()
     // with the zoom (1.5 normal / 0.48 at 5x). Using ship.altitude directly
     // makes the altitude jump ~14u the instant the zoom flips, which
     // oscillated the zoom around the threshold. Measure from the ship's
-    // center (posY), which is zoom-independent.
-    approachAlt = 9999.0f;
-    const std::vector<TerrainLine> &tls = terrain.getLines();
-    for (int i = 0; i < (int)tls.size(); i++) {
-        if (ship.posX >= tls[i].x1 && ship.posX <= tls[i].x2) {
-            float a = tls[i].y1 - ship.posY - 14.0f;
-            if (a < approachAlt) approachAlt = a;
-        }
-    }
-    if (approachAlt > 9998.0f) approachAlt = ship.altitude;
+    // center (posY), which is zoom-independent, down to the LOCAL terrain
+    // interpolated at the ship's X (see updateApproachAlt()).
+    updateApproachAlt();
 
     if (!wormhole.captured() && warpInT <= 0.0f) {
         if (moonHasRings(level)) {

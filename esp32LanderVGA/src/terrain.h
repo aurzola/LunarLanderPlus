@@ -51,6 +51,11 @@ public:
     int zoneSegCount(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].segCount : 0; }
     float zoneLabelX(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].labelX : -1.0f; }
     bool zoneBroken(int z) const { return (z >= 0 && z < (int)zones_.size()) ? zones_[z].broken : false; }
+    // Deepest landing-plane datum: the lowest (world_y largest) pad base. Used
+    // as the absolute-altitude reference for the approach zoom so a deep pit
+    // right next to a pad can't flip the view to zoom-out while the ship is
+    // still low over the landing area.
+    float padFloorY() const;
     int zoneOverlapping(float x1, float x2) const;
     void ruptureZone(int zone);
     void ruptureSurface(float cx, float halfW);

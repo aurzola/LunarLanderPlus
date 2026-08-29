@@ -1599,6 +1599,9 @@ static int testQuake()
     CHECK(zs >= 0);
     for (int k = 0; k < zc; k++) {
         CHECK(!tl[zs + k].landable);
+        // The reward label ("5x"/"4x"/"2x" multiplied score) is gone: the
+        // multiplier is flattened to 1 so drawLabels() skips the pad.
+        CHECK(tl[zs + k].multiplier == 1);
     }
     CHECK(tl[zs].labelX < 0);
 
@@ -2024,6 +2027,94 @@ static int testShipVisibility()
     return 0;
 }
 
+static int testApproachElevation()
+{
+    // The final-approach zoom threshold is the ship's height ABOVE THE LOCAL
+    // TERRAIN at its X (interpolated by Terrain::yAt), NOT an absolute
+    // altitude datum. With the SAME absolute altitude, flying over a high peak
+    // shrinks the gap below APPROACH_ALT (zoom-in fires) while the same
+    // altitude over a valley stays well above the threshold (zoom-out), even
+    // though the ship is at the exact same screen height in both cases.
+    // The elevation-relative gap is blended with the general altitude above
+    // the deepest landing-plane datum (min()). That guard keeps the view
+    // zoomed-in when a deep pit sits right next to a pad: relAlt alone would
+    // blow past the exit threshold over the pit floor mid-descent.
+    Game g;
+    g.terrain.init(); // classic level-1 terrain, deterministic
+
+    // Find the highest peak (minimum y) and the deepest valley (maximum y).
+    const std::vector<TerrainLine> &tl = g.terrain.getLines();
+    float peakX = tl[0].x1, peakY = tl[0].y1;
+    float valleyX = tl[0].x1, valleyY = tl[0].y1;
+    for (size_t i = 0; i < tl.size(); i++) {
+        if (tl[i].y1 < peakY) { peakY = tl[i].y1; peakX = tl[i].x1; }
+        if (tl[i].y1 > valleyY) { valleyY = tl[i].y1; valleyX = tl[i].x1; }
+    }
+    CHECK(peakY < valleyY);
+
+    // Park the ship 20 units under the APPROACH_ALT threshold above the peak.
+    g.ship.posX = peakX;
+    g.ship.posY = peakY - 14.0f - (APPROACH_ALT - 20.0f);
+    g.updateApproachAlt();
+    // Over the peak the gap is APPROACH_ALT-20 -> zoom-in fires.
+    CHECK(g.approachAltGet() < APPROACH_ALT);
+    CHECK(fabsf(g.approachAltGet() - (valleyY - g.ship.posY - 14.0f)) > 20.0f);
+    // Here the blend picks the terrain-relative term (it is the smaller one).
+    CHECK(fabsf(g.approachAltGet() -
+                (g.terrain.yAt(peakX, -1.0f) - g.ship.posY - 14.0f)) < 0.01f);
+
+    // SAME absolute altitude over the valley: the gap stays > APPROACH_ALT, so
+    // no zoom-in even though the ship is at exactly the same screen height.
+    g.ship.posX = valleyX;
+    g.updateApproachAlt();
+    CHECK(g.approachAltGet() > APPROACH_ALT);
+
+    // Blend contract + pit-next-to-pad case: over the DEEPEST PIT of the
+    // classic terrain, the view must never flip to zoom-out while the ship's
+    // bottom is low over the landing plane (relAlt alone would exceed
+    // APPROACH_EXIT_ALT because yAt returns the pit floor).
+    float floorY = g.terrain.padFloorY();
+    CHECK(floorY >= valleyY); // classic: the deepest pit == the deepest pad base
+
+    // Contract: the blended value is exactly min(rel, abs) at any height.
+    float bottoms[] = {floorY, floorY - 100.0f, floorY - 300.0f, floorY - 450.0f};
+    for (int i = 0; i < 4; i++) {
+        g.ship.posX = valleyX;
+        g.ship.posY = bottoms[i] - 14.0f;
+        g.updateApproachAlt();
+        float rel = g.terrain.yAt(valleyX, -1.0f) - g.ship.posY - 14.0f;
+        float absv = floorY - g.ship.posY - 14.0f;
+        if (absv < 0.0f) absv = 0.0f;
+        CHECK(fabsf(g.approachAltGet() - (rel < absv ? rel : absv)) < 0.01f);
+    }
+    // On the landing plane -> small gap: zooms in (the pre-fix code still did,
+    // but only because the pit equals the datum here; the blend is what keeps
+    // it sticky when a NEW pit is deeper than the planes).
+    g.ship.posX = valleyX;
+    g.ship.posY = floorY - 14.0f;
+    g.updateApproachAlt();
+    CHECK(g.approachAltGet() < APPROACH_ALT);
+    // 100 above the plane -> still zoomed-in.
+    g.ship.posY = floorY - 14.0f - 100.0f;
+    g.updateApproachAlt();
+    CHECK(g.approachAltGet() < APPROACH_ALT);
+    // 300 above the plane -> inside the hysteresis band: zoom-out CANNOT fire.
+    g.ship.posY = floorY - 14.0f - 300.0f;
+    g.updateApproachAlt();
+    CHECK(g.approachAltGet() <= APPROACH_EXIT_ALT);
+    // Cruising 450 above the plane (and above the pit floor) -> zoom-out OK.
+    g.ship.posY = floorY - 14.0f - 450.0f;
+    g.updateApproachAlt();
+    CHECK(g.approachAltGet() > APPROACH_EXIT_ALT);
+    // Descent into a crater below the pad plane: abs clamps to 0, still sticky.
+    g.ship.posX = valleyX;
+    g.ship.posY = floorY - 14.0f + 40.0f; // bottom 40 BELOW the pad plane
+    g.updateApproachAlt();
+    CHECK(g.approachAltGet() < APPROACH_EXIT_ALT);
+
+    return 0;
+}
+
 int main()
 {
     int failed = 0;
@@ -2050,6 +2141,7 @@ int main()
     r = testParachute();     if (r) failed++;
     r = testViewportCull();  if (r) failed++;
     r = testBgLayer();       if (r) failed++;
+    r = testApproachElevation(); if (r) failed++;
     r = testShipVisibility(); if (r) failed++;
     if (failed) {
         printf("%d TEST GROUP(S) FAILED (%d checks total)\n", failed, checks);

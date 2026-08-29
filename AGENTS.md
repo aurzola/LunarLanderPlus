@@ -126,6 +126,24 @@ Estructura en `esp32Lander/` (C++ std, sin dependencias de hardware):
   zoom↔scale↔altitud; se veía el terreno dibujado doble, zoom-out y zoom-in). El umbral usa
    ahora `approachAlt` medido desde `ship.posY` (centro de la nave, independiente de escala), y
    se eliminó el force-zoom-out por `tanker.leaving` que peleaba contra el zoom-in por altitud.
+   **Altitud de aproximación por elevación local del terreno (28/8/2026, rama `fix2`)**: el zoom
+   de aproximación se mide hacia el **terreno interpolado bajo la nave** (`Terrain::yAt(ship.posX)`
+   en `Game::updateApproachAlt()`, método público extraído de `updateView()` + getter
+   `approachAltGet()`; muros verticales `yAt` los omite), no un datum absoluto: al volar hacia un
+   pico alto el suelo sube bajo la nave y el hueco se encoge → el zoom-in se dispara aunque la
+   altitud absoluta supere `APPROACH_ALT` (aproximación montañosa: la referencia es el suelo
+   alcanzable, no la cima del cielo). Antes usaba el `y1` del segmento bajo la nave (sin
+   interpolar), que en laderas largas/picos medía mal. Test `testApproachElevation` en `test_pc`.
+   **Blend con la altitud absoluta sobre el plano de aterrizaje (28/8/2026, rama `fix2`)**: el
+   zoom-out por pozo se arregla combinando el hueco relativo con la altura general —
+   `approachAlt = min(relAlt, absAlt)` en `updateApproachAlt()`; `relAlt` es la elevación local,
+   `absAlt = Terrain::padFloorY() − posY − 14` con `padFloorY()` = el **pad más profundo del nivel**
+   (máximo `zone.baseY`, nuevo método de Terrain). Sobre un pozo profundo junto a un pad, `yAt`
+   devuelve el fondo del pozo y `relAlt` solo superaría los 350 u de salida en pleno descenso → el
+   zoom volvía a zoom-out justo al aterrizar (incontrolable). Con el blend: zoom-in si `rel<200` **o**
+   `abs<200`; zoom-out solo si **ambas** `>350` (la nave debe subir de verdad). `absAlt` se clampa a
+   ≥0 (descenso a un cráter bajo el plano también se queda en zoom). Los umbrales y la histéresis
+   no cambian; Ganímedes usa el mismo valor.
    **`approachAlt` compartido también por el minimapa (fix01, 2026)**: `approachAlt` pasó a ser un
    miembro de `Game` (calculado en `updateView()`), y el minimapa de aproximación (`inApproach` en
    `Game::draw()`) usa la misma medida en vez de `ship.altitude` — con `ship.altitude` (basada en

@@ -1549,3 +1549,45 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
   el debug de escalas del HUD queda oculto por defecto (antes `SCL`/`VWS`/`TK`).
 - **Tests**: `test_pc` pasa **1080 checks**; subido a placa S3 y verificado (hash OK).
   AGENTS.md y WORKLOG actualizados.
+
+## 28/8/2026 (d) — Zoom de aproximación por elevación del terreno + hitbox quake vs landing spot
+
+- **Zoom de aproach final medido hacia el TERRENO (rama `fix2`)**: el cálculo de `approachAlt`
+  salió de `updateView()` a un método público `Game::updateApproachAlt()` (getter
+  `approachAltGet()`), y ahora usa **`Terrain::yAt(ship.posX)`** (elevación interpolada bajo la
+  nave, muros verticales omitidos) en vez del `y1` del segmento que contenía a `posX`. Antes, al
+  volar hacia un pico alto el zoom seguía ignorando que el terreno subía: la altitud absoluta
+  podía superar los 200 u de `APPROACH_ALT` aunque el hueco real hasta el suelo fuera de 80 u. Con
+  la elevación local, la aproximación montañosa dispara el zoom-in aunque el "sweet level" global
+  esté más bajo — la referencia es el suelo alcanzable, no la cima del cielo. Misma base para el
+  minimapa (mantiene el acuerdo). Fallback: si `posX` no cae en ninguna línea (`yAt` devuelve -1),
+  `approachAlt = ship.altitude` (comportamiento previo).
+- **Hitbox quake ↔ landing spot reforzado en test**: el pad roto ya perdía `landable`/`labelX`
+  (ruptureZone), pero el test no comprobaba que el **label de recompensa ("5x"/"4x"/"2x")**
+  desapareciera. Se añade `CHECK(tl[zs+k].multiplier == 1)` en `testQuake`: al romperse el pad el
+  multiplicador se aplana a 1, así `drawLabels()` omite el label, y las luces parpadeantes ya se
+  omiten por `labelX < 0` (game.cpp:2018) y el punto del minimapa por id. (game.cpp:906/2306).
+- **Tests**: nuevo `testApproachElevation` en `test_pc.cpp` — con la MISMA altitud absoluta, sobre
+  un pico el `approachAlt` cae bajo `APPROACH_ALT` (zoom-in) y sobre el valle se mantiene arriba
+  (zoom-out); verifica además que la medida == `yAt(posX) - posY - 14`. `test_pc` pasa
+  **1090 checks**. `quake_demo` OK. `demo_sim` sin stuck/timeouts. Compile S3 OK (646520 B, 49 %).
+  Subido a placa S3.
+
+## 28/8/2026 (e) — Zoom de aproach: blend relativo/absoluto (pozo junto al pad)
+
+- **Bug (reportado en CRT)**: con el fix (d) el zoom salía a zoom-out sobre un pozo junto al pad —
+  `approachAlt` era solo relativo al suelo local (`yAt(posX)`), así que al pasar sobre el pozo el
+  hueco superaba los 350 u de salida y la vista saltaba a zoom-out en pleno descenso, cuando la
+  nave aún estaba a pocas unidades del plano del pad (incontrolable en zoom-out).
+- **Fix**: `Game::updateApproachAlt()` combina ahora **min(relAlt, absAlt)**:
+  - `relAlt = yAt(posX) − posY − 14` (elevación local interpolada, fix (d), muros verticales omitidos).
+  - `absAlt = Terrain::padFloorY() − posY − 14` (altura **general** sobre el **plano de aterrizaje** =
+    el pad más profundo, `max(zone.baseY)`, nuevo método público `Terrain::padFloorY()`), clamp ≥ 0.
+  - Resultado: zoom-in si `rel < 200` **o** `abs < 200` (picos bajos O nave baja); zoom-out solo si
+    **ambas** `> 350`. El pozo junto al pad deja de forzar zoom-out porque `absAlt` se mantiene
+    pequeño mientras la nave no suba de verdad. Umbrales 200/350 y Ganímedes intactos.
+- **Tests**: `testApproachElevation` extendido — contrato `approachAlt == min(rel, abs)` a varias
+  alturas sobre el pozo más profundo del clásico; atasco cerca del plano (0/100/300 → sin
+  zoom-out, `≤350`), crucero 450 → zoom-out OK, y descenso bajo el plano (cráter) también
+  `abs=0`. `test_pc` pasa **1100 checks**. `demo_sim` sin stuck/timeouts. Compile S3 OK
+  (646632 B, 49 %). Subido a placa S3.

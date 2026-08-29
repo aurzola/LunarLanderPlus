@@ -90,6 +90,11 @@ public:
     float chuteTooLow() const { return chuteTooLowTimer; }
     float warpIn() const { return warpInT; }
     float recycledBanner() const { return recycledTimer; }
+    float approachAltGet() const { return approachAlt; }
+    // Recomputes the elevation-aware approach altitude from the ship's current
+    // position (used by the zoom thresholds and the minimap). Public so tests
+    // can validate the terrain-relative measurement.
+    void updateApproachAlt();
     bool bgActive() const { return worldBg.ready() && bgBaked; }
     bool chuteAvailable;
     float hullIntegrity;
