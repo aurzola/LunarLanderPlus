@@ -427,6 +427,15 @@ float Terrain::yAt(float x, float fallback) const
     return fallback;
 }
 
+float Terrain::padFloorY() const
+{
+    float floor = 800.0f;
+    for (size_t z = 0; z < zones_.size(); z++) {
+        if (zones_[z].baseY > floor) floor = zones_[z].baseY;
+    }
+    return floor;
+}
+
 void Terrain::ruptureZone(int zone)
 {
     if (zone < 0 || zone >= (int)zones_.size()) return;

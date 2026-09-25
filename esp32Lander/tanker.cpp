@@ -11,7 +11,7 @@ Tanker::Tanker()
 {
 }
 
-void Tanker::reset(int level, const Terrain& terrain, float fuel)
+void Tanker::reset(int level, const Terrain& terrain, float fuel, bool force)
 {
     active = false;
     docked = false;
@@ -27,11 +27,11 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel)
     if (fuel > FUEL_MAX * TANKER_FUEL_FRACTION) return;
     // Ganymede's debris rings make a high-altitude rendezvous impossible.
     if (moonHasRings(level)) return;
-    if (rand() % 100 >= TANKER_CHANCE_PERCENT) return;
+    if (!force && rand() % 100 >= TANKER_CHANCE_PERCENT) return;
 
     const std::vector<TerrainLine>& tl = terrain.getLines();
     float w = terrain.getWidth();
-    float halfW = TANKER_PLATFORM_W * 0.5f;
+    float halfW = platformW() * 0.5f;
 
     bool found = false;
     for (int trial = 0; trial < 60 && !found; trial++) {
@@ -63,7 +63,7 @@ void Tanker::reset(int level, const Terrain& terrain, float fuel)
         else baseY = terrainY - TANKER_HOVER_ALT;
         bodyY = baseY;
         originalBodyX = cx;
-        portY = baseY + TANKER_HULL_H * 0.5f;
+        portY = baseY + hullHalfH();
         driftX = ((rand() % 2) ? -1.0f : 1.0f) * TANKER_DRIFT_SPEED;
         phase = (float)(rand() % 628) / 100.0f;
         found = true;
@@ -92,7 +92,7 @@ float Tanker::drogueX() const
 
 float Tanker::drogueY() const
 {
-    return portY + TANKER_HOSE_LEN + drogueSway(droguePhase, 0, 1.0f);
+    return portY + hoseLen() + drogueSway(droguePhase, 0, 1.0f);
 }
 
 bool Tanker::checkDock(const Ship& ship)
@@ -106,8 +106,8 @@ bool Tanker::checkDock(const Ship& ship)
     float probeX = ship.posX + TANKER_NOZZLE_LEN * ship.scale * sinf(rad);
     float probeY = ship.posY - TANKER_NOZZLE_LEN * ship.scale * cosf(rad);
 
-    if (fabsf(probeX - drogueX()) > TANKER_DOCK_TOL_X) return false;
-    if (fabsf(probeY - drogueY()) > TANKER_DOCK_TOL_Y) return false;
+    if (fabsf(probeX - drogueX()) > dockTolX()) return false;
+    if (fabsf(probeY - drogueY()) > dockTolY()) return false;
     if (ship.velY > 0.14f) return false;
     if (ship.velY < -0.14f) return false;
     if (fabsf(ship.velX) > 0.20f) return false;
@@ -139,7 +139,7 @@ void Tanker::move(float dt)
     phase += TANKER_BOB_SPEED * dt;
     droguePhase += TANKER_DROGUE_SWAY_SPEED * dt;
     bodyY = baseY + sinf(phase) * TANKER_BOB_AMP;
-    portY = bodyY + TANKER_HULL_H * 0.5f;
+    portY = bodyY + hullHalfH();
 }
 
 bool Tanker::update(float dt, Ship& ship)
@@ -164,20 +164,22 @@ bool Tanker::update(float dt, Ship& ship)
         // Funnel centering: strong pull while seated inside the cone, a firm
         // recovery spring outside so the probe is always pulled back toward
         // the mouth rather than drifting off.
-        bool seated = fabsf(dockOffsetX) <= TANKER_DOCK_TOL_X &&
-                      fabsf(dockOffsetY) <= TANKER_DOCK_TOL_Y;
+        bool seated = fabsf(dockOffsetX) <= dockTolX() &&
+                      fabsf(dockOffsetY) <= dockTolY();
         float pull = seated ? TANKER_CONE_GUIDE : (TANKER_CONE_GUIDE * 0.3f);
         dockOffsetX -= dockOffsetX * pull * dt;
         dockOffsetY -= dockOffsetY * pull * dt;
 
-        // Clamp to a reasonable control range.
-        if (dockOffsetX > 18.0f) dockOffsetX = 18.0f;
-        if (dockOffsetX < -18.0f) dockOffsetX = -18.0f;
-        if (dockOffsetY > 14.0f) dockOffsetY = 14.0f;
-        if (dockOffsetY < -14.0f) dockOffsetY = -14.0f;
+        // Clamp to a reasonable control range that scales with the tanker.
+        float ctrlX = dockTolX() * 0.9f; // 18 u at TANKER_SIZE=1.0
+        float ctrlY = dockTolY();        // 14 u at TANKER_SIZE=1.0
+        if (dockOffsetX > ctrlX) dockOffsetX = ctrlX;
+        if (dockOffsetX < -ctrlX) dockOffsetX = -ctrlX;
+        if (dockOffsetY > ctrlY) dockOffsetY = ctrlY;
+        if (dockOffsetY < -ctrlY) dockOffsetY = -ctrlY;
 
-        bool aligned = fabsf(dockOffsetX) <= TANKER_DOCK_TOL_X &&
-                       fabsf(dockOffsetY) <= TANKER_DOCK_TOL_Y;
+        bool aligned = fabsf(dockOffsetX) <= dockTolX() &&
+                       fabsf(dockOffsetY) <= dockTolY();
 
         if (!aligned) {
             dockLockTimer = 0.0f;
@@ -230,7 +232,7 @@ bool Tanker::update(float dt, Ship& ship)
         bodyX += TANKER_LEAVE_SPEED * dt;
         bodyY -= TANKER_LEAVE_SPEED * 0.6f * dt;
         droguePhase += TANKER_DROGUE_SWAY_SPEED * dt;
-        portY = bodyY + TANKER_HULL_H * 0.5f;
+        portY = bodyY + hullHalfH();
         if (bodyX > originalBodyX + TANKER_LEAVE_DIST || bodyY < 40.0f) {
             done = true;
             leaving = false;
@@ -265,9 +267,9 @@ void Tanker::breakAway(Ship& ship)
 bool Tanker::hitsHull(float shipX, float shipY) const
 {
     if (!active || docked || done) return false;
-    float halfW = TANKER_HULL_W * 0.5f + TANKER_HULL_MARGIN;
-    float balloonHalfH = 5.5f + TANKER_HULL_MARGIN * 0.5f;
-    return fabsf(shipX - bodyX) < halfW && fabsf(shipY - bodyY) < balloonHalfH;
+    float halfW = hullHalfW();
+    float bHalfH = balloonHalfH();
+    return fabsf(shipX - bodyX) < halfW && fabsf(shipY - bodyY) < bHalfH;
 }
 
 void Tanker::destroy()
@@ -364,18 +366,21 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
     (void)counter;
     if (!active || done) return;
 
-    // The tanker scales with the ship (same factor) so its size stays
-    // consistent across zoom levels; it simply reads bigger because its hull
-    // geometry is larger in world units. The physical hitbox stays unchanged.
+    // The tanker is drawn with the SAME scale factor as the ship
+    // (ship.scale * viewScale), optionally scaled by TANKER_SIZE so resizing is
+    // a single knob that scales rendering AND physics together. Its native
+    // (unscaled) geometry is larger than the ship's — TANKER_GEOM — so it reads
+    // bigger purely from its bigger body, not from a draw-scale boost.
     float s = viewScale; // world -> screen mapping (positions)
-    float drawScale = ship.scale * viewScale * TANKER_DRAW_SCALE;
+    float drawScale = ship.scale * viewScale * TANKER_SIZE; // shared scale × size knob
+    float g = drawScale * TANKER_GEOM;                      // tanker native geometry (bigger body)
     float x0 = bodyX * s + viewX;
     float y0 = bodyY * s + viewY;
 
     // Zeppelin airship: an elongated balloon body with a small gondola
     // underneath, rear tail fins, a pulsing top beacon and a tail engine glow.
-    float RX = 13.0f * drawScale;
-    float RY = 5.5f * drawScale;
+    float RX = 13.0f * g;
+    float RY = 5.5f * g;
     int irx = (int)roundf(RX), iry = (int)roundf(RY);
     for (int yy = -iry; yy <= iry; yy++) {
         float fy = (float)yy / (float)iry;
@@ -405,14 +410,14 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
         r.lineShade(x0 - (float)bandW, y0 + (float)bb, x0 + (float)bandW, y0 + (float)bb, b);
     }
 
-    float gx = x0 - 1.0f * drawScale, gy = y0 + RY;
+    float gx = x0 - 1.0f * g, gy = y0 + RY;
 
     // Cabin-like gondola: aerodynamic "\___|" shape attached to the hull,
     // filled like the balloon instead of hanging on cables.
-    float gNoseTopX = gx - 3.0f * drawScale;   // top of the nose diagonal (touches hull)
-    float gNoseBotX = gx - 1.0f * drawScale;   // foot of the diagonal
-    float gRearX    = gx + 3.0f * drawScale;   // vertical stern
-    float gBotY     = gy + 2.2f * drawScale;   // belly line
+    float gNoseTopX = gx - 3.0f * g;   // top of the nose diagonal (touches hull)
+    float gNoseBotX = gx - 1.0f * g;   // foot of the diagonal
+    float gRearX    = gx + 3.0f * g;   // vertical stern
+    float gBotY     = gy + 2.2f * g;   // belly line
 
     // Fill the gondola, tapering the left edge from nose down to the belly.
     int gTopY = (int)roundf(gy), gBotYi = (int)roundf(gBotY);
@@ -428,41 +433,41 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
     r.line(gRearX, gBotY, gRearX, gy);         // | stern, hugging the hull
 
     // window / light detail
-    r.line(gx - 1.0f * drawScale, gy + 1.0f * drawScale,
-           gx + 1.2f * drawScale, gy + 1.0f * drawScale);
-    r.pixelShade(gx, gy + 1.2f * drawScale, 230);
+    r.line(gx - 1.0f * g, gy + 1.0f * g,
+           gx + 1.2f * g, gy + 1.0f * g);
+    r.pixelShade(gx, gy + 1.2f * g, 230);
 
-    float tail = x0 + RX - 1.0f * drawScale;
-    r.line(tail, y0 - 1.0f * drawScale, tail + 4.5f * drawScale, y0 - 4.0f * drawScale);
-    r.line(tail, y0 + 1.0f * drawScale, tail + 4.5f * drawScale, y0 + 4.0f * drawScale);
-    r.line(tail, y0 - 1.0f * drawScale, tail + 4.5f * drawScale, y0);
-    r.line(tail, y0 + 1.0f * drawScale, tail + 4.5f * drawScale, y0);
+    float tail = x0 + RX - 1.0f * g;
+    r.line(tail, y0 - 1.0f * g, tail + 4.5f * g, y0 - 4.0f * g);
+    r.line(tail, y0 + 1.0f * g, tail + 4.5f * g, y0 + 4.0f * g);
+    r.line(tail, y0 - 1.0f * g, tail + 4.5f * g, y0);
+    r.line(tail, y0 + 1.0f * g, tail + 4.5f * g, y0);
 
-    r.line(x0 + 4.0f * drawScale, y0 - RY, x0 + 4.0f * drawScale, y0 - RY - 2.5f * drawScale);
-    if ((counter / 25) & 1) r.pixelShade(x0 + 4.0f * drawScale, y0 - RY - 2.5f * drawScale, 230);
-    else r.pixelShade(x0 + 4.0f * drawScale, y0 - RY - 2.5f * drawScale, 80);
+    r.line(x0 + 4.0f * g, y0 - RY, x0 + 4.0f * g, y0 - RY - 2.5f * g);
+    if ((counter / 25) & 1) r.pixelShade(x0 + 4.0f * g, y0 - RY - 2.5f * g, 230);
+    else r.pixelShade(x0 + 4.0f * g, y0 - RY - 2.5f * g, 80);
 
     int fl = engineFlicker(counter, 3);
     r.pixelShade(x0 + RX, y0, 200 + fl / 4);
-    r.pixelShade(x0 + RX + 1.0f * drawScale, y0 - 1.0f * drawScale, fl);
-    r.pixelShade(x0 + RX + 1.0f * drawScale, y0 + 1.0f * drawScale, fl);
+    r.pixelShade(x0 + RX + 1.0f * g, y0 - 1.0f * g, fl);
+    r.pixelShade(x0 + RX + 1.0f * g, y0 + 1.0f * g, fl);
 
     // Refueling hose (probe-and-drogue): a flexible polyline runs from the
     // underside hull port down to the drogue basket. The drogue's back glows
     // brighter while the connection is live.
     float hs = 160.0f;
     if (docked) hs = 240.0f;
-    drawHose(r, x0 + 2.0f * drawScale, portY * s + viewY,
-             drogueX() * s + viewX, drogueY() * s + viewY, drawScale);
-    r.pixelShade(drogueX() * s + viewX - drawScale, drogueY() * s + viewY, (int)hs);
-    r.pixelShade(drogueX() * s + viewX + drawScale, (drogueY() + 1.0f) * s + viewY, (int)(hs * 0.6f));
+    drawHose(r, x0 + 2.0f * g, portY * s + viewY,
+             drogueX() * s + viewX, drogueY() * s + viewY, g);
+    r.pixelShade(drogueX() * s + viewX - g, drogueY() * s + viewY, (int)hs);
+    r.pixelShade(drogueX() * s + viewX + g, (drogueY() + 1.0f) * s + viewY, (int)(hs * 0.6f));
 
-    drawDrogue(r, drogueX() * s + viewX, drogueY() * s + viewY, drawScale);
+    drawDrogue(r, drogueX() * s + viewX, drogueY() * s + viewY, g);
 
     if (docked && fuelFlowing) {
         // Fuel flowing through the connected hose: bright drops running toward
         // the module's probe (which sits in the drogue basket).
-        float hx0 = x0 + 2.0f * drawScale;
+        float hx0 = x0 + 2.0f * g;
         float hy0 = portY * s + viewY;
         float hx1 = drogueX() * s + viewX;
         float hy1 = drogueY() * s + viewY;
@@ -472,7 +477,7 @@ void Tanker::draw(Renderer &r, float viewX, float viewY, float viewScale, int co
             float animT = fmodf(t + (float)counter * 0.03f, 1.0f);
             float dropX = hx0 + (hx1 - hx0) * animT;
             float dropY = hy0 + (hy1 - hy0) * animT;
-            float j = ((float)(i % 3) - 1.0f) * 1.5f * drawScale;
+            float j = ((float)(i % 3) - 1.0f) * 1.5f * g;
             int b = (int)(210.0f * (1.0f - animT * 0.5f));
             if (b > 0) r.pixelShade(dropX + j, dropY, b);
         }
