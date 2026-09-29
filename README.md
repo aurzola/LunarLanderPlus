@@ -5,7 +5,7 @@ video (AV)** output to a **black & white CRT** with composite input (video + sou
 
 <video src="images/video.mp4" controls width="480"></video>
 
-![Intro](images/introimage.png)
+![Intro](images/introgame.jpeg)
 
 Arcade physical controls:
 
