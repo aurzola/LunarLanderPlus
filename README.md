@@ -5,6 +5,8 @@ video (AV)** output to a **black & white CRT** with composite input (video + sou
 
 <video src="images/video.mp4" controls width="480"></video>
 
+![Intro](images/introimage.png)
+
 Arcade physical controls:
 
 - **Wii Nunchuck** → direction (joystick X) and the engine trigger button.
