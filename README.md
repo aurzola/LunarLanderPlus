@@ -1,107 +1,119 @@
 # Lunar Lander ESP32
 
-Port del juego **moonlander.seb.ly** (JavaScript) a un **ESP32** con salida de **video
-compuesto (AV)** hacia un **CRT blanco y negro** con entrada compuesta (video + sonido).
+A port of the game **moonlander.seb.ly** (JavaScript) to an **ESP32** with **composite
+video (AV)** output to a **black & white CRT** with composite input (video + sound).
 
-Controles físicos arcade:
+Arcade physical controls:
 
-- **Nunchuck (Wii)** → dirección (joystick X) y botón disparador del motor.
-- **Potenciómetro** → nivel de potencia de motores (thrust).
-- **Botón** → inicio / reinicio de partida.
+- **Wii Nunchuck** → direction (joystick X) and the engine trigger button.
+- **Potentiometer** → engine power (thrust) level.
+- **Button** → start / restart the game.
 
-## Código
+## Code
 
-| Ruta | Contenido |
-|------|-----------|
-| `esp32Lander/` | Port C++ std del juego (sin hardware): física, terreno, nave. Validado en PC (`make && ./test_pc`). |
-| `esp32LanderS3/` | **Versión principal para CRT B/N**: ESP32-S3 con video compuesto por LCD_CAM+GDMA (audio GPIO18, nunchuck I2C). |
-| `esp32LanderComposite/` | (DESCONTINUADO 24/8/2026) sketch clásico del ESP32; se conserva como archivo histórico. |
-| `sounds/` | Pipeline de generación de los sonidos (real_sounds.py) + WAV fuente. |
+| Path | Content |
+|------|---------|
+| `esp32Lander/` | Std C++ port of the game (no hardware): physics, terrain, ship. Validated on PC (`make && ./test_pc`). |
+| `esp32LanderS3/` | **Main B/W CRT version**: ESP32-S3 with composite video via LCD_CAM+GDMA (audio GPIO18, nunchuck I2C). |
+| `esp32LanderVGA/` | Second ESP32 (WROOM-32) outputting the game over parallel VGA (SVGA 640x480@60, monochrome). |
+| `esp32LanderComposite/` | (DISCONTINUED 24/8/2026) classic ESP32 sketch; kept as historical archive. |
+| `sounds/` | Sound generation pipeline (`real_sounds.py`) + source WAVs. |
 
-Ver `AGENTS.md` para la documentación técnica completa (física, terreno, audio, decisiones).
-Para el detalle eléctrico (esquemas, medidas, divisor de voltaje, flash/particiones) y el
-agente especializado de hardware, ver **`docs/hardware.md`**.
+See `AGENTS.md` for the full technical documentation (physics, terrain, audio, decisions).
+For the electrical detail (pinout, wiring, voltage divider, measurements, flash/partitions)
+and the specialized hardware agent, see **`docs/hardware.md`**. ASCII wiring schematics for
+each board (ESP32-S3, VGA, discontinued composite) live in **`docs/schematics.md`**.
 
-## Pinout completo
+## Pinout (main version: ESP32-S3)
 
-| Pin ESP32 | Señal | Uso |
-|-----------|-------|-----|
-| **GPIO21** | I2C SDA | Datos del nunchuck (Wii), 50 kHz, con pull-up interno explícito. |
-| **GPIO22** | I2C SCL | Clock del nunchuck (Wii), 50 kHz, con pull-up interno explícito. |
-| **GPIO34** | ADC pot (thrust level) | Potenciómetro 10 kΩ → **nivel de potencia** de motores `0.0–1.0`. Solo entrada (ADC1). |
-| **GPIO13** | Botón START | Botón a GND con `INPUT_PULLUP` (flanco) → inicia / reinicia la partida. **Sin autostart.** |
-| **GPIO25** | Video compuesto | Salida NTSC `320x240` B/N (DAC interno, librería aquaticus) → RCA **amarillo** del TV. |
-| **GPIO26** | Audio | PWM LEDC + timer ISR 16 kHz (motor + explosión) → RCA **blanco** del TV. |
-| **3.3 V** | Alimentación sensores | Nunchuck + extremo del pot. |
-| **GND** | Referencia | Término común de todos los circuitos + RCA del TV. |
-| **USB** | Alimentación + flash | Programación y monitoreo serial (115200 baud). |
+| GPIO | Signal | Use |
+|------|--------|-----|
+| **GPIO21** | I2C SDA | Nunchuck data (Wii), 50 kHz, explicit internal pull-up. |
+| **GPIO9** | I2C SCL | Nunchuck clock (Wii), 50 kHz, explicit internal pull-up. |
+| **GPIO8** | ADC pot (thrust level) | Potentiometer → engine **power level** `0.0–1.0`. Disabled in-game (`POT_DISABLED=1`). |
+| **GPIO13** | START button | Button to GND with `INPUT_PULLUP` (edge) → starts / restarts the game. **No autostart.** |
+| **GPIO4, 5, 6, 7, 15, 16, 40, 41** | Composite video (LCD_CAM bus D0–D7) | Own LCD_CAM+GDMA driver, NTSC `320x240` B/W (~58.6 fps) → resistive DAC → RCA. |
+| **GPIO18** | Audio | LEDC PWM 312.5 kHz @ 8-bit with APB clock (`ledcSetClockSource(LEDC_USE_APB_CLK)`) → external amp. |
+| **3.3 V** | Sensor power | Nunchuck + pot end. |
+| **GND** | Reference | Common ground for all circuits + TV RCA. |
+| **USB** | Power + flash | Programming and serial monitor (115200 baud). |
 
-> **GPIO35 (gatillo reóstato)**: quedó **desconectado** — sustituido por nunchuck + pot.
-> El código del mapeo por voltaje se conserva como legacy en el `.ino` bajo `#if 0`.
+> The historical composite pinout (GPIO21/22 nunchuck, GPIO34 pot, GPIO25 video DAC,
+> GPIO26 audio) is kept in `docs/hardware.md` as reference for the discontinued board.
 
-### Notas de los pines
+### Pin notes
 
-- **GPIO34 y GPIO35 son solo-entrada** (sin pull-up/pull-down): ideales para ADC. No se
-  pueden usar como salida.
-- **GPIO25/GPIO26** son los DAC del ESP32. La librería de video usa el DAC1 (GPIO25).
-  Para audio se libera GPIO26 con `dac_output_disable(DAC_CHANNEL_2)` + `rtc_gpio_deinit()`
-  y se usa como PWM LEDC (ver `AGENTS.md` → Sonido). No usar esos pines para otra cosa.
-- Botón: GPIO13 con `INPUT_PULLUP` interno, conectado a GND (el pulso pone la línea a 0).
-- Nunchuck: el cable del nunchuck tiene 6 almohadillas: 3.3 V, GND, SDA, SCL (las otras dos
-  son del acelerómetro y no se usan). Se conecta directo (lógica 3.3 V).
+- **GPIO8** on the S3 is an ADC-capable input for the pot.
+- The video bus pins are the LCD_CAM data lines; the driver feeds them through a
+  resistive DAC toward the RCA jack. Do not reuse them for other signals.
+- Nunchuck: the cable has 6 pads: 3.3 V, GND, SDA, SCL (the other two are the
+  accelerometer and are unused). Connected directly (3.3 V logic).
 
-## Cableado
+## Wiring
 
-### Nunchuck → dirección + disparador (GPIO21/GPIO22)
+### Nunchuck → direction + trigger (GPIO21 / GPIO9)
 
 ```
 3.3 V ──► nunchuck VCC
 GND  ──► nunchuck GND
-GPIO21 ──► nunchuck SDA (pull-up interno)
-GPIO22 ──► nunchuck SCL (pull-up interno)
+GPIO21 ──► nunchuck SDA (internal pull-up)
+GPIO9  ──► nunchuck SCL (internal pull-up)
 ```
 
-- Joystick X → ángulo de la nave; botón **Z** → enciende/apaga el motor.
-- I2C 100 kHz, dirección `0x52`, datos cifrados con clave `0x17`.
+- Joystick X → ship angle; **Z** button → engine on/off (released = engine off).
+- I2C 50 kHz, address `0x52`, optionally encrypted with key `0x17` (auto-detected).
 
-### Potenciómetro → nivel de potencia (GPIO34)
+### Potentiometer → power level (GPIO8)
 
 ```
-3.3 V ──┬──[extremo 1]
+3.3 V ──┬──[end 1]
         │
-   [pot 10 kΩ]
+   [10 kΩ pot]
         │
-      [cursor] ──► GPIO34
+      [wiper] ──► GPIO8
         │
-   [extremo 2]
+   [end 2]
         │
  GND ───┴───
 ```
 
-- Opcional: condensador 0.1 µF del cursor a GND para limpiar ruido.
-- El pot **solo fija el nivel** de thrust; el motor se enciende/apaga con el botón Z del
-  nunchuck (soltado = motor apagado).
+- Optional 0.1 µF cap from wiper to GND to clean noise.
+- The pot only sets the power level; the engine is toggled with the nunchuck Z button.
+- **Disabled in-game** (`POT_DISABLED=1`): power is set with **C + stick** instead.
 
-### Video y audio → TV
+### Video and audio → TV
 
 ```
-GPIO25 ─────────────► RCA amarillo (video compuesto NTSC)
-GPIO26 ──[1–10 µF]──► RCA blanco (audio, acople en serie)
-GND    ─────────────► GND / masa del TV
+GPIO4..41 (LCD_CAM bus) ── resistive DAC ──► RCA yellow (composite NTSC)
+GPIO18 ──[1–10 µF]──► amp / RCA white (audio, series coupling)
+GND   ───────────────► GND / TV ground
 ```
 
-- El condensador de acople en serie en el audio quita la componente DC (lógica 3.3 V).
-- Video: B/N con luma alta (255); se usa la entrada de video compuesto del TV.
-
-## Compilar y subir
+## Compile and flash
 
 ```sh
-# Validar el port en PC (sin hardware)
+# Validate the port on PC (no hardware)
 cd esp32Lander && make && ./test_pc
 
-# Compilar la versión principal (ESP32-S3, CRT compuesto B/N)
+# Compile the main version (ESP32-S3, composite B/W CRT)
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi esp32LanderS3/esp32LanderS3.ino
 
-# Subir
+# Flash
 arduino-cli upload --fqbn esp32:esp32:esp32s3:PSRAM=opi --port /dev/ttyACM0 esp32LanderS3/esp32LanderS3.ino
 ```
+
+## Hardware schematic / pinout / connections
+
+There is no formal EDA schematic file in this repo. The electrical reference lives in
+**`docs/hardware.md`**, which documents:
+
+- The full **pinout** of the main ESP32-S3 board and of the discontinued classic composite
+  board and the VGA board (GPIO → signal table).
+- **Wiring diagrams** for the nunchuck (I2C), the potentiometer (voltage divider to ADC),
+  the video output (composite / VGA resistive DAC + DE-15 connector) and audio (series
+  coupling cap → amp/RCA).
+- **Measured values**: throttle rheostat resistance sweep (500→30 Ω), pot readings, VGA
+  white-level math (270 Ω/leg → 0.717 V), RC filter proposals.
+- **Flash / partition** details (`no_ota` layout) and memory usage.
+
+The VGA board architecture has its own doc: `docs/PLAN_VGA.md`.

@@ -13,6 +13,8 @@
 
 ## Pinout del ESP32-S3 (VERSIÓN PRINCIPAL, `esp32LanderS3/`)
 
+> Esquemáticos ASCII de conexiones de las tres placas: **`docs/schematics.md`**.
+
 | Señal | GPIO | Notas |
 |-------|------|-------|
 | I2C nunchuck SDA | GPIO21 | 50 kHz, pull-ups internos vía `gpio_set_pull_mode`, dirección 0x52 |

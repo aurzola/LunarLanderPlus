@@ -56,9 +56,7 @@ const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nive
                                         // activarlo, el primer nivel del demo abre el
                                         // wormhole (traga + teleport) y el autopilot
                                         // sigue en la luna destino sin wormhole
-const int DEMO_LEVEL_FIRST = 5;         // TEMP (28/9/2026): forzar Titán como primer
-                                        // nivel del demo para validar la niebla en CRT.
-                                        // 0 = cada ciclo de demo elige el nivel al azar
+const int DEMO_LEVEL_FIRST = 0;         // 0 = cada ciclo de demo elige el nivel al azar
                                         // 1..DEMO_MAX_LEVEL (cualquier luna)
 const bool DEMO_TANKER_FIRST = false;   // OFF: el demo elige nivel al azar y el tanque
                                         // aparece solo con fuel < 50% (lógica normal).

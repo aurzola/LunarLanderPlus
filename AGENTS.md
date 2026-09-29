@@ -463,7 +463,8 @@ subías con C+stick.
 ## Hardware eléctrico / pinado
 
 Las conexiones eléctricas, esquemas, mediciones y el detalle de flash/memoria están en
-**`docs/hardware.md`** (lo consulta el `hardware` agent).
+**`docs/hardware.md`** (lo consulta el `hardware` agent). Esquemáticos ASCII de conexiones
+de las tres placas en **`docs/schematics.md`**.
 
 **Pinado de la versión principal (`esp32LanderS3/`, ESP32-S3)**:
 
