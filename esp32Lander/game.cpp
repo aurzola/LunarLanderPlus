@@ -143,6 +143,7 @@ void Game::newGame()
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTitan(level) &&
                   !moonHasTwister(level) &&
                   !moonHasRings(level);
     spawnWind();
@@ -207,6 +208,7 @@ void Game::nextLevel()
     terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTitan(level) &&
                   !moonHasTwister(level) &&
                   !moonHasRings(level);
     spawnWind();
@@ -294,6 +296,7 @@ void Game::startDemo()
     else terrain.generate(level);
     windEnabled = (level >= WIND_START_LEVEL) &&
                   (rand() % 100) < WIND_CHANCE_PERCENT &&
+                  !moonHasTitan(level) &&
                   !moonHasTwister(level) &&
                   !moonHasRings(level) &&
                   !showcase && !tankerShowcase;

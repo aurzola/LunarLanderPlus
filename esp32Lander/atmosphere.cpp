@@ -135,9 +135,10 @@ void Atmosphere::drawSky(Renderer &r, const Terrain &t, float viewX, float viewY
 
     // Per-column terrain silhouette: fog is only drawn above the terrain.
     float bottom[160];
+    const float invVs2 = 1.0f / viewScale;
     for (int x = 0; x < 320; x += 2) {
-        float wx = ((float)x - viewX) / viewScale;
-        float gy = terrainYAt(t, wx, (240.0f - viewY) / viewScale + 100.0f);
+        float wx = ((float)x - viewX) * invVs2;
+        float gy = terrainYAt(t, wx, (240.0f - viewY) * invVs2 + 100.0f);
         int sy = (int)(gy * viewScale + viewY);
         if (sy > 240) sy = 240;
         bottom[x / 2] = (float)sy;
@@ -148,65 +149,76 @@ void Atmosphere::drawSky(Renderer &r, const Terrain &t, float viewX, float viewY
         }
     }
 
-    // One pass per column over the union of all bands. Each band uses its own
-    // half (width profile: narrower near the terrain), and the pixel density
-    // is the max across bands so adjacent tails blend. Band centers wobble
-    // with low-freq world noise so the edges are ragged at any zoom.
-    float invunit[FOG_BAND_COUNT], cyScaled[FOG_BAND_COUNT];
-    for (int x = 0; x < SCREEN_W; x++) {
-        float wx = ((float)x - viewX) / viewScale;
-        float yMin = 1e9f, yMax = -1e9f;
-        for (int b = 0; b < FOG_BAND_COUNT; b++) {
+    // One pass PER BAND (they never overlap, gap > 2·drawHalf), so the loop only
+    // walks each band's own vertical extent instead of the union of all bands
+    // (the old union loop paid 3 LUT lookups on every sky pixel, including the
+    // empty gaps — the main FPS cost on the ESP32-S3).
+    // Perf: the reciprocal of viewScale is hoisted out of the per-pixel loop
+    // (a float division per pixel is expensive on the ESP32-S3).
+    const float invViewScale = 1.0f / viewScale;
+    // GRAIN anchored to SCREEN pixels: the hash uses (x, y) directly, so the
+    // pattern is stable at any zoom and while the camera moves — a world hash
+    // re-maps every pixel when the approach zoom kicks in and the particles
+    // jumped/speeded up. The slow temporal drift slides the pattern down
+    // gently (px/s), interpolated between adjacent cells for smooth motion.
+    const float grainT = t_ * FOG_GRAIN_DRIFT;
+    for (int b = 0; b < FOG_BAND_COUNT; b++) {
+        for (int x = 0; x < SCREEN_W; x++) {
+            float wx = ((float)x - viewX) * invViewScale;
             float wob = (noise1D(wx * 0.05f + (float)b * 3.7f) - 0.5f) * 2.0f * FOG_EDGE_AMP;
-            cyScaled[b] = (centerAt(b, wx) + wob) * viewScale + viewY;
+            float cyScaled = (centerAt(b, wx) + wob) * viewScale + viewY;
             float drawHalf = FOG_DRAW_HALF * bands_[b].half * viewScale;
             // The LUT reaches ~0 at u=FOG_LUT_UMAX; map that to the edge of the
             // drawn extent (drawHalf) so the density fades to zero exactly at
             // the border — otherwise the band was hard-clipped with density
             // still ~25% and showed a defined outline line in zoom.
-            invunit[b] = 255.0f / drawHalf;
-            if (cyScaled[b] - drawHalf < yMin) yMin = cyScaled[b] - drawHalf;
-            if (cyScaled[b] + drawHalf > yMax) yMax = cyScaled[b] + drawHalf;
-        }
-        int y0 = (int)yMin, y1 = (int)yMax;
-        if (y1 < 0 || y0 > SCREEN_H) continue;
-        // The fog renders across the full screen height (no HUD clip): the HUD
-        // text is drawn on top and clears its own label rectangles, so the sky
-        // stays visible behind it instead of a black strip.
-        if (y1 > SCREEN_H) y1 = SCREEN_H;
-        for (int y = y0; y < y1; y++) {
-            if (y >= bottom[x / 2] - 1.0f) break; // above terrain silhouette
-            int dens = 0;
-            for (int b = 0; b < FOG_BAND_COUNT; b++) {
-                float dyf = cyScaled[b] - (float)y;
+            float invunit = 255.0f / drawHalf;
+            int y0 = (int)(cyScaled - drawHalf);
+            int y1 = (int)(cyScaled + drawHalf);
+            if (y1 < 0 || y0 > SCREEN_H) continue;
+            // The fog renders across the full screen height (no HUD clip): the
+            // HUD text is drawn on top and clears its own label rectangles, so
+            // the sky stays visible behind it instead of a black strip.
+            if (y1 > SCREEN_H) y1 = SCREEN_H;
+            int gx = x;
+            int gx2 = x * 3 + 11;
+            for (int y = y0; y < y1; y++) {
+                if (y >= bottom[x / 2] - 1.0f) break; // above terrain silhouette
+                float dyf = cyScaled - (float)y;
                 if (dyf < 0.0f) dyf = -dyf;
-                int idx = (int)(dyf * invunit[b]);
+                int idx = (int)(dyf * invunit);
                 if (idx > 255) idx = 255;
-                int g = gauss[idx];
-                if (g > dens) dens = g;
+                int dens = gauss[idx];
+                if (dens == 0) continue;
+                // Ground fade: instead of a hard clip at the terrain silhouette,
+                // scale the density to zero over FOG_GROUND_FADE_PX above it, so
+                // the low band melts into the ground (no straight contour line).
+                float gt = bottom[x / 2] - (float)y;
+                if (gt < FOG_GROUND_FADE_PX) {
+                    int fade = (int)(255.0f * gt / FOG_GROUND_FADE_PX);
+                    if (fade < 4) fade = 4;
+                    dens = dens * fade / 255;
+                }
+                if (dens == 0) continue;
+                // Screen-anchored grain with slow temporal drift: the pattern
+                // slides down smoothly (interpolated between adjacent cells).
+                float gyf = (float)y + grainT;
+                int gy0 = (int)floorf(gyf);
+                float frac = gyf - (float)gy0;
+                unsigned h0 = grainHash(gx, gy0);
+                unsigned h1 = grainHash(gx, gy0 + 1);
+                unsigned h = (unsigned)((float)h0 + ((float)h1 - (float)h0) * frac);
+                if (h >= (unsigned)dens) continue;
+                float byf = (float)y * 5.0f + 7.0f + grainT * 5.0f;
+                int by0 = (int)floorf(byf);
+                float bfrac = byf - (float)by0;
+                unsigned b0 = grainHash(gx2, by0);
+                unsigned b1 = grainHash(gx2, by0 + 1);
+                unsigned b = (unsigned)((float)b0 + ((float)b1 - (float)b0) * bfrac);
+                int bv = (int)((float)b * FOG_BRIGHT / 255.0f);
+                if (bv < 4) bv = 4;
+                r.pixelShade((float)x, (float)y, bv);
             }
-            if (dens == 0) continue;
-            // Ground fade: instead of a hard clip at the terrain silhouette,
-            // scale the density to zero over FOG_GROUND_FADE_PX above it, so
-            // the low band melts into the ground (no straight contour line).
-            float gt = bottom[x / 2] - (float)y;
-            if (gt < FOG_GROUND_FADE_PX) {
-                int fade = (int)(255.0f * gt / FOG_GROUND_FADE_PX);
-                if (fade < 4) fade = 4;
-                dens = dens * fade / 255;
-            }
-            if (dens == 0) continue;
-            // GRAIN anchored to WORLD space: hash world coordinates scaled by
-            // FOG_GRAIN_W so the texture is identical at every zoom (the old
-            // screen-pixel hash re-sampled on zoom and the edges went straight).
-            float wy = ((float)y - viewY) / viewScale;
-            unsigned h = grainHash((int)(wx * FOG_GRAIN_W), (int)(wy * FOG_GRAIN_W));
-            if (h >= (unsigned)dens) continue;
-            int bv = (int)((float)grainHash((int)(wx * FOG_GRAIN_W * 3.0f + 11.0f),
-                                            (int)(wy * FOG_GRAIN_W * 5.0f + 7.0f)) *
-                           FOG_BRIGHT / 255.0f);
-            if (bv < 4) bv = 4;
-            r.pixelShade((float)x, (float)y, bv);
         }
     }
 }

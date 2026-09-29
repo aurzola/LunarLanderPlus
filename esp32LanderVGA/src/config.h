@@ -177,8 +177,8 @@ const float FOG_BAND_HALF = 34.0f;     // band half thickness (u) — nominal mi
 // bands are wide and wispy. Band 0 (lowest, closest to the surface) uses
 // FOG_BAND_HALF_BOTTOM; the top band uses FOG_BAND_HALF_TOP, interpolated in
 // between.
-const float FOG_BAND_HALF_BOTTOM = 12.0f;
-const float FOG_BAND_HALF_TOP = 30.0f;
+const float FOG_BAND_HALF_BOTTOM = 16.0f;
+const float FOG_BAND_HALF_TOP = 38.0f;
 const float FOG_BAND_START = 205.0f;   // first band center (world-y)
 const float FOG_BAND_GAP_MIN = 120.0f; // wide gaps so the bands read as rings
 const float FOG_BRIGHT = 44.0f;        // fog luma (a bit stronger than before)
@@ -190,13 +190,15 @@ const float FOG_GAUSS_EXP = 1.4f;
 const float FOG_LUT_UMAX = 2.0f;
 const float FOG_DRAW_HALF = 1.6f;      // draw extent = FOG_BAND_HALF * this (u)
 const int FOG_STIPPLE_MAX = 200;
-// GRAIN anchored to WORLD space (28/9/2026): the per-pixel hash was in screen
-// pixels, so zoom re-sampled the texture and the low band edges went straight
-// (lost entropy). FOG_GRAIN_W scales the world-cell of the grain; band centers
-// also wobble with low-freq noise (FOG_EDGE_AMP) so edges stay ragged in both
-// zoom-out and zoom-in.
-const float FOG_GRAIN_W = 2.0f;        // grain cell size (u), world-anchored
-const float FOG_EDGE_AMP = 10.0f;      // band-center wobble amplitude (u)
+// GRAIN anchored to SCREEN space (28/9/2026): the hash uses screen pixels, so
+// the pattern is stable at every zoom and while the camera moves — a world-
+// anchored hash re-maps every pixel when the approach zoom kicks in
+// (viewScale 0.34→1.7), which made the particles jump/speed up ("electric").
+// One grain cell = 1 px always, so the entropy is identical zoomed in/out.
+// The slow temporal drift slides the pattern down gently (px/s) so the fog
+// particles move smoothly instead of reading as fast TV-static.
+const float FOG_GRAIN_DRIFT = 2.0f;    // pattern drift in px/s
+const float FOG_EDGE_AMP = 5.0f;       // band-center wobble amplitude (u)
 // Ground fade (28/9/2026): the band used to be hard-clipped at the terrain
 // silhouette (bottom), so in zoom-in the low band's lower edge became a
 // precise straight line. The density now fades to zero over this many screen
