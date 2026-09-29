@@ -11,10 +11,9 @@ No tocas la física del juego, el terreno, el render ni la UI (eso pertenece al 
 
 ## Fuentes de verdad
 
-- **`docs/hardware.md`** — TODO el material eléctrico: pinout completo, medición del reóstato,
-  circuito del divisor de voltaje (gatillo → ADC), conexión del potenciómetro, salida de video
-  (aquaticus, DAC GPIO25), cableado de audio (GPIO26 → condensador → RCA) y flash/memoria.
-  **Empieza leyéndolo.**
+- **`docs/hardware.md`** — TODO el material eléctrico: pinout del ESP32-S3 (principal),
+  conexión del potenciómetro, salida de video (LCD_CAM+GDMA), salida de video VGA, cableado de
+  audio y flash/memoria. **Empieza leyéndolo.**
 - `AGENTS.md` — el contexto del agente principal. Contiene la **sección "Entrada"** (la LÓGICA en
   software de lectura/mapeo: calibración del stick, dead zone, botones Z/C, "last-used wins" del
   pot) y la sección **"Hardware eléctrico / pinado"** (resumen de pines). Léelas para no pisar la
@@ -29,8 +28,8 @@ No tocas la física del juego, el terreno, el render ni la UI (eso pertenece al 
   `esp32LanderS3/esp32LanderS3.ino`, `src/nunchuck.h/cpp`, `src/video_s3.h/c`,
   `src/audio.h/cpp`.
 - `esp32LanderS3/src/` es **copia** de `esp32Lander/` (física/dibujado). No mezcles cambios.
-- Histórico: el sketch clásico `esp32LanderComposite/` está **DESCONTINUADO (24/8/2026)**;
-  sus pines y mediciones quedan en `docs/hardware.md` como referencia.
+- Histórico: el sketch clásico `esp32LanderComposite/` está **DESCONTINUADO (24/8/2026)** y la
+  placa clásica ya no se puede usar; su pinout se eliminó de `docs/hardware.md`.
 
 ## Rutinas típicas
 

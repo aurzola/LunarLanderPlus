@@ -476,8 +476,9 @@ de las tres placas en **`docs/schematics.md`**.
 | Video compuesto (bus LCD_CAM D0–D7) | GPIO4, 5, 6, 7, 15, 16, 40, 41 |
 | Audio (LEDC PWM) | GPIO18 |
 
-**Pinado histórico del sketch clásico** (`esp32LanderComposite/`, DESCONTINUADO 24/8/2026 —
-la tabla y el detalle quedan en `docs/hardware.md`):
+**Pinado del sketch clásico** (`esp32LanderComposite/`, DESCONTINUADO 24/8/2026 — **la placa
+clásica ya no se puede usar** y su pinout se eliminó de `docs/hardware.md`; solo queda el
+histórico):
 
 | Señal | GPIO |
 |-------|------|
