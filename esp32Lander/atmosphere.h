@@ -20,6 +20,12 @@ public:
     bool hidesShip(float x, float y) const;
     int bandCount() const { return FOG_BAND_COUNT; }
     float bandCenter(int i) const { return bands_[i].cy; }
+    // Effective band center world-y at world-x (ellipse arc + drift): the
+    // position around which the ship is hidden. Public for tests.
+    float bandCenterAt(int i, float x) const { return centerAt(i, x); }
+    // Band half thickness (u), width profile: bands are narrower the closer
+    // they are to the terrain. Public for tests.
+    float bandHalf(int i) const { return bands_[i].half; }
 
 private:
     struct Band {
@@ -34,6 +40,7 @@ private:
     Band bands_[FOG_BAND_COUNT];
 
     float centerAt(int i, float x) const; // band center world-y (ellipse + drift)
+    static float profileHalf(int i);      // band half (u) from the width profile
     static float terrainYAt(const Terrain &t, float x, float fallback);
 };
 

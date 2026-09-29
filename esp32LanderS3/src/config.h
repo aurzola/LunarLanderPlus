@@ -44,6 +44,11 @@ const float TANKER_CRASH_DURATION = 3.0f;
 const float GAMEOVER_RESET_DELAY = 5.0f;
 
 const float DEMO_START_DELAY = 5.0f;
+// TEMP (28/9/2026, rama titan-fog-showcase): 1 dibuja la pantalla de
+// comparación de 4 variantes de niebla de Titán (FogShow) en lugar del título/
+// demo. Poner 0 para volver al flujo normal. (Macro de preprocesador, no
+// const bool: se usa en #if.)
+#define FOG_SHOWCASE_TEMP 0
 const int DEMO_MAX_LEVEL = 12;
 const int DEMO_LEVEL_FORCE = 0;  // 0 = demo elige nivel al azar 1..DEMO_MAX_LEVEL
 const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nivel al azar
@@ -51,9 +56,10 @@ const bool DEMO_WORMHOLE_FIRST = false; // 16/9/2026: OFF — el demo elige nive
                                         // activarlo, el primer nivel del demo abre el
                                         // wormhole (traga + teleport) y el autopilot
                                         // sigue en la luna destino sin wormhole
-const int DEMO_LEVEL_FIRST = 0;         // 0 = cada ciclo de demo elige el nivel
-                                        // al azar 1..DEMO_MAX_LEVEL (cualquier
-                                        // luna); > 0 lo fija siempre
+const int DEMO_LEVEL_FIRST = 5;         // TEMP (28/9/2026): forzar Titán como primer
+                                        // nivel del demo para validar la niebla en CRT.
+                                        // 0 = cada ciclo de demo elige el nivel al azar
+                                        // 1..DEMO_MAX_LEVEL (cualquier luna)
 const bool DEMO_TANKER_FIRST = false;   // OFF: el demo elige nivel al azar y el tanque
                                         // aparece solo con fuel < 50% (lógica normal).
                                         // Al activarlo, el primer nivel del demo abre
@@ -165,10 +171,39 @@ const float ATMOS_DOWN = 0.00008f;
 // bands with a gentle gaussian falloff (via LUT). They still hide the ship
 // while crossing. Each band: base world-y center + concentric arc + drift.
 const int FOG_BAND_COUNT = 3;
-const float FOG_BAND_HALF = 34.0f;     // band half thickness (u)
+const float FOG_BAND_HALF = 34.0f;     // band half thickness (u) — nominal mid
+// Band width profile (28/9/2026): bands get NARROWER the closer they are to
+// the terrain, so the low haze sits tight against the ground while the high
+// bands are wide and wispy. Band 0 (lowest, closest to the surface) uses
+// FOG_BAND_HALF_BOTTOM; the top band uses FOG_BAND_HALF_TOP, interpolated in
+// between.
+const float FOG_BAND_HALF_BOTTOM = 16.0f;
+const float FOG_BAND_HALF_TOP = 38.0f;
 const float FOG_BAND_START = 205.0f;   // first band center (world-y)
-const float FOG_BAND_GAP_MIN = 70.0f;
+const float FOG_BAND_GAP_MIN = 120.0f; // wide gaps so the bands read as rings
 const float FOG_BRIGHT = 44.0f;        // fog luma (a bit stronger than before)
+// Fog-showcase profile (rama titan-fog-showcase): soft gaussian falloff via
+// LUT over u in [0,2.5] + grain coverage cap. Steeper than the blend attempt
+// and a tighter draw extent so each band has a defined core and thins out
+// into grain before the next ring starts.
+const float FOG_GAUSS_EXP = 1.4f;
+const float FOG_LUT_UMAX = 2.0f;
+const float FOG_DRAW_HALF = 1.6f;      // draw extent = FOG_BAND_HALF * this (u)
+const int FOG_STIPPLE_MAX = 200;
+// GRAIN anchored to SCREEN space (28/9/2026): the hash uses screen pixels, so
+// the pattern is stable at every zoom and while the camera moves — a world-
+// anchored hash re-maps every pixel when the approach zoom kicks in
+// (viewScale 0.34→1.7), which made the particles jump/speed up ("electric").
+// One grain cell = 1 px always, so the entropy is identical zoomed in/out.
+// The slow temporal drift slides the pattern down gently (px/s) so the fog
+// particles move smoothly instead of reading as fast TV-static.
+const float FOG_GRAIN_DRIFT = 2.0f;    // pattern drift in px/s
+const float FOG_EDGE_AMP = 5.0f;       // band-center wobble amplitude (u)
+// Ground fade (28/9/2026): the band used to be hard-clipped at the terrain
+// silhouette (bottom), so in zoom-in the low band's lower edge became a
+// precise straight line. The density now fades to zero over this many screen
+// pixels above the ground, and the grain keeps the fade irregular.
+const float FOG_GROUND_FADE_PX = 8.0f;
 // Concentric ellipse the fog follows (shared center with the moon, like rings).
 const float FOG_ELLIPSE_CX = 400.0f;
 const float FOG_ELLIPSE_RAD = 520.0f;

@@ -263,6 +263,21 @@ void Terrain::drawLabels(Renderer &r, float viewX, float viewY, float viewScale)
             float my = (l.y1 + 10.0f) * viewScale + viewY;
             int wpx = (int)strlen(buf) * 6;
             if (mx - wpx > RW + 5 || mx < -5) continue;
+            // The label must never float over the terrain: if at any column under the
+// text the ground silhouette sits BELOW the label on screen (a ridge/edge
+// drops away beneath it), the text would be painted on top of the visible
+// terrain and is skipped. Sample across the text width in world space.
+            float lx = (mx - viewX) / viewScale;
+            bool skip = false;
+            float textW = (float)(wpx + 8) / viewScale; // text width in world u
+            for (int s = 0; s <= 6; s++) {
+                float wx2 = lx + (float)(s - 3) / 3.0f * textW;
+                float wl = fmodf(wx2, tileWidth);
+                if (wl < 0.0f) wl += tileWidth;
+                float ground = yAt(wl, l.y1);
+                if (ground * viewScale + viewY > my + 1.0f) { skip = true; break; }
+            }
+            if (skip) continue;
             r.text(mx - 6, my, buf);
             if (l.labelX == chuteLabelX) r.text(mx - 3, my + 8, "p");
         }

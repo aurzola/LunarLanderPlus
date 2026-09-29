@@ -1603,3 +1603,30 @@ dejar el contexto del agente principal liviano. Aquí vive la historia completa 
   siempre visible, y el HUD sigue mostrándose solo en niveles de Europa (`acidrain.active()`).
 - **Tests**: `test_pc` sigue en **1100 checks** (sin cambio de contrato); compile S3 OK.
   Subido a placa S3.
+
+## 28/9/2026 — Niebla Titán GRAIN + perfil de ancho + perf (rama `titan-fog-showcase`)
+
+- **Estilo elegido**: GRAIN (grano tipo estática TV) de entre 4 variantes evaluadas en un
+  showcase (fogshow.cpp) que partía la pantalla en cuadrantes etiquetados (DITHER / GRAIN /
+  RAGGED / VOL1BIT). El usuario eligió GRAIN.
+- **Anillos**: `FOG_BAND_COUNT=3` con **perfil de ancho** (`FOG_BAND_HALF_BOTTOM=16` →
+  `FOG_BAND_HALF_TOP=38`, interpolado): las bandas se estrechan hacia el terreno. Separación
+  `FOG_BAND_GAP_MIN=120`, extent `FOG_DRAW_HALF=1.6` con `invunit=255/drawHalf` (densidad a 0
+  en el borde, sin línea de contorno).
+- **Grano anclado a pantalla**: el hash por píxel pasó de mundo a **píxeles de pantalla**
+  (1 célula = 1 px): el anclaje al mundo re-mapeaba cada píxel al entrar el zoom de
+  aproximación (viewScale 0.34→1.7) y las partículas brincaban/"se aceleraban" (movimiento
+  eléctrico). Ahora estables en cualquier zoom; **drift temporal lento interpolado**
+  (`FOG_GRAIN_DRIFT=2 px/s`, mezcla entre celdas adyacentes) para movimiento suave.
+- **HUD a toda altura**: se quitó `FOG_SCREEN_TOP` (la niebla se dibuja a toda la pantalla y
+  el HUD limpia por etiqueta con `hudText`; minimapa con fondo opaco). Antes la franja
+  superior quedaba negra en Titán.
+- **Viento excluido en Titán**: `!moonHasTitan(level)` en las 3 comprobaciones de
+  `windEnabled` (newGame/nextLevel/startDemo).
+- **Perf**: una pasada POR BANDA (no la unión, que pagaba 3 LUT por píxel en los huecos) +
+  `invViewScale` hoisteado. Medido en placa: 16→38 fps en el demo de Titán (drawAvg
+  57ms→22ms).
+- **Terrain::drawLabels**: check para que la etiqueta "Nx" no flote sobre el terreno (si una
+  ladera queda por debajo en pantalla, se omite).
+- **Tests**: `test_pc` **1100 checks**; `titan_demo` OK. Compile S3 OK (647560 B, 49 %).
+  Subido a placa S3.

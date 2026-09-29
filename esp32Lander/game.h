@@ -18,6 +18,7 @@
 #include "quake.h"
 #include "explosion.h"
 #include "config.h"
+#include "fogshow.h"
 
 enum GameState {
     STATE_WAITING = 0,
