@@ -3,6 +3,8 @@
 A port of the game **moonlander.seb.ly** (JavaScript) to an **ESP32** with **composite
 video (AV)** output to a **black & white CRT** with composite input (video + sound).
 
+<video src="images/video.mp4" controls width="480"></video>
+
 Arcade physical controls:
 
 - **Wii Nunchuck** → direction (joystick X) and the engine trigger button.
