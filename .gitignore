@@ -48,5 +48,4 @@ frames/
 .opencode/node_modules/
 rings_demo
 
-# Scratch sketches
-esp32MemTest/
+
