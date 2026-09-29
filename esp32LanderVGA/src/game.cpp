@@ -104,7 +104,13 @@ Game::Game()
     input.powerLevel = 0;
     input.chuteToggle = false;
     chuteAvailable = true;
+#if FOG_SHOWCASE_TEMP
+    // TEMP showcase: Titan terrain so the fog styles render on the real moon.
+    level = 5;
+    terrain.generate(5);
+#else
     terrain.init();
+#endif
     storm.reset(level);
     if (moonHasTitan(level) || moonHasTwister(level)) storm.setEnabled(false);
     geysers.reset(level, terrain);
@@ -1163,8 +1169,8 @@ bool Game::atmosphereInView() const
 {
     if (!atmosphere.active()) return false;
     // Fog bands span the whole world width, so only the vertical extent
-    // matters (ellipse arc + band half + vertical drift).
-    const float m = FOG_BAND_HALF * 2.0f + FOG_DRIFT_A + FOG_CURVE_A;
+    // matters (ellipse arc + widest band half + vertical drift).
+    const float m = FOG_BAND_HALF_TOP * 2.0f + FOG_DRIFT_A + FOG_CURVE_A;
     for (int i = 0; i < atmosphere.bandCount(); i++)
         if (bandVisible(atmosphere.bandCenter(i), m)) return true;
     return false;
@@ -1653,6 +1659,12 @@ void Game::draw(Renderer &r)
 {
     r.clear();
 
+#if FOG_SHOWCASE_TEMP
+    // TEMP showcase: 4 fog variants side by side on Titan (rama titan-fog-showcase).
+    FogShow::draw(r, terrain, ship.counter * GAME_DT);
+    return;
+#endif
+
     if (state != STATE_WAITING) storm.drawSky(r, viewX, viewY, viewScale);
 
     int warnY = 62;
@@ -2059,6 +2071,16 @@ void Game::draw(Renderer &r)
         viewY = svy;
 
         char buf[40];
+
+        // HUD label: clear a black box behind the text so it stays legible
+        // over the sky (fog now renders across the full screen height; the
+        // HUD is drawn on top with per-label cleanup instead of a big
+        // "clear" strip that would wipe the sky).
+        auto hudText = [&r](float x, float y, const char *s) {
+            r.rectShade(x, y, (float)(strlen(s) * 6), 7.0f, 0);
+            r.text(x, y, s);
+        };
+
         if (introTimer <= 0) {
             bool glitch = (stormHitTimer > 0.0f);
 
@@ -2071,14 +2093,14 @@ void Game::draw(Renderer &r)
             // A lightning hit scrambles the instruments (EM interference):
             // readouts show random alphanumeric garbage that dances around.
             snprintf(buf, sizeof buf, "L%d SCORE %d", level, score);
-            r.text(22, 22, buf);
+            hudText(22, 22, buf);
             snprintf(buf, sizeof buf, "FUEL %d", (int)ship.fuel);
             if (ship.fuel <= 0) {
-                if ((ship.counter % 50) < 30) r.text(22, 32, buf);
+                if ((ship.counter % 50) < 30) hudText(22, 32, buf);
             } else if (ship.fuel < 300) {
-                if ((ship.counter % 50) < 30) r.text(22, 32, buf);
+                if ((ship.counter % 50) < 30) hudText(22, 32, buf);
             } else {
-                r.text(22, 32, buf);
+                hudText(22, 32, buf);
             }
 
             // VX/VY labels flash when the horizontal/vertical speed is too
@@ -2091,60 +2113,60 @@ void Game::draw(Renderer &r)
                 char gb[8];
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "ANG %s", gb);
-                r.text(22, 42, buf);
+                hudText(22, 42, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "PWR %s", gb);
-                r.text(22, 52, buf);
+                hudText(22, 52, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "ALT %s", gb);
-                r.text(250, 22, buf);
+                hudText(250, 22, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "VX  %s", gb);
-                r.text(250, 32, buf);
+                hudText(250, 32, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "VY  %s", gb);
-                r.text(250, 42, buf);
+                hudText(250, 42, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "G   %s", gb);
-                r.text(250, 52, buf);
+                hudText(250, 52, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "WIND %s", gb);
-                r.text(250, 62, buf);
+                hudText(250, 62, buf);
                 glitchChars(gb, 3);
                 snprintf(buf, sizeof buf, "HULL %s", gb);
-                r.text(250, 72, buf);
+                hudText(250, 72, buf);
             } else {
                 snprintf(buf, sizeof buf, "ANG %d", ang);
-                r.text(22, 42, buf);
+                hudText(22, 42, buf);
                 snprintf(buf, sizeof buf, "PWR %d", pwr);
-                r.text(22, 52, buf);
+                hudText(22, 52, buf);
                 snprintf(buf, sizeof buf, "ALT %d", alt);
-                r.text(250, 22, buf);
+                hudText(250, 22, buf);
                 bool flashVX = vxAlarm && (ship.counter % 50) >= 30;
                 bool flashVY = vyAlarm && (ship.counter % 50) >= 30;
                 snprintf(buf, sizeof buf, "VX %d", vx);
-                if (!flashVX) r.text(250, 32, buf);
+                if (!flashVX) hudText(250, 32, buf);
                 snprintf(buf, sizeof buf, "VY %d", vy);
-                if (!flashVY) r.text(250, 42, buf);
+                if (!flashVY) hudText(250, 42, buf);
                 snprintf(buf, sizeof buf, "G %.2f", ship.gravity / GRAVITY);
-                r.text(250, 52, buf);
+                hudText(250, 52, buf);
             }
 
-            if (demo) r.text(22, 62, "DEMO");
+            if (demo) hudText(22, 62, "DEMO");
 #if SHOW_DEBUG_SCALES
             snprintf(buf, sizeof buf, "SC  %.3f", ship.scale);
-            r.text(250, 92, buf);
+            hudText(250, 92, buf);
             snprintf(buf, sizeof buf, "VW  %.3f", viewScale);
-            r.text(250, 102, buf);
+            hudText(250, 102, buf);
             snprintf(buf, sizeof buf, "TK  %.3f", Tanker::drawScaleFor(ship.scale, viewScale));
-            r.text(250, 112, buf);
+            hudText(250, 112, buf);
 #endif
             bool windShown = windEnabled;
             if (windShown) {
                 if (!glitch) {
                     snprintf(buf, sizeof buf, "WIND %d%c", (int)(windStrength * 100.0f),
                              windDir > 0 ? '>' : '<');
-                    r.text(250, 62, buf);
+                    hudText(250, 62, buf);
                 }
                 warnY = 72;
             }
@@ -2156,15 +2178,15 @@ void Game::draw(Renderer &r)
                     bool flashHull = hullAlarm && (ship.counter % 40) >= 26;
                     char numBuf[12];
                     snprintf(numBuf, sizeof numBuf, "%d", hv);
-                    if (!flashHull) r.text(250, 72, "HULL");
-                    r.text(280, 72, numBuf);
+                    if (!flashHull) hudText(250, 72, "HULL");
+                    hudText(280, 72, numBuf);
                 }
                 warnY = 82;
             }
 
             if (quake.phase() == Quake::RUMBLING) {
                 bool flashSeismic = (ship.counter % 30) >= 20;
-                if (!flashSeismic) r.text(250, 72, "SEISMIC");
+                if (!flashSeismic) hudText(250, 72, "SEISMIC");
             }
 
             // Parachute status (top-left, above the L<level> line): solid =
@@ -2172,11 +2194,11 @@ void Game::draw(Renderer &r)
             // deploy was refused. Nothing is shown once the chute is spent.
             if (chuteAvailable) {
                 if (chuteTooLowTimer > 0.0f) {
-                    if ((ship.counter % 40) < 26) r.text(22, 72, "TOO LOW");
+                    if ((ship.counter % 40) < 26) hudText(22, 72, "TOO LOW");
                 } else if (ship.chute) {
-                    if ((ship.counter % 30) < 22) r.text(22, 72, "CHUTE");
+                    if ((ship.counter % 30) < 22) hudText(22, 72, "CHUTE");
                 } else {
-                    r.text(22, 72, "CHUTE");
+                    hudText(22, 72, "CHUTE");
                 }
             }
         }
@@ -2237,15 +2259,15 @@ void Game::draw(Renderer &r)
         }
 
             if (tanker.docked && tanker.fuelFlowing) {
-                r.text(250, warnY, "REFUELING");
+                hudText(250, warnY, "REFUELING");
             } else if (tanker.docked) {
-                if ((ship.counter % 40) < 24) r.text(250, warnY, "DOCKING");
+                if ((ship.counter % 40) < 24) hudText(250, warnY, "DOCKING");
             } else {
                 bool tankerZone = tanker.targeted() &&
                     fabsf(ship.posX - tanker.bodyX) < tanker.dockZoneX() &&
                     fabsf(ship.posY - tanker.portY) < tanker.dockZoneY();
                 if (tankerZone && (ship.counter % 40) < 24) {
-                    r.text(250, warnY, "DOCKING");
+                    hudText(250, warnY, "DOCKING");
                 }
             }
 
@@ -2284,6 +2306,10 @@ void Game::draw(Renderer &r)
         bool inApproach = approachAlt < APPROACH_ALT;
         if (inApproach && !dockZone) {
             const float MX = 112, MY = 22, MW = 96, MH = 49;
+            // Opaque background so the minimap reads clean over the sky/fog.
+            for (int yy = (int)MY; yy < (int)(MY + MH); yy++)
+                for (int xx = (int)MX; xx < (int)(MX + MW); xx++)
+                    r.pixelShade((float)xx, (float)yy, 0);
             r.line(MX, MY, MX + MW, MY);
             r.line(MX, MY + MH, MX + MW, MY + MH);
             r.line(MX, MY, MX, MY + MH);

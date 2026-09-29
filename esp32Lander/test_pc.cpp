@@ -568,9 +568,11 @@ static int testAtmosphere()
     a.reset(5);
     CHECK(a.active());
     CHECK(a.bandCount() == FOG_BAND_COUNT);
-    // At the band centers the ship is always hidden (drift < min half).
-    CHECK(a.hidesShip(200.0f, a.bandCenter(0)));
-    CHECK(a.hidesShip(500.0f, a.bandCenter(1)));
+    // At the effective band centers the ship is always hidden (drift < min
+    // half): bandCenterAt already includes the ellipse arc + drift, so the
+    // ship parked exactly on it is inside the band by construction.
+    CHECK(a.hidesShip(200.0f, a.bandCenterAt(0, 200.0f)));
+    CHECK(a.hidesShip(500.0f, a.bandCenterAt(1, 500.0f)));
     // Far from every band it is never hidden (well below the lowest band and
     // well above the highest).
     CHECK(!a.hidesShip(400.0f, 900.0f));
@@ -605,38 +607,32 @@ static int testAtmosphere()
     for (int i = 0; i < 3000; i++) a.update(GAME_DT);
     CHECK(a.active());
 
-    // The fog and the terrain halo must never be drawn over the HUD strip
-    // (top of the screen): with a zoomed approach camera that pushes a band
-    // across the top, the whole strip above FOG_SCREEN_TOP stays black.
+    // The fog now renders across the full screen height (no HUD clip): the HUD
+    // text is drawn on top and clears its own label rectangles, so with a
+    // zoomed approach camera that pushes a band across the top, the strip above
+    // the old FOG_SCREEN_TOP shows fog (the sky is never wiped by a "clear").
     {
         Terrain t;
         t.generate(5);
         float vs = SCREEN_H / 700.0f * 5.0f;
         float vx = 400.0f;
-        float vy = 100.0f - (FOG_BAND_START + FOG_BAND_HALF) * vs;
+        // Push the LOWEST band (narrowest, closest to terrain) up so its drawn
+        // extent reaches the top of the screen.
+        float vy = 100.0f - (FOG_BAND_START + FOG_DRAW_HALF * FOG_BAND_HALF_BOTTOM) * vs;
         RendererPC fr((int)SCREEN_W, (int)SCREEN_H, "");
         fr.clear();
         a.reset(5);
         a.drawSky(fr, t, vx, vy, vs);
         const uint8_t *fb = fr.data();
-        for (int y = 0; y < FOG_SCREEN_TOP; y++) {
-            for (int x = 0; x < 320; x++) {
-                if (fb[y * 320 + x] != 0) {
-                    printf("FAIL fog/halo above HUD at (%d,%d) luma %d\n",
-                           x, y, (int)fb[y * 320 + x]);
-                    return 1;
-                }
+        // The band really overlaps the top strip (fog is drawn at the top now).
+        bool fogAtTop = false;
+        for (int y = 0; y < 10; y++) {
+            for (int x = 0; x < 320; x += 2) {
+                if (fb[y * 320 + x] != 0) { fogAtTop = true; break; }
             }
+            if (fogAtTop) break;
         }
-        // sanity: the band really overlapped the top strip (clamp was active)
-        bool clampActive = false;
-        for (int x = 0; x < 320; x += 2) {
-            if (fb[FOG_SCREEN_TOP * 320 + x] != 0) {
-                clampActive = true;
-                break;
-            }
-        }
-        CHECK(clampActive);
+        CHECK(fogAtTop);
     }
 
     Game g;

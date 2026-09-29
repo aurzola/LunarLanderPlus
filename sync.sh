@@ -30,7 +30,8 @@ SHARED=(config.h
         wormhole.cpp wormhole.h \
         acidrain.cpp acidrain.h
         quake.cpp quake.h
-        explosion.h)
+        explosion.h
+        fogshow.cpp fogshow.h)
 
 err=0
 for t in "${TARGETS[@]}"; do
